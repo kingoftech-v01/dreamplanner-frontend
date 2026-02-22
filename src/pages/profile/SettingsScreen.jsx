@@ -20,10 +20,7 @@ import {
 const USER = { name:"Stephane", email:"stephane@rhematek.com", subscription:"PRO", timezone:"America/Toronto" };
 
 const LANGUAGES = [
-  {code:"en",label:"English"},{code:"fr",label:"Français"},{code:"es",label:"Español"},
-  {code:"de",label:"Deutsch"},{code:"it",label:"Italiano"},{code:"pt",label:"Português"},
-  {code:"nl",label:"Nederlands"},{code:"ru",label:"Русский"},{code:"zh",label:"中文"},
-  {code:"ja",label:"日本語"},{code:"ko",label:"한국어"},{code:"ar",label:"العربية"},
+  {code:"en",label:"English"},{code:"fr",label:"Français"},
 ];
 
 const TIMEZONES = [
@@ -58,7 +55,6 @@ export default function SettingsScreen(){
   const[mounted,setMounted]=useState(false);
   const{theme,setTheme,resolved,uiOpacity,forceMode,setForceMode,visualTheme}=useTheme();const isLight=resolved==="light";
   const{t,locale,setLocale}=useT();
-  const[lang,setLang]=useState(()=>{try{return localStorage.getItem("dp-language")||"en";}catch(e){return "en";}});
   const[notifs,setNotifs]=useState({push:true,email:true,buddy:true,streak:true});
   const[tz,setTz]=useState(()=>{try{return localStorage.getItem("dp-timezone")||USER.timezone;}catch(e){return USER.timezone;}});
   const[showLang,setShowLang]=useState(false);
@@ -68,12 +64,6 @@ export default function SettingsScreen(){
   const[deleteText,setDeleteText]=useState("");
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
-
-  // Sync language preference to localStorage and <html lang>
-  useEffect(()=>{
-    try{localStorage.setItem("dp-language",lang);}catch(e){}
-    document.documentElement.lang=lang;
-  },[lang]);
 
   // Sync timezone preference to localStorage
   useEffect(()=>{
@@ -118,7 +108,7 @@ export default function SettingsScreen(){
     );
   };
 
-  const langLabel=LANGUAGES.find(l=>l.code===lang)?.label||"English";
+  const langLabel=LANGUAGES.find(l=>l.code===locale)?.label||"English";
 
   return(
     <div style={{width:"100%",height:"100vh",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
@@ -233,16 +223,16 @@ export default function SettingsScreen(){
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 12px 20px"}}>
               {LANGUAGES.map(l=>(
-                <button key={l.code} onClick={()=>{setLang(l.code);setLocale(l.code);setShowLang(false);}} style={{
+                <button key={l.code} onClick={()=>{setLocale(l.code);setShowLang(false);}} style={{
                   width:"100%",padding:"12px 16px",borderRadius:12,border:"none",marginBottom:4,
-                  background:lang===l.code?"rgba(139,92,246,0.1)":"transparent",
+                  background:locale===l.code?"rgba(139,92,246,0.1)":"transparent",
                   display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",
                   transition:"all 0.15s",fontFamily:"inherit",
                 }}
-                  onMouseEnter={e=>{if(lang!==l.code)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)";}}
-                  onMouseLeave={e=>{if(lang!==l.code)e.currentTarget.style.background="transparent";}}>
-                  <span style={{fontSize:14,fontWeight:lang===l.code?600:400,color:lang===l.code?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)")}}>{l.label}</span>
-                  {lang===l.code&&<Check size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>}
+                  onMouseEnter={e=>{if(locale!==l.code)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)";}}
+                  onMouseLeave={e=>{if(locale!==l.code)e.currentTarget.style.background="transparent";}}>
+                  <span style={{fontSize:14,fontWeight:locale===l.code?600:400,color:locale===l.code?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)")}}>{l.label}</span>
+                  {locale===l.code&&<Check size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>}
                 </button>
               ))}
             </div>

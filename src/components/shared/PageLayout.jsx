@@ -4,7 +4,7 @@ import { useTheme } from "../../context/ThemeContext";
 export default function PageLayout({ children, showNav = true }) {
   var { uiOpacity } = useTheme();
   return (
-    <div style={{ position: "relative", width: "100%", height: "100vh", overflow: "hidden" }}>
+    <div style={{ position: "relative", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div style={{
         position: "relative", zIndex: 1, width: "100%", height: "100%",
         overflowY: "auto", overflowX: "hidden",

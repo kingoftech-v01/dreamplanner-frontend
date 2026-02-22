@@ -76,7 +76,7 @@ export default function ProfileScreen() {
   });
 
   return (
-    <div style={{ width: "100%", height: "100vh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
 
       {/* APPBAR */}
       <header style={{

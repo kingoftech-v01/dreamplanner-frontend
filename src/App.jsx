@@ -69,7 +69,7 @@ function LoadingFallback() {
   return (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "center",
-      height: "100vh", color: "rgba(255,255,255,0.5)",
+      height: "100dvh", color: "rgba(255,255,255,0.5)",
       fontFamily: "Inter, sans-serif", fontSize: 14,
     }}>
       <div className="dp-spin" style={{

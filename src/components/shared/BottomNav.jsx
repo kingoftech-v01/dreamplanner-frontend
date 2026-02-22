@@ -34,7 +34,7 @@ export default function BottomNav() {
   return (
     <>
       <div style={{
-        position: "fixed", bottom: 12, left: "50%", transform: "translateX(-50%)",
+        position: "fixed", bottom: "calc(12px + env(safe-area-inset-bottom, 0px))", left: "50%", transform: "translateX(-50%)",
         zIndex: 100,
         display: "flex", justifyContent: "center",
         width: "auto",

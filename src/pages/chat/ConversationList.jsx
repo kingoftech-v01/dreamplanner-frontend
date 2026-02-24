@@ -1,7 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
+import { apiGet, apiPost, apiDelete } from "../../services/api";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import ErrorState from "../../components/shared/ErrorState";
 import { ConversationSkeleton } from "../../components/shared/Skeleton";
 import {
   ArrowLeft, Search, Bot, Sparkles, Flag, Heart, Brain,
@@ -31,52 +37,6 @@ import {
  * - All text 9:1+ contrast
  * ═══════════════════════════════════════════════════════════════════ */
 
-// ─── MOCK DATA ───────────────────────────────────────────────────
-const MOCK_CONVERSATIONS = [
-  {
-    id: "1", title: "Launch SaaS Platform — Coaching",
-    type: "dream_coaching", messageCount: 24, unread: 2, pinned: true,
-    lastMessage: "Great progress on the deployment pipeline! Let's focus on the monitoring setup next.",
-    updatedAt: new Date(Date.now() - 1000 * 60 * 12), // 12 min ago
-    dreamTitle: "Launch my SaaS Platform",
-  },
-  {
-    id: "2", title: "Piano Practice Plan",
-    type: "planning", messageCount: 15, unread: 0, pinned: true,
-    lastMessage: "I've structured your weekly practice into 30-minute blocks focusing on chord transitions.",
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 2), // 2h ago
-    dreamTitle: "Learn Piano in 6 Months",
-  },
-  {
-    id: "3", title: "Morning Motivation",
-    type: "motivation", messageCount: 8, unread: 1, pinned: false,
-    lastMessage: "You've completed 3 tasks this week already — that's momentum building! 🔥",
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 5), // 5h ago
-    dreamTitle: "Run a Half Marathon",
-  },
-  {
-    id: "4", title: "Weekly Check-in",
-    type: "check_in", messageCount: 12, unread: 0, pinned: false,
-    lastMessage: "Your savings rate improved by 8% this month. Let's review your budget allocation.",
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24), // 1 day ago
-    dreamTitle: "Save $15,000 Emergency Fund",
-  },
-  {
-    id: "5", title: "Chat with Alex",
-    type: "buddy_chat", messageCount: 31, unread: 0, pinned: false,
-    lastMessage: "Hey! How's the marathon training going? I just finished my 10k today 💪",
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 48), // 2 days ago
-    dreamTitle: null,
-  },
-  {
-    id: "6", title: "New Dream Brainstorm",
-    type: "dream_creation", messageCount: 6, unread: 0, pinned: false,
-    lastMessage: "Let's explore what skills you'd need to start a YouTube channel about tech reviews.",
-    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 72), // 3 days ago
-    dreamTitle: null,
-  },
-];
-
 // ─── CONVERSATION TYPE CONFIG ────────────────────────────────────
 const CONV_TYPES = {
   dream_coaching:  { Icon: Bot,      color: "#C4B5FD", bg: "#8B5CF6", label: "AI Coach" },
@@ -95,18 +55,12 @@ const FILTER_TABS = [
   { key: "buddy_chat", label: "Buddy" },
 ];
 
-// ─── BUDDY CONTACTS (mock) ───────────────────────────────────────
-const BUDDY_CONTACTS = [
-  { id: "l5", name: "Alex Thompson", initial: "A", color: "#14B8A6", status: "online", dream: "Half Marathon" },
-  { id: "l1", name: "Jade Rivers", initial: "J", color: "#EC4899", status: "online", dream: "Learn Japanese" },
-  { id: "om1", name: "Omar Hassan", initial: "O", color: "#F59E0B", status: "offline", dream: "Start a Podcast" },
-  { id: "l3", name: "Lisa Chen", initial: "L", color: "#6366F1", status: "online", dream: "Finance Goals" },
-  { id: "fr2", name: "Noah Williams", initial: "N", color: "#10B981", status: "offline", dream: "Learn Guitar" },
-];
+var CONTACT_COLORS = ["#14B8A6", "#EC4899", "#F59E0B", "#6366F1", "#10B981", "#8B5CF6", "#EF4444"];
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 function timeAgo(date) {
-  const s = Math.floor((Date.now() - date.getTime()) / 1000);
+  var d = date instanceof Date ? date : new Date(date);
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
   if (s < 60) return "now";
   if (s < 3600) return `${Math.floor(s/60)}m`;
   if (s < 86400) return `${Math.floor(s/3600)}h`;
@@ -118,7 +72,9 @@ function timeAgo(date) {
 export default function ConversationListScreen() {
   const navigate=useNavigate();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
-  const [loading, setLoading] = useState(true);
+  var { user } = useAuth();
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -126,6 +82,49 @@ export default function ConversationListScreen() {
   const [contextMenu, setContextMenu] = useState(null); // {id, x, y}
   const [showNewChat, setShowNewChat] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
+
+  var convsUrl = (function () {
+    var params = "";
+    if (activeFilter !== "all") params += "?type=" + activeFilter;
+    if (searchQuery) params += (params ? "&" : "?") + "search=" + searchQuery;
+    return "/api/conversations/" + params;
+  })();
+  var convsInf = useInfiniteList({ queryKey: ["conversations", activeFilter, searchQuery], url: convsUrl, limit: 30 });
+  var conversations = convsInf.items;
+
+  var friendsQuery = useQuery({
+    queryKey: ["buddy-contacts"],
+    queryFn: function () { return apiGet("/api/social/friends/"); },
+    enabled: showNewChat,
+  });
+  var buddyContacts = ((friendsQuery.data && friendsQuery.data.results) || friendsQuery.data || []).map(function (f, i) {
+    return {
+      id: f.id,
+      name: f.displayName || f.username || "Friend",
+      initial: (f.displayName || f.username || "F")[0].toUpperCase(),
+      color: CONTACT_COLORS[i % CONTACT_COLORS.length],
+      status: f.isOnline ? "online" : "offline",
+      dream: f.currentDream || "",
+    };
+  });
+
+  var pinMut = useMutation({
+    mutationFn: function (id) { return apiPost("/api/conversations/" + id + "/pin/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); },
+    onError: function (err) { showToast(err.message || "Failed to pin", "error"); },
+  });
+  var archiveMut = useMutation({
+    mutationFn: function (id) { return apiPost("/api/conversations/" + id + "/archive/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); },
+    onError: function (err) { showToast(err.message || "Failed to archive", "error"); },
+  });
+  var deleteMut = useMutation({
+    mutationFn: function (id) { return apiDelete("/api/conversations/" + id + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); showToast("Conversation deleted", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
+  });
+
+  var loading = convsInf.isLoading;
 
   const iconBtnStyle = {
     width:40,height:40,borderRadius:12,
@@ -135,10 +134,6 @@ export default function ConversationListScreen() {
     cursor:"pointer",transition:"all 0.2s",
   };
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(t);
-  }, []);
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
   // Close context menu on outside click
@@ -149,19 +144,28 @@ export default function ConversationListScreen() {
   },[contextMenu]);
 
   // ─── Filter & Search ───
-  const filtered = MOCK_CONVERSATIONS.filter(c => {
-    if (activeFilter !== "all" && c.type !== activeFilter) return false;
-    if (searchQuery && !c.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+  var filtered = conversations.filter(function (c) {
+    if (searchQuery && !(c.title || "").toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
+  }).map(function (c) {
+    return Object.assign({}, c, {
+      updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+    });
   });
   const pinned = filtered.filter(c => c.pinned);
   const unpinned = filtered.filter(c => !c.pinned);
-  const totalUnread = MOCK_CONVERSATIONS.reduce((sum, c) => sum + c.unread, 0);
+  const totalUnread = conversations.reduce(function (sum, c) { return sum + (c.unread || 0); }, 0);
 
   if (loading) return (
       <div style={{ width: "100%", padding: "60px 16px 0" }}>
         {[1,2,3,4].map(i => <ConversationSkeleton key={i} isLight={isLight} style={{ marginBottom: 12 }} />)}
       </div>
+  );
+
+  if (convsInf.isError) return (
+    <div style={{ width: "100%", padding: "60px 16px 0", display: "flex", justifyContent: "center" }}>
+      <ErrorState message={convsInf.error?.message} onRetry={function () { convsInf.refetch(); }} />
+    </div>
   );
 
   return (
@@ -296,6 +300,8 @@ export default function ConversationListScreen() {
               )}
             </>
           )}
+          <div ref={convsInf.sentinelRef} style={{height:1}} />
+          {convsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
         </div>
       </main>
 
@@ -312,11 +318,17 @@ export default function ConversationListScreen() {
           animation:"dpFadeScale 0.15s ease-out",
         }}>
           {[
-            { Icon: Pin, label:"Pin conversation", color:isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)" },
-            { Icon: Archive, label:"Archive", color:isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)" },
-            { Icon: Trash2, label:"Delete", color:isLight?"#DC2626":"#F69A9A" },
-          ].map(({Icon:I, label, color}, i) => (
-            <button key={i} onClick={()=>setContextMenu(null)} style={{
+            { Icon: Pin, label:"Pin conversation", color:isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)", action: function () {
+              pinMut.mutate(contextMenu.id);
+            }},
+            { Icon: Archive, label:"Archive", color:isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)", action: function () {
+              archiveMut.mutate(contextMenu.id);
+            }},
+            { Icon: Trash2, label:"Delete", color:isLight?"#DC2626":"#F69A9A", action: function () {
+              deleteMut.mutate(contextMenu.id);
+            }},
+          ].map(({Icon:I, label, color, action}, i) => (
+            <button key={i} onClick={()=>{action();setContextMenu(null);}} style={{
               display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
               background:"none", border:"none", borderRadius:10, cursor:"pointer", color,
               fontSize:13, fontWeight:500, fontFamily:"inherit", transition:"background 0.15s",
@@ -397,7 +409,7 @@ export default function ConversationListScreen() {
 
             {/* Contact list */}
             <div style={{ flex:1, overflowY:"auto", padding:"0 12px 20px" }}>
-              {BUDDY_CONTACTS
+              {buddyContacts
                 .filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase()))
                 .map(contact => (
                 <button
@@ -453,7 +465,7 @@ export default function ConversationListScreen() {
                 </button>
               ))}
 
-              {BUDDY_CONTACTS.filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase())).length === 0 && (
+              {buddyContacts.filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase())).length === 0 && (
                 <div style={{ textAlign:"center", padding:"32px 0", color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)", fontSize:14 }}>
                   No contacts found
                 </div>

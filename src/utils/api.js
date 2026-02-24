@@ -13,7 +13,7 @@ export async function fetchApi(url, options) {
   var headers = Object.assign({}, options.headers || {});
 
   if (method !== "GET" && method !== "HEAD") {
-    headers["X-CSRF-Token"] = getCsrfToken();
+    headers["X-CSRFToken"] = getCsrfToken();
   }
 
   if (options.body && typeof options.body === "object" && !(options.body instanceof FormData)) {

@@ -2,10 +2,13 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft, Bot, Sparkles, Target, Flame, TrendingUp,
-  Brain, MessageCircle, Send, Zap,
+  Brain, MessageCircle, Send, Zap, Loader2,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
 
 const SUGGESTIONS = [
   { icon: Target, text: "Help me plan my goals for this week", color: "#8B5CF6" },
@@ -27,8 +30,22 @@ export default function NewChatScreen() {
   const navigate = useNavigate();
   const { resolved } = useTheme();
   const isLight = resolved === "light";
+  var { showToast } = useToast();
+  var [creating, setCreating] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [message, setMessage] = useState("");
+
+  var templatesQuery = useQuery({
+    queryKey: ["conversation-templates"],
+    queryFn: function () { return apiGet("/api/conversations/conversation-templates/"); },
+  });
+  var templates = templatesQuery.data?.results || templatesQuery.data || [];
+
+  var displaySuggestions = templates.length > 0
+    ? templates.map(function (t) {
+        return { icon: Target, text: t.title || t.name, color: "#8B5CF6" };
+      })
+    : SUGGESTIONS;
 
   useEffect(() => { setTimeout(() => setMounted(true), 50); }, []);
 
@@ -38,9 +55,17 @@ export default function NewChatScreen() {
     transition: `all 0.5s cubic-bezier(0.4,0,0.2,1) ${i * 70}ms`,
   });
 
-  const handleSend = (text) => {
-    // Navigate to a new chat with the suggestion as context
-    navigate("/chat/new", { state: { initialMessage: text || message } });
+  var handleSend = async function (text) {
+    var msg = (text || message).trim();
+    if (!msg || creating) return;
+    setCreating(true);
+    try {
+      var conv = await apiPost("/api/conversations/", { type: "dream_coaching", title: msg.slice(0, 60) });
+      navigate("/chat/" + conv.id, { state: { initialMessage: msg } });
+    } catch (err) {
+      showToast(err.message || "Failed to start conversation", "error");
+      setCreating(false);
+    }
   };
 
   return (
@@ -79,7 +104,7 @@ export default function NewChatScreen() {
             <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-secondary)" }}>Suggestions</span>
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {SUGGESTIONS.map((s, i) => {
+            {displaySuggestions.map((s, i) => {
               const Icon = s.icon;
               return (
                 <button
@@ -136,26 +161,31 @@ export default function NewChatScreen() {
           <input
             value={message}
             onChange={e => setMessage(e.target.value)}
-            onKeyDown={e => { if (e.key === "Enter" && message.trim()) handleSend(); }}
-            placeholder="Type a message..."
+            onKeyDown={e => { if (e.key === "Enter" && message.trim() && !creating) handleSend(); }}
+            placeholder={creating ? "Starting conversation..." : "Type a message..."}
+            disabled={creating}
             style={{
               flex: 1, background: "none", border: "none", outline: "none",
               color: "var(--dp-text)", fontSize: 15, fontFamily: "Inter, sans-serif",
+              opacity: creating ? 0.5 : 1,
             }}
           />
           <button
-            onClick={() => message.trim() && handleSend()}
-            disabled={!message.trim()}
+            onClick={() => message.trim() && !creating && handleSend()}
+            disabled={!message.trim() || creating}
             style={{
               width: 38, height: 38, borderRadius: 12, border: "none",
-              background: message.trim() ? "linear-gradient(135deg, #8B5CF6, #7C3AED)" : "var(--dp-glass-bg)",
-              cursor: message.trim() ? "pointer" : "default",
+              background: message.trim() && !creating ? "linear-gradient(135deg, #8B5CF6, #7C3AED)" : "var(--dp-glass-bg)",
+              cursor: message.trim() && !creating ? "pointer" : "default",
               display: "flex", alignItems: "center", justifyContent: "center",
               transition: "all 0.2s",
-              boxShadow: message.trim() ? "0 2px 12px rgba(139,92,246,0.3)" : "none",
+              boxShadow: message.trim() && !creating ? "0 2px 12px rgba(139,92,246,0.3)" : "none",
             }}
           >
-            <Send size={16} color={message.trim() ? "#fff" : "var(--dp-text-muted)"} />
+            {creating
+              ? <Loader2 size={16} color="var(--dp-text-muted)" style={{ animation: "dpSpin 1s linear infinite" }} />
+              : <Send size={16} color={message.trim() ? "#fff" : "var(--dp-text-muted)"} />
+            }
           </button>
         </div>
       </div>

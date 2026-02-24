@@ -4,9 +4,13 @@ import {
   ArrowLeft, Star, Clock, Target, Sparkles,
   Briefcase, Heart, DollarSign, Palette, TrendingUp, Users, BookOpen,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_DREAM_TEMPLATES } from "../../data/mockData";
+import { apiGet, apiPost } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
+import ErrorState from "../../components/shared/ErrorState";
+import { SkeletonCard } from "../../components/shared/Skeleton";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -51,6 +55,13 @@ export default function DreamTemplatesScreen() {
   const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
   const [activeFilter, setActiveFilter] = useState("All");
+  var { showToast } = useToast();
+
+  var templatesQuery = useQuery({
+    queryKey: ["dream-templates"],
+    queryFn: function () { return apiGet("/api/dreams/dreams/templates/"); },
+  });
+  var templates = templatesQuery.data?.results || templatesQuery.data || [];
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -64,8 +75,85 @@ export default function DreamTemplatesScreen() {
   });
 
   const filteredTemplates = activeFilter === "All"
-    ? MOCK_DREAM_TEMPLATES
-    : MOCK_DREAM_TEMPLATES.filter((t) => t.category === getCategoryKey(activeFilter));
+    ? templates
+    : templates.filter((t) => t.category === getCategoryKey(activeFilter));
+
+  if (templatesQuery.isLoading) {
+    return (
+      <PageLayout>
+        <div style={{
+          display: "flex", flexDirection: "column",
+          minHeight: "100vh", paddingTop: 20, paddingBottom: 24,
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 16,
+            marginBottom: 24,
+          }}>
+            <button className="dp-ib" onClick={() => navigate(-1)}>
+              <ArrowLeft size={20} strokeWidth={2} />
+            </button>
+            <div>
+              <h1 style={{
+                fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
+                fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+              }}>
+                Dream Templates
+              </h1>
+              <p style={{
+                fontSize: 13, color: "var(--dp-text-tertiary)",
+                fontFamily: "Inter, sans-serif", margin: 0, marginTop: 2,
+              }}>
+                Pre-built plans to jumpstart your dreams
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {[1, 2, 3, 4].map(function (i) {
+              return <SkeletonCard key={i} height={200} />;
+            })}
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (templatesQuery.isError) {
+    return (
+      <PageLayout>
+        <div style={{
+          display: "flex", flexDirection: "column",
+          minHeight: "100vh", paddingTop: 20, paddingBottom: 24,
+        }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 16,
+            marginBottom: 24,
+          }}>
+            <button className="dp-ib" onClick={() => navigate(-1)}>
+              <ArrowLeft size={20} strokeWidth={2} />
+            </button>
+            <div>
+              <h1 style={{
+                fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
+                fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+              }}>
+                Dream Templates
+              </h1>
+              <p style={{
+                fontSize: 13, color: "var(--dp-text-tertiary)",
+                fontFamily: "Inter, sans-serif", margin: 0, marginTop: 2,
+              }}>
+                Pre-built plans to jumpstart your dreams
+              </p>
+            </div>
+          </div>
+          <ErrorState
+            message={templatesQuery.error?.message || "Failed to load templates"}
+            onRetry={function () { templatesQuery.refetch(); }}
+          />
+        </div>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>
@@ -269,7 +357,14 @@ export default function DreamTemplatesScreen() {
 
                 {/* Use Template Button */}
                 <button
-                  onClick={() => navigate("/dream/create")}
+                  onClick={() => {
+                    apiPost("/api/dreams/dreams/templates/" + template.id + "/use/").then(function (data) {
+                      showToast("Dream created from template!", "success");
+                      navigate("/dream/" + data.id);
+                    }).catch(function (err) {
+                      showToast(err.message || "Failed to use template", "error");
+                    });
+                  }}
                   style={{
                     width: "100%", height: 42, borderRadius: 12,
                     background: "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(124,58,237,0.1))",

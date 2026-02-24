@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useT } from "../../context/I18nContext";
+import { apiPatch } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Onboarding Walkthrough
@@ -18,10 +20,11 @@ const SLIDE_DATA = [
 ];
 
 export default function OnboardingScreen() {
-  const navigate = useNavigate();
-  const { resolved } = useTheme();
-  const isLight = resolved === "light";
-  const { t } = useT();
+  var navigate = useNavigate();
+  var { resolved } = useTheme();
+  var isLight = resolved === "light";
+  var { t } = useT();
+  var { updateUser } = useAuth();
 
   const SLIDES = useMemo(() => SLIDE_DATA.map(s => ({
     emojis: s.emojis,
@@ -40,10 +43,14 @@ export default function OnboardingScreen() {
   }, []);
 
   // ─── COMPLETE ONBOARDING ──────────────────────────────────────
-  const completeOnboarding = useCallback(() => {
+  var completeOnboarding = useCallback(function () {
     localStorage.setItem("dp-onboarded", "true");
+    // Save onboarding completion to backend
+    apiPatch("/api/users/update_profile/", { hasOnboarded: true })
+      .then(function () { updateUser({ hasOnboarded: true }); })
+      .catch(function () { /* ignore — localStorage is fallback */ });
     navigate("/");
-  }, [navigate]);
+  }, [navigate, updateUser]);
 
   // ─── SLIDE NAVIGATION ────────────────────────────────────────
   const goToSlide = useCallback((newSlide, dir) => {

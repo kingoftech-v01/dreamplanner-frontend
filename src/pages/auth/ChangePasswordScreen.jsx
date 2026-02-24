@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Lock, Eye, EyeOff, Check, Shield } from "lucide-react";
+import { ArrowLeft, Lock, Eye, EyeOff, Check, Shield, Loader2 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import { apiPost } from "../../services/api";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -45,34 +46,75 @@ function getPasswordStrength(password) {
 }
 
 export default function ChangePasswordScreen() {
-  const navigate = useNavigate();
-  const [mounted, setMounted] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [focusedField, setFocusedField] = useState(null);
-  const [showToast, setShowToast] = useState(false);
+  var navigate = useNavigate();
+  var [mounted, setMounted] = useState(false);
+  var [currentPassword, setCurrentPassword] = useState("");
+  var [newPassword, setNewPassword] = useState("");
+  var [confirmPassword, setConfirmPassword] = useState("");
+  var [showCurrent, setShowCurrent] = useState(false);
+  var [showNew, setShowNew] = useState(false);
+  var [showConfirm, setShowConfirm] = useState(false);
+  var [focusedField, setFocusedField] = useState(null);
+  var [showToast, setShowToast] = useState(false);
+  var [serverError, setServerError] = useState("");
+  var [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 50);
-    return () => clearTimeout(timer);
+  useEffect(function () {
+    var timer = setTimeout(function () { setMounted(true); }, 50);
+    return function () { clearTimeout(timer); };
   }, []);
 
-  const strength = getPasswordStrength(newPassword);
+  var strength = getPasswordStrength(newPassword);
 
-  const stagger = (index) => ({
-    opacity: mounted ? 1 : 0,
-    transform: mounted ? "translateY(0)" : "translateY(20px)",
-    transition: `opacity 0.6s cubic-bezier(0.4,0,0.2,1) ${index * 0.08}s, transform 0.6s cubic-bezier(0.4,0,0.2,1) ${index * 0.08}s`,
-  });
+  var stagger = function (index) {
+    return {
+      opacity: mounted ? 1 : 0,
+      transform: mounted ? "translateY(0)" : "translateY(20px)",
+      transition: "opacity 0.6s cubic-bezier(0.4,0,0.2,1) " + (index * 0.08) + "s, transform 0.6s cubic-bezier(0.4,0,0.2,1) " + (index * 0.08) + "s",
+    };
+  };
 
-  const handleUpdate = (e) => {
+  var handleUpdate = function (e) {
     e.preventDefault();
-    setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+    setServerError("");
+
+    if (!currentPassword) {
+      setServerError("Current password is required.");
+      return;
+    }
+    if (strength.level < 2) {
+      setServerError("New password is too weak.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setServerError("New passwords do not match.");
+      return;
+    }
+
+    setSubmitting(true);
+    apiPost("/api/auth/password/change/", {
+      old_password: currentPassword,
+      new_password1: newPassword,
+      new_password2: confirmPassword,
+    })
+      .then(function () {
+        setShowToast(true);
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setTimeout(function () { setShowToast(false); }, 3000);
+      })
+      .catch(function (err) {
+        if (err.fieldErrors) {
+          var msg = err.fieldErrors.oldPassword || err.fieldErrors.newPassword1 || err.fieldErrors.newPassword2 || "";
+          setServerError(msg || err.message || "Failed to update password.");
+        } else {
+          setServerError(err.message || "Failed to update password.");
+        }
+      })
+      .finally(function () {
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -122,6 +164,17 @@ export default function ChangePasswordScreen() {
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
         }}>
           <form onSubmit={handleUpdate}>
+            {/* Server error */}
+            {serverError && (
+              <div style={{
+                background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+              }}>
+                {serverError}
+              </div>
+            )}
+
             {/* Current Password */}
             <div style={{ ...stagger(3), marginBottom: 18 }}>
               <label style={{
@@ -305,26 +358,38 @@ export default function ChangePasswordScreen() {
             <div style={stagger(6)}>
               <button
                 type="submit"
+                disabled={submitting}
                 style={{
                   width: "100%", height: 50, borderRadius: 14,
-                  background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                  border: "none", cursor: "pointer",
+                  background: submitting
+                    ? "linear-gradient(135deg, rgba(139,92,246,0.5), rgba(124,58,237,0.5))"
+                    : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                  border: "none", cursor: submitting ? "not-allowed" : "pointer",
                   color: "#fff", fontSize: 15, fontWeight: 700,
                   fontFamily: "Inter, sans-serif",
                   display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                   boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                  transition: "transform 0.2s ease, box-shadow 0.2s ease, background 0.25s ease",
                 }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.transform = "translateY(-1px)";
-                  e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
+                onMouseEnter={function (e) {
+                  if (!submitting) {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
+                  }
                 }}
-                onMouseLeave={(e) => {
+                onMouseLeave={function (e) {
                   e.currentTarget.style.transform = "translateY(0)";
                   e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
                 }}
               >
-                Update Password
+                {submitting ? (
+                  <>
+                    <Loader2 size={18} className="dp-spin" />
+                    Updating...
+                  </>
+                ) : (
+                  "Update Password"
+                )}
               </button>
             </div>
           </form>

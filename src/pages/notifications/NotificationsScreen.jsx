@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiPost } from "../../services/api";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Bell, CheckCheck } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_NOTIFICATIONS } from "../../data/mockData";
+import { SkeletonCard } from "../../components/shared/Skeleton";
 
 const TYPE_COLORS = {
   dream_progress: "#8B5CF6",
@@ -41,30 +45,58 @@ const glassStyle = {
 export default function NotificationsScreen() {
   const navigate = useNavigate();
   const { resolved } = useTheme(); const isLight = resolved === "light";
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
-  const [notifications, setNotifications] = useState(MOCK_NOTIFICATIONS);
   const [dismissed, setDismissed] = useState(new Set());
   const [swipeState, setSwipeState] = useState({});
+
+  var notifsInf = useInfiniteList({ queryKey: ["notifications"], url: "/api/notifications/", limit: 30 });
+  var notifications = notifsInf.items;
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(timer);
   }, []);
 
-  const handleMarkAllRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-    try { localStorage.setItem("dp-unread-notifs", "0"); } catch {}
+  useEffect(function () {
+    if (notifsInf.isError) {
+      showToast(
+        (notifsInf.error && notifsInf.error.message) || "Failed to load notifications",
+        "error"
+      );
+    }
+  }, [notifsInf.isError]);
+
+  var markAllReadMutation = useMutation({
+    mutationFn: function () { return apiPost("/api/notifications/mark_all_read/"); },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["unread"] });
+    },
+    onError: function (err) { showToast(err.message || "Failed to mark all read", "error"); },
+  });
+
+  var handleMarkAllRead = function () {
+    markAllReadMutation.mutate();
   };
 
-  const handleDismiss = (id) => {
-    setSwipeState((prev) => ({ ...prev, [id]: "dismissing" }));
-    setTimeout(() => {
-      setDismissed((prev) => {
-        const next = new Set([...prev, id]);
-        // Sync unread count to localStorage
-        const remaining = notifications.filter((n) => !n.read && !next.has(n.id)).length;
-        try { localStorage.setItem("dp-unread-notifs", String(remaining)); } catch {}
+  var markReadMutation = useMutation({
+    mutationFn: function (id) { return apiPost("/api/notifications/" + id + "/mark_read/"); },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["unread"] });
+    },
+    onError: function (err) { showToast(err.message || "Failed to mark as read", "error"); },
+  });
+
+  var handleDismiss = function (id) {
+    setSwipeState(function (prev) { return Object.assign({}, prev, { [id]: "dismissing" }); });
+    markReadMutation.mutate(id);
+    setTimeout(function () {
+      setDismissed(function (prev) {
+        var next = new Set([].concat(Array.from(prev), [id]));
         return next;
       });
     }, 300);
@@ -185,8 +217,17 @@ export default function NotificationsScreen() {
         ))}
       </div>
 
+      {/* Loading Skeletons */}
+      {notifsInf.isLoading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[1, 2, 3, 4, 5].map(function (i) {
+            return <SkeletonCard key={i} height={80} style={{ borderRadius: 16 }} />;
+          })}
+        </div>
+      )}
+
       {/* Notification Sections */}
-      {sections.length > 0 ? (
+      {!notifsInf.isLoading && sections.length > 0 && (
         sections.map((section) => (
           <div key={section.label} style={{ marginBottom: 24 }}>
             {/* Section header */}
@@ -284,8 +325,12 @@ export default function NotificationsScreen() {
             </div>
           </div>
         ))
-      ) : (
-        /* Empty state */
+      )}
+      <div ref={notifsInf.sentinelRef} style={{height:1}} />
+      {notifsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+
+      {/* Empty state */}
+      {!notifsInf.isLoading && sections.length === 0 && (
         <div style={{
           textAlign: "center", padding: "80px 20px",
           opacity: mounted ? 1 : 0,

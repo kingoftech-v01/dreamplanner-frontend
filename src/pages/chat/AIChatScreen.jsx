@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
+import { createWebSocket } from "../../services/websocket";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { clipboardWrite } from "../../services/native";
 import DOMPurify from "dompurify";
 import {
   ArrowLeft, Bot, Sparkles, RotateCw, Copy, Check,
@@ -10,7 +16,7 @@ import {
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — AI Chat Screen v3
- * 
+ *
  * Changes from v2:
  * - User avatar (initial) on user messages
  * - User bubbles: liquid glass with pink-violet tint (not solid gradient)
@@ -23,18 +29,6 @@ import {
  * - Search messages panel with filtering
  * - All 9:1+ contrast
  * ═══════════════════════════════════════════════════════════════════ */
-
-// ─── MOCK DATA ───────────────────────────────────────────────────
-const MOCK_USER = { displayName:"Stephane", initial:"S" };
-
-const MOCK_MESSAGES = [
-  { id:"1", content:"Hi! I want to make progress on my SaaS platform today. What should I focus on?", isUser:true, time:new Date(Date.now()-1000*60*60*25), pinned:false, liked:false, reactions:[] },
-  { id:"2", content:"Great to see you motivated! Based on your current progress, you've completed the authentication system and the database models. I'd recommend focusing on these two areas today:\n\n1. **API Endpoints** — You have 3 remaining endpoints for the user management module. These are critical for the frontend integration.\n\n2. **Testing** — Write unit tests for the auth flow you completed yesterday. This will save you debugging time later.\n\nWhich one would you like to start with?", isUser:false, time:new Date(Date.now()-1000*60*60*25+60000), pinned:true, liked:true, reactions:[] },
-  { id:"3", content:"Let's go with the API endpoints first. Can you help me plan the structure?", isUser:true, time:new Date(Date.now()-1000*60*15), pinned:false, liked:false, reactions:[] },
-  { id:"4", content:"Here's a solid structure for your user management endpoints:\n\n**GET /api/users/** — List users with pagination and filtering\n**POST /api/users/** — Create new user with validation\n**GET /api/users/:id/** — Retrieve user detail\n**PATCH /api/users/:id/** — Update user fields\n**DELETE /api/users/:id/** — Soft delete user\n\nFor each endpoint, you'll want to implement:\n- Serializer validation\n- Permission checks (is_admin vs is_owner)\n- Proper error responses\n\nShall I help you with the serializer code first?", isUser:false, time:new Date(Date.now()-1000*60*14), pinned:true, liked:false, reactions:[] },
-  { id:"5", content:"Yes please! Start with the user list serializer and the create endpoint. I want proper validation.", isUser:true, time:new Date(Date.now()-1000*60*10), pinned:false, liked:false, reactions:[] },
-  { id:"6", content:"Here's the serializer for the user list and create:\n\n**UserSerializer** handles both read and write. For create, it validates:\n- Email uniqueness\n- Password strength (min 8 chars, mixed case, number)\n- Required fields (first_name, last_name)\n\nThe list endpoint uses **pagination** with cursor-based navigation for performance at scale. I've also added **filtering** by role, status, and date joined.\n\nWant me to also include the permission classes?", isUser:false, time:new Date(Date.now()-1000*60*8), pinned:false, liked:true, reactions:[] },
-];
 
 const SUGGESTIONS = [
   "Help me plan my goals",
@@ -69,15 +63,172 @@ function shouldShowDate(msgs,i){
 export default function AIChatScreen(){
   const navigate=useNavigate();
   const location=useLocation();
+  var { id } = useParams();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+  var { user } = useAuth();
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
+  var isNewChat = id === "new";
+  var userInitial = (user?.displayName || user?.email || "U")[0].toUpperCase();
   const[mounted,setMounted]=useState(false);
-  const[messages,setMessages]=useState(()=>{
-    if(location.state?.initialMessage&&typeof location.state.initialMessage==="string"){
-      var msg=location.state.initialMessage.trim().slice(0,5000);
-      if(msg)return[{id:"new-1",content:msg,isUser:true,time:new Date(),pinned:false,liked:false,reactions:[]}];
-    }
-    return MOCK_MESSAGES;
+
+  // ─── AI usage quota ─────────────────────────────────────────────
+  var aiUsageQuery = useQuery({
+    queryKey: ["ai-usage"],
+    queryFn: function () { return apiGet("/api/users/ai-usage/"); },
   });
+  var aiUsage = aiUsageQuery.data || {};
+
+  // ─── Fetch messages from API (paginated) ────────────────────────
+  var MSG_PAGE_SIZE = 50;
+  var messagesQuery = useQuery({
+    queryKey: ["messages", id],
+    queryFn: function () { return apiGet("/api/conversations/" + id + "/messages/?limit=" + MSG_PAGE_SIZE); },
+    enabled: !isNewChat && !!id,
+  });
+
+  // ─── Messages state ─────────────────────────────────────────────
+  const[messages,setMessages]=useState(function () {
+    if (location.state?.initialMessage && typeof location.state.initialMessage === "string") {
+      var msg = location.state.initialMessage.trim().slice(0, 5000);
+      if (msg) return [{ id: "new-1", content: msg, isUser: true, time: new Date(), pinned: false, liked: false, reactions: [] }];
+    }
+    return [];
+  });
+  var [hasMore, setHasMore] = useState(false);
+  var [loadingMore, setLoadingMore] = useState(false);
+  var [nextOffset, setNextOffset] = useState(0);
+
+  function mapMessages(list) {
+    return list.map(function (m) {
+      return {
+        id: String(m.id),
+        content: m.content || "",
+        isUser: m.isUser || m.role === "user",
+        time: new Date(m.createdAt || m.timestamp || Date.now()),
+        pinned: !!m.pinned,
+        liked: !!m.liked,
+        reactions: m.reactions || [],
+      };
+    });
+  }
+
+  // Sync from server when query data arrives
+  useEffect(function () {
+    if (messagesQuery.data) {
+      var raw = messagesQuery.data;
+      var list = raw.results || raw || [];
+      if (Array.isArray(list) && list.length > 0) {
+        setMessages(mapMessages(list));
+        setNextOffset(list.length);
+        setHasMore(!!raw.next);
+      }
+    }
+  }, [messagesQuery.data]);
+
+  function loadOlderMessages() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    apiGet("/api/conversations/" + id + "/messages/?limit=" + MSG_PAGE_SIZE + "&offset=" + nextOffset)
+      .then(function (raw) {
+        var list = raw.results || raw || [];
+        if (Array.isArray(list) && list.length > 0) {
+          setMessages(function (prev) { return mapMessages(list).concat(prev); });
+          setNextOffset(function (prev) { return prev + list.length; });
+        }
+        setHasMore(!!raw.next);
+      })
+      .catch(function () {})
+      .finally(function () { setLoadingMore(false); });
+  }
+
+  // ─── WebSocket for streaming ────────────────────────────────────
+  var wsRef = useRef(null);
+  var [streamingContent, setStreamingContent] = useState("");
+
+  useEffect(function () {
+    if (isNewChat || !id) return;
+    var cancelled = false;
+    var ws = createWebSocket("/ws/conversations/" + id + "/", {
+      onMessage: function (data) {
+        if (cancelled) return;
+        // Backend sends: stream_start, stream_chunk, stream_end, message
+        if (data.type === "stream_chunk" || data.type === "ai_response_chunk" || data.type === "stream") {
+          setStreamingContent(function (prev) {
+            if (prev.length > 50000) return prev; // Cap at 50KB to prevent memory issues
+            return prev + (data.chunk || data.content || data.text || "");
+          });
+        }
+        if (data.type === "stream_end" || data.type === "ai_response_complete" || data.type === "message_complete") {
+          setStreamingContent("");
+          setIsStreaming(false);
+          queryClient.invalidateQueries({ queryKey: ["messages", id] });
+        }
+        if (data.type === "stream_start") {
+          setStreamingContent("");
+          setIsStreaming(true);
+        }
+        if (data.type === "message" || data.type === "new_message") {
+          queryClient.invalidateQueries({ queryKey: ["messages", id] });
+        }
+        if (data.type === "error") {
+          setIsStreaming(false);
+          setStreamingContent("");
+          showToast(data.error || "Chat error", "error");
+        }
+        if (data.type === "quota_exceeded") {
+          setIsStreaming(false);
+          setStreamingContent("");
+          showToast(data.message || "AI quota exceeded", "error");
+        }
+        if (data.type === "moderation") {
+          setIsStreaming(false);
+          setStreamingContent("");
+          showToast(data.message || "Message was not appropriate", "error");
+        }
+      },
+    });
+    wsRef.current = ws;
+    return function () { cancelled = true; ws.close(); };
+  }, [id, isNewChat, queryClient]);
+
+  // ─── Send initial message for new conversations ─────────────────
+  useEffect(function () {
+    if (location.state?.initialMessage && typeof location.state.initialMessage === "string" && !isNewChat && id) {
+      var msg = location.state.initialMessage.trim().slice(0, 5000);
+      if (msg) {
+        setIsStreaming(true);
+        apiPost("/api/conversations/" + id + "/send_message/", { content: msg })
+          .then(function () {
+            if (!wsRef.current || wsRef.current.getState() !== WebSocket.OPEN) {
+              setTimeout(function () {
+                setIsStreaming(false);
+                queryClient.invalidateQueries({ queryKey: ["messages", id] });
+              }, 3000);
+            }
+          })
+          .catch(function (err) {
+            setIsStreaming(false);
+            showToast(err.message || "Failed to send message", "error");
+          });
+      }
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Mutations for pin / like / reaction ────────────────────────
+  var pinMsgMut = useMutation({
+    mutationFn: function (msgId) { return apiPost("/api/conversations/" + id + "/pin-message/" + msgId + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["messages", id] }); },
+  });
+  var likeMsgMut = useMutation({
+    mutationFn: function (msgId) { return apiPost("/api/conversations/" + id + "/like-message/" + msgId + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["messages", id] }); },
+  });
+  var reactMsgMut = useMutation({
+    mutationFn: function (data) { return apiPost("/api/conversations/" + id + "/react-message/" + data.msgId + "/", { emoji: data.emoji }); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["messages", id] }); },
+  });
+
   const[input,setInput]=useState("");
   const[isStreaming,setIsStreaming]=useState(false);
   const[copiedId,setCopiedId]=useState(null);
@@ -126,33 +277,65 @@ export default function AIChatScreen(){
 
   const handleScroll=()=>{if(!scrollRef.current)return;const{scrollTop,scrollHeight,clientHeight}=scrollRef.current;setShowScroll(scrollHeight-scrollTop-clientHeight>100);};
 
-  const handleSend=()=>{
-    const text=input.trim();if(!text)return;
-    setMessages(prev=>[...prev,{id:Date.now()+"u",content:text,isUser:true,time:new Date(),pinned:false,liked:false,reactions:[]}]);
-    setInput("");if(inputRef.current)inputRef.current.style.height="auto";
+  // ─── Send message via API ───────────────────────────────────────
+  var handleSend = function () {
+    var text = input.trim(); if (!text) return;
+    setMessages(function (prev) { return [...prev, { id: Date.now() + "u", content: text, isUser: true, time: new Date(), pinned: false, liked: false, reactions: [] }]; });
+    setInput(""); if (inputRef.current) inputRef.current.style.height = "auto";
     setIsStreaming(true);
-    setTimeout(()=>{setIsStreaming(false);setMessages(prev=>[...prev,{id:Date.now()+"a",isUser:false,time:new Date(),pinned:false,liked:false,reactions:[],content:"That's a great question! Let me think about the best approach for this. Based on your progress so far, I'd suggest breaking this down into smaller tasks. Would you like me to create a specific plan?"}]);},2500);
+    apiPost("/api/conversations/" + id + "/send_message/", { content: text })
+      .then(function () {
+        // AI response will come via WebSocket; fallback if no WS
+        if (!wsRef.current || wsRef.current.getState() !== WebSocket.OPEN) {
+          setTimeout(function () {
+            setIsStreaming(false);
+            queryClient.invalidateQueries({ queryKey: ["messages", id] });
+          }, 3000);
+        }
+      })
+      .catch(function (err) {
+        setIsStreaming(false);
+        showToast(err.message || "Failed to send message", "error");
+      });
   };
 
-  const togglePin=(id)=>setMessages(prev=>prev.map(m=>m.id===id?{...m,pinned:!m.pinned}:m));
-  const toggleLike=(id)=>setMessages(prev=>prev.map(m=>m.id===id?{...m,liked:!m.liked}:m));
-  const handleCopy=(id,content)=>{navigator.clipboard?.writeText(content);setCopiedId(id);setTimeout(()=>setCopiedId(null),2000);};
+  // ─── Pin / Like / Copy / Reaction handlers ─────────────────────
+  var togglePin = function (msgId) {
+    setMessages(function (prev) { return prev.map(function (m) { return m.id === msgId ? { ...m, pinned: !m.pinned } : m; }); });
+    pinMsgMut.mutate(msgId);
+  };
+  var toggleLike = function (msgId) {
+    setMessages(function (prev) { return prev.map(function (m) { return m.id === msgId ? { ...m, liked: !m.liked } : m; }); });
+    likeMsgMut.mutate(msgId);
+  };
+  const handleCopy=(cid,content)=>{clipboardWrite(content);setCopiedId(cid);setTimeout(()=>setCopiedId(null),2000);};
   const handleInputChange=(e)=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";};
-  const handleReaction=(msgId,emoji)=>{
-    setMessages(prev=>prev.map(m=>{
-      if(m.id!==msgId)return m;
-      const reactions=[...(m.reactions||[])];
-      const existing=reactions.findIndex(r=>r.emoji===emoji);
-      if(existing>=0){reactions.splice(existing,1);}
-      else{reactions.push({emoji,count:1});}
-      return{...m,reactions};
-    }));
+  var handleReaction = function (msgId, emoji) {
+    setMessages(function (prev) { return prev.map(function (m) {
+      if (m.id !== msgId) return m;
+      var reactions = [].concat(m.reactions || []);
+      var existing = reactions.findIndex(function (r) { return r.emoji === emoji; });
+      if (existing >= 0) { reactions.splice(existing, 1); }
+      else { reactions.push({ emoji: emoji, count: 1 }); }
+      return { ...m, reactions: reactions };
+    }); });
     setReactionPicker(null);
+    reactMsgMut.mutate({ msgId: msgId, emoji: emoji });
   };
 
   const pinnedMsgs=messages.filter(m=>m.pinned);
   const likedMsgs=messages.filter(m=>m.liked);
-  const searchedMsgs=searchQ?messages.filter(m=>m.content.toLowerCase().includes(searchQ.toLowerCase())):[];
+  // ES-backed search: query backend when searchQ changes
+  const [searchedMsgs,setSearchedMsgs]=useState([]);
+  useEffect(()=>{
+    if(!searchQ||searchQ.length<2||!id||id==="new"){setSearchedMsgs([]);return;}
+    const t=setTimeout(()=>{
+      apiGet("/api/conversations/"+id+"/search/?q="+encodeURIComponent(searchQ))
+        .then(r=>{setSearchedMsgs(Array.isArray(r)?r:r.results||[]);})
+        .catch(()=>{setSearchedMsgs([]);});
+    },300);
+    return ()=>clearTimeout(t);
+  },[searchQ,id]);
 
   const isEmpty=messages.length===0;
 
@@ -168,9 +351,14 @@ export default function AIChatScreen(){
           </div>
           <div>
             <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>AI Coach</div>
-            <div style={{display:"flex",alignItems:"center",gap:5}}>
-              <div className="dp-conn" style={{width:6,height:6,borderRadius:"50%",background:"#5DE5A8",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
-              <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>Connected</span>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <div className="dp-conn" style={{width:6,height:6,borderRadius:"50%",background:"#5DE5A8",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
+                <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>Connected</span>
+              </div>
+              {aiUsage.remaining !== undefined && (
+                <span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:8,background:aiUsage.remaining>10?"rgba(93,229,168,0.1)":"rgba(252,211,77,0.1)",color:aiUsage.remaining>10?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D")}}>{aiUsage.remaining}/{aiUsage.limit||"--"}</span>
+              )}
             </div>
           </div>
         </div>
@@ -212,6 +400,11 @@ export default function AIChatScreen(){
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
+              {hasMore && (
+                <div style={{textAlign:"center",padding:"8px 0 12px"}}>
+                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?"Loading...":"Load older messages"}</button>
+                </div>
+              )}
               {messages.map((msg,i)=>(
                 <div key={msg.id}>
                   {/* Date separator */}
@@ -220,7 +413,7 @@ export default function AIChatScreen(){
                       <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{getDateLabel(msg.time)}</div>
                     </div>
                   )}
-                  <MsgBubble msg={msg} showActions={activeMsg===msg.id} copiedId={copiedId}
+                  <MsgBubble msg={msg} userInitial={userInitial} showActions={activeMsg===msg.id} copiedId={copiedId}
                     onPointerDown={()=>handlePointerDown(msg.id)} onPointerUp={handlePointerUp}
                     onCopy={()=>{handleCopy(msg.id,msg.content);setActiveMsg(null);}} onPin={()=>{togglePin(msg.id);setActiveMsg(null);}} onLike={()=>{toggleLike(msg.id);setActiveMsg(null);}}
                     reactionPicker={reactionPicker} setReactionPicker={setReactionPicker} handleReaction={handleReaction}/>
@@ -232,7 +425,11 @@ export default function AIChatScreen(){
                     <Bot size={16} color={isLight?"#6D28D9":"#C4B5FD"} strokeWidth={2}/>
                   </div>
                   <div style={{padding:"14px 18px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",gap:4,alignItems:"center"}}>
-                    <span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/>
+                    {streamingContent ? (
+                      <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent,isLight))}}/>
+                    ) : (
+                      <><span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/></>
+                    )}
                   </div>
                 </div>
               )}
@@ -316,9 +513,9 @@ export default function AIChatScreen(){
             )}
             {/* Panel content */}
             <div style={{flex:1,overflowY:"auto",padding:16}}>
-              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyPanel icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m}/>))}
-              {panel==="liked"&&(likedMsgs.length===0?<EmptyPanel icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m}/>))}
-              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text="No results found"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search messages</div>)}
+              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyPanel icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
+              {panel==="liked"&&(likedMsgs.length===0?<EmptyPanel icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
+              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text="No results found"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search messages</div>)}
             </div>
           </div>
         </div>
@@ -364,7 +561,7 @@ export default function AIChatScreen(){
 }
 
 // ─── MESSAGE BUBBLE ──────────────────────────────────────────────
-function MsgBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,onPin,onLike,reactionPicker,setReactionPicker,handleReaction}){
+function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointerUp,onCopy,onPin,onLike,reactionPicker,setReactionPicker,handleReaction}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   const isCopied=copiedId===msg.id;
 
@@ -466,7 +663,7 @@ function MsgBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,on
         </div>
         {/* User avatar */}
         <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"linear-gradient(135deg,rgba(200,120,200,0.2),rgba(160,80,200,0.2))",border:"1px solid rgba(200,140,220,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>
-          {MOCK_USER.initial}
+          {userInitial}
         </div>
       </div>
     );
@@ -532,13 +729,13 @@ function MsgBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,on
 }
 
 // ─── PANEL MESSAGE CARD ──────────────────────────────────────────
-function PanelMsg({msg}){
+function PanelMsg({msg,userInitial}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   return(
     <div style={{padding:12,marginBottom:8,borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
         {msg.isUser?(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(200,120,200,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{MOCK_USER.initial}</div>
+          <div style={{width:22,height:22,borderRadius:7,background:"rgba(200,120,200,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{userInitial}</div>
         ):(
           <div style={{width:22,height:22,borderRadius:7,background:"rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}><Bot size={12} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/></div>
         )}
@@ -562,5 +759,3 @@ function EmptyPanel({icon:I,text}){
     </div>
   );
 }
-
-const MOCK_USER_REF = MOCK_USER; // for PanelMsg access

@@ -1,10 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
+import { createWebSocket } from "../../services/websocket";
+import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
+import { clipboardWrite } from "../../services/native";
+import ErrorState from "../../components/shared/ErrorState";
 import {
   ArrowLeft, Users, Send, ChevronDown, MoreVertical, Pin,
   Heart, Copy, Check, CheckCheck, Search, X, Phone, Video,
-  Smile, Target
+  Smile, Target, Loader
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -22,21 +29,6 @@ import {
  * - Same features: date separators, pin/like/copy, panels
  * ═══════════════════════════════════════════════════════════════════ */
 
-// ─── MOCK DATA ───────────────────────────────────────────────────
-const ME = { displayName:"Stephane", initial:"S" };
-const BUDDY = { displayName:"Alex", initial:"A", online:true, mutualDream:"Run a Half Marathon" };
-
-const MOCK_MESSAGES = [
-  { id:"1", content:"Hey Alex! How's your training going this week?", isUser:true, time:new Date(Date.now()-1000*60*60*26), pinned:false, liked:false, read:true, reactions:[] },
-  { id:"2", content:"Pretty good! I managed to run 8km yesterday without stopping 🏃‍♂️", isUser:false, time:new Date(Date.now()-1000*60*60*26+120000), pinned:false, liked:true, read:true, reactions:[] },
-  { id:"3", content:"That's amazing progress! Last month you could barely do 3km", isUser:true, time:new Date(Date.now()-1000*60*60*25), pinned:false, liked:false, read:true, reactions:[] },
-  { id:"4", content:"I know right! The interval training plan really helped. Are you following the same one?", isUser:false, time:new Date(Date.now()-1000*60*60*25+60000), pinned:true, liked:false, read:true, reactions:[] },
-  { id:"5", content:"Yeah I started it this week. Did my first 5km today morning, felt great!", isUser:true, time:new Date(Date.now()-1000*60*30), pinned:false, liked:false, read:true, reactions:[] },
-  { id:"6", content:"Let's gooo! 💪 We should do a practice run together this weekend. There's a nice trail near the park.", isUser:false, time:new Date(Date.now()-1000*60*25), pinned:false, liked:true, read:true, reactions:[] },
-  { id:"7", content:"I'm down! Saturday morning works for me. 7am?", isUser:true, time:new Date(Date.now()-1000*60*12), pinned:true, liked:false, read:true, reactions:[] },
-  { id:"8", content:"Perfect! I'll send you the location pin. Bring water and good shoes 😄", isUser:false, time:new Date(Date.now()-1000*60*8), pinned:false, liked:false, read:true, reactions:[] },
-];
-
 // ─── HELPERS ─────────────────────────────────────────────────────
 function formatTime(d){return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
 function fmtMd(t,isLight){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\*\*(.*?)\*\*/g,`<strong style="color:${isLight?'#1a1535':'#fff'};font-weight:600">$1</strong>`).replace(/\n/g,"<br/>");}
@@ -45,23 +37,132 @@ function showDate(msgs,i){if(!i)return true;return msgs[i-1].time.toDateString()
 
 // ═══════════════════════════════════════════════════════════════════
 export default function BuddyChatScreen(){
-  const navigate=useNavigate();
-  const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
-  const[mounted,setMounted]=useState(false);
-  const[messages,setMessages]=useState(MOCK_MESSAGES);
-  const[input,setInput]=useState("");
-  const[copiedId,setCopiedId]=useState(null);
-  const[activeMsg,setActiveMsg]=useState(null);
-  const[showScroll,setShowScroll]=useState(false);
-  const[menuOpen,setMenuOpen]=useState(false);
-  const[panel,setPanel]=useState(null);
-  const[searchQ,setSearchQ]=useState("");
-  const[buddyTyping,setBuddyTyping]=useState(false);
-  const[reactionPicker,setReactionPicker]=useState(null); // null or message id
-  const[emojiOpen,setEmojiOpen]=useState(false);
-  const endRef=useRef(null);const scrollRef=useRef(null);const inputRef=useRef(null);
-  const longPressRef=useRef(null);
-  const autoDismissRef=useRef(null);
+  var navigate=useNavigate();
+  var{resolved,uiOpacity}=useTheme();var isLight=resolved==="light";
+  var{id}=useParams();
+  var{user}=useAuth();
+  var{showToast}=useToast();
+  var queryClient=useQueryClient();
+  var userInitial=(user?.displayName||user?.username||"?")[0].toUpperCase();
+
+  // ─── Fetch buddy info ──────────────────────────────────────────
+  var buddyQuery=useQuery({
+    queryKey:["buddy",id],
+    queryFn:function(){return apiGet("/api/buddies/"+id+"/");},
+  });
+  var buddy=buddyQuery.data||{};
+  var buddyName=buddy.displayName||buddy.username||"Buddy";
+  var buddyInitial=buddyName[0].toUpperCase();
+  var buddyOnline=!!buddy.isOnline;
+  var mutualDream=buddy.mutualDream||buddy.sharedDream||"";
+
+  // ─── Fetch messages (paginated) ────────────────────────────────
+  var BUDDY_PAGE_SIZE=50;
+  var messagesQuery=useQuery({
+    queryKey:["buddy-messages",id],
+    queryFn:function(){return apiGet("/api/conversations/"+id+"/messages/?limit="+BUDDY_PAGE_SIZE);},
+  });
+
+  // Local ME/BUDDY so the rest of the UI code works with minimal changes
+  var ME={initial:userInitial};
+  var BUDDY={initial:buddyInitial,displayName:buddyName,online:buddyOnline,mutualDream:mutualDream};
+
+  var[mounted,setMounted]=useState(false);
+  var[messages,setMessages]=useState([]);
+  var[hasMore,setHasMore]=useState(false);
+  var[loadingMore,setLoadingMore]=useState(false);
+  var[nextOffset,setNextOffset]=useState(0);
+  var[input,setInput]=useState("");
+  var[copiedId,setCopiedId]=useState(null);
+  var[activeMsg,setActiveMsg]=useState(null);
+  var[showScroll,setShowScroll]=useState(false);
+  var[menuOpen,setMenuOpen]=useState(false);
+  var[panel,setPanel]=useState(null);
+  var[searchQ,setSearchQ]=useState("");
+  var[buddyTyping,setBuddyTyping]=useState(false);
+  var[reactionPicker,setReactionPicker]=useState(null); // null or message id
+  var[emojiOpen,setEmojiOpen]=useState(false);
+  var endRef=useRef(null);var scrollRef=useRef(null);var inputRef=useRef(null);
+  var longPressRef=useRef(null);
+  var autoDismissRef=useRef(null);
+  var wsRef=useRef(null);
+
+  function mapBuddyMsg(m){
+    return{
+      id:String(m.id),
+      content:m.content||m.text||"",
+      isUser:m.isUser||m.sender==="user"||String(m.senderId)===String(user?.id),
+      time:new Date(m.createdAt||m.time),
+      pinned:!!m.pinned,
+      liked:!!m.liked,
+      read:m.read!==false,
+      reactions:m.reactions||[],
+    };
+  }
+
+  // ─── Sync messages from query ──────────────────────────────────
+  useEffect(function(){
+    if(messagesQuery.data){
+      var raw=messagesQuery.data;
+      var list=raw.results||raw||[];
+      setMessages(list.map(mapBuddyMsg));
+      setNextOffset(list.length);
+      setHasMore(!!raw.next);
+    }
+  },[messagesQuery.data]);
+
+  function loadOlderBuddyMessages(){
+    if(loadingMore||!hasMore)return;
+    setLoadingMore(true);
+    apiGet("/api/conversations/"+id+"/messages/?limit="+BUDDY_PAGE_SIZE+"&offset="+nextOffset)
+      .then(function(raw){
+        var list=raw.results||raw||[];
+        if(list.length>0){
+          setMessages(function(prev){return list.map(mapBuddyMsg).concat(prev);});
+          setNextOffset(function(prev){return prev+list.length;});
+        }
+        setHasMore(!!raw.next);
+      })
+      .catch(function(){})
+      .finally(function(){setLoadingMore(false);});
+  }
+
+  // ─── WebSocket for real-time P2P ───────────────────────────────
+  var typingTimerRef=useRef(null);
+  useEffect(function(){
+    if(!id)return;
+    var cancelled=false;
+    var ws=createWebSocket("/ws/buddy-chat/"+id+"/",{
+      onMessage:function(data){
+        if(cancelled)return;
+        if(data.type==="message"||data.type==="new_message"||data.type==="chat_message"){
+          queryClient.invalidateQueries({queryKey:["buddy-messages",id]});
+          setBuddyTyping(false);
+          if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
+        }
+        if(data.type==="typing"){
+          setBuddyTyping(true);
+          if(typingTimerRef.current)clearTimeout(typingTimerRef.current);
+          typingTimerRef.current=setTimeout(function(){setBuddyTyping(false);},3000);
+        }
+        if(data.type==="read_receipt"){
+          setMessages(function(prev){return prev.map(function(m){return m.isUser?{...m,read:true}:m;});});
+        }
+        if(data.type==="error"){
+          showToast(data.error||"Chat error","error");
+        }
+        if(data.type==="moderation"){
+          showToast(data.message||"Message was not appropriate","error");
+        }
+      },
+    });
+    wsRef.current=ws;
+    return function(){
+      cancelled=true;
+      ws.close();
+      if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
+    };
+  },[id]);
 
   // Long-press handlers
   const handlePointerDown=(msgId)=>{
@@ -93,25 +194,33 @@ export default function BuddyChatScreen(){
   useEffect(()=>{if(!panel)endRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
   const handleScroll=()=>{if(!scrollRef.current)return;const{scrollTop,scrollHeight,clientHeight}=scrollRef.current;setShowScroll(scrollHeight-scrollTop-clientHeight>100);};
 
-  const handleSend=()=>{
-    const text=input.trim();if(!text)return;
-    setMessages(prev=>[...prev,{id:Date.now()+"u",content:text,isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[]}]);
+  var handleSend=function(){
+    var text=input.trim();if(!text)return;
+    setMessages(function(prev){return[...prev,{id:Date.now()+"u",content:text,isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[]}];});
     setInput("");if(inputRef.current)inputRef.current.style.height="auto";
-    // Simulate buddy typing + reply
-    setBuddyTyping(true);
-    setTimeout(()=>{
-      setBuddyTyping(false);
-      setMessages(prev=>{
-        const updated=prev.map(m=>m.read===false?{...m,read:true}:m);
-        return[...updated,{id:Date.now()+"b",content:"Sounds good! I'll check on that and get back to you 👍",isUser:false,time:new Date(),pinned:false,liked:false,read:true,reactions:[]}];
-      });
-    },2000);
+    // Send via WebSocket if connected, otherwise fall back to API
+    if(wsRef.current&&wsRef.current.getState()===WebSocket.OPEN){
+      wsRef.current.send({type:"message",content:text});
+    }else{
+      apiPost("/api/conversations/"+id+"/send_message/",{content:text})
+        .catch(function(err){showToast(err.message||"Failed to send","error");});
+    }
   };
 
-  const togglePin=(id)=>setMessages(p=>p.map(m=>m.id===id?{...m,pinned:!m.pinned}:m));
-  const toggleLike=(id)=>setMessages(p=>p.map(m=>m.id===id?{...m,liked:!m.liked}:m));
-  const handleCopy=(id,c)=>{navigator.clipboard?.writeText(c);setCopiedId(id);setTimeout(()=>setCopiedId(null),2000);};
-  const handleInput=(e)=>{setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";};
+  // ─── Pin / Like mutations ─────────────────────────────────────
+  var pinMsgMut=useMutation({
+    mutationFn:function(msgId){return apiPost("/api/conversations/"+id+"/pin-message/"+msgId+"/");},
+    onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",id]});},
+  });
+  var likeMsgMut=useMutation({
+    mutationFn:function(msgId){return apiPost("/api/conversations/"+id+"/like-message/"+msgId+"/");},
+    onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",id]});},
+  });
+
+  var togglePin=function(msgId){setMessages(function(p){return p.map(function(m){return m.id===msgId?{...m,pinned:!m.pinned}:m;});});pinMsgMut.mutate(msgId);};
+  var toggleLike=function(msgId){setMessages(function(p){return p.map(function(m){return m.id===msgId?{...m,liked:!m.liked}:m;});});likeMsgMut.mutate(msgId);};
+  var handleCopy=function(msgId,c){clipboardWrite(c);setCopiedId(msgId);setTimeout(function(){setCopiedId(null);},2000);};
+  var handleInput=function(e){setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";};
   const handleReaction=(msgId,emoji)=>{
     setMessages(prev=>prev.map(m=>{
       if(m.id!==msgId)return m;
@@ -124,9 +233,32 @@ export default function BuddyChatScreen(){
     setReactionPicker(null);
   };
 
-  const pinnedMsgs=messages.filter(m=>m.pinned);
-  const likedMsgs=messages.filter(m=>m.liked);
-  const searchedMsgs=searchQ?messages.filter(m=>m.content.toLowerCase().includes(searchQ.toLowerCase())):[];
+  var pinnedMsgs=messages.filter(function(m){return m.pinned;});
+  var likedMsgs=messages.filter(function(m){return m.liked;});
+  // ES-backed search: query backend when searchQ changes
+  var[searchedMsgs,setSearchedMsgs]=useState([]);
+  useEffect(function(){
+    if(!searchQ||searchQ.length<2||!id){setSearchedMsgs([]);return;}
+    var t=setTimeout(function(){
+      apiGet("/api/conversations/"+id+"/search/?q="+encodeURIComponent(searchQ))
+        .then(function(r){setSearchedMsgs(Array.isArray(r)?r:r.results||[]);})
+        .catch(function(){setSearchedMsgs([]);});
+    },300);
+    return function(){clearTimeout(t);};
+  },[searchQ,id]);
+
+  // ─── Loading / Error states ────────────────────────────────────
+  if(messagesQuery.isLoading||buddyQuery.isLoading){
+    return(
+      <div style={{width:"100%",height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif"}}>
+        <Loader size={28} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2} style={{animation:"spin 1s linear infinite"}}/>
+        <style>{"@keyframes spin{to{transform:rotate(360deg);}}"}</style>
+      </div>
+    );
+  }
+  if(buddyQuery.isError){
+    return <ErrorState message="Failed to load buddy chat" onRetry={buddyQuery.refetch}/>;
+  }
 
   return(
     <div style={{width:"100%",height:"100dvh",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
@@ -149,8 +281,16 @@ export default function BuddyChatScreen(){
             </div>
           </div>
           <div style={{display:"flex",gap:6}}>
-            <button className="dp-ib" aria-label="Call" onClick={()=>navigate("/voice-call/alex")}><Phone size={17} strokeWidth={2}/></button>
-            <button className="dp-ib" aria-label="Video call" onClick={()=>navigate("/video-call/alex")}><Video size={17} strokeWidth={2}/></button>
+            <button className="dp-ib" aria-label="Call" onClick={function(){
+              apiPost("/api/conversations/calls/initiate/",{calleeId:buddy.userId||buddy.id,callType:"voice"}).then(function(data){
+                navigate("/voice-call/"+data.id+"?buddyName="+encodeURIComponent(buddyName));
+              }).catch(function(err){showToast(err.message||"Failed to start call","error");});
+            }}><Phone size={17} strokeWidth={2}/></button>
+            <button className="dp-ib" aria-label="Video call" onClick={function(){
+              apiPost("/api/conversations/calls/initiate/",{calleeId:buddy.userId||buddy.id,callType:"video"}).then(function(data){
+                navigate("/video-call/"+data.id+"?buddyName="+encodeURIComponent(buddyName));
+              }).catch(function(err){showToast(err.message||"Failed to start call","error");});
+            }}><Video size={17} strokeWidth={2}/></button>
             <div style={{position:"relative"}}>
               <button className="dp-ib" onClick={()=>setMenuOpen(!menuOpen)} aria-label="More options"><MoreVertical size={18} strokeWidth={2}/></button>
               {menuOpen&&(
@@ -196,6 +336,11 @@ export default function BuddyChatScreen(){
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
+              {hasMore && (
+                <div style={{textAlign:"center",padding:"8px 0 12px"}}>
+                  <button onClick={loadOlderBuddyMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?"Loading...":"Load older messages"}</button>
+                </div>
+              )}
               {messages.map((msg,i)=>(
                 <div key={msg.id}>
                   {showDate(messages,i)&&(
@@ -206,7 +351,8 @@ export default function BuddyChatScreen(){
                   <BuddyBubble msg={msg} showActions={activeMsg===msg.id} copiedId={copiedId}
                     onPointerDown={()=>handlePointerDown(msg.id)} onPointerUp={handlePointerUp}
                     onCopy={()=>{handleCopy(msg.id,msg.content);setActiveMsg(null);}} onPin={()=>{togglePin(msg.id);setActiveMsg(null);}} onLike={()=>{toggleLike(msg.id);setActiveMsg(null);}}
-                    reactionPicker={reactionPicker} setReactionPicker={setReactionPicker} handleReaction={handleReaction}/>
+                    reactionPicker={reactionPicker} setReactionPicker={setReactionPicker} handleReaction={handleReaction}
+                    meInitial={ME.initial} buddyInitial={BUDDY.initial}/>
                 </div>
               ))}
               {/* Buddy typing */}
@@ -280,9 +426,9 @@ export default function BuddyChatScreen(){
               </div>
             )}
             <div style={{flex:1,overflowY:"auto",padding:16}}>
-              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyP icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m}/>))}
-              {panel==="liked"&&(likedMsgs.length===0?<EmptyP icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m}/>))}
-              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyP icon={Search} text="No results"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search</div>)}
+              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyP icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
+              {panel==="liked"&&(likedMsgs.length===0?<EmptyP icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
+              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyP icon={Search} text="No results"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search</div>)}
             </div>
           </div>
         </div>
@@ -317,7 +463,7 @@ export default function BuddyChatScreen(){
 }
 
 // ─── BUDDY BUBBLE ────────────────────────────────────────────────
-function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,onPin,onLike,reactionPicker,setReactionPicker,handleReaction}){
+function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,onPin,onLike,reactionPicker,setReactionPicker,handleReaction,meInitial,buddyInitial}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   const isCopied=copiedId===msg.id;
   const actionBar=(
@@ -410,14 +556,14 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
             </div>
           )}
         </div>
-        <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"linear-gradient(135deg,rgba(200,120,200,0.2),rgba(160,80,200,0.2))",border:"1px solid rgba(200,140,220,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{ME.initial}</div>
+        <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"linear-gradient(135deg,rgba(200,120,200,0.2),rgba(160,80,200,0.2))",border:"1px solid rgba(200,140,220,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{meInitial}</div>
       </div>
     );
   }
 
   return(
     <div className="dp-mb dp-bw" style={{display:"flex",gap:8,marginBottom:16,alignItems:"flex-end"}} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
-      <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(20,184,166,0.12)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.initial}</div>
+      <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(20,184,166,0.12)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{buddyInitial}</div>
       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",maxWidth:"75%"}}>
         <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(20,184,166,0.06)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(20,184,166,0.1)",boxShadow:"0 2px 12px rgba(20,184,166,0.06),inset 0 1px 0 rgba(94,234,212,0.04)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
           {actionBar}
@@ -472,17 +618,17 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
 }
 
 // ─── PANEL MSG ───────────────────────────────────────────────────
-function PanelMsg({msg}){
+function PanelMsg({msg,meInitial,buddyInitial,buddyName}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   return(
     <div style={{padding:12,marginBottom:8,borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
         {msg.isUser?(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(200,120,200,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{ME.initial}</div>
+          <div style={{width:22,height:22,borderRadius:7,background:"rgba(200,120,200,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{meInitial}</div>
         ):(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(20,184,166,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.initial}</div>
+          <div style={{width:22,height:22,borderRadius:7,background:"rgba(20,184,166,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{buddyInitial}</div>
         )}
-        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?"You":BUDDY.displayName}</span>
+        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?"You":buddyName}</span>
         <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
       </div>
       <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content}</div>

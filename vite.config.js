@@ -2,10 +2,13 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+var isNativeBuild = process.env.NATIVE_BUILD === 'true';
+
 export default defineConfig({
+  base: './',
   plugins: [
     react(),
-    VitePWA({
+    !isNativeBuild && VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
@@ -16,15 +19,15 @@ export default defineConfig({
         background_color: '#0F0A1E',
         display: 'standalone',
         orientation: 'portrait',
-        scope: '/',
-        start_url: '/',
+        scope: './',
+        start_url: './',
         icons: [
-          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml' },
-          { src: '/favicon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
+          { src: './favicon.svg', sizes: 'any', type: 'image/svg+xml' },
+          { src: './favicon.svg', sizes: '192x192', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
       workbox: {
-        importScripts: ['/sw-custom.js'],
+        importScripts: ['./sw-custom.js'],
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {
@@ -40,9 +43,13 @@ export default defineConfig({
         ],
       },
     }),
-  ],
+  ].filter(Boolean),
   server: {
     port: 3000,
     open: true,
+    proxy: {
+      '/api': { target: 'http://localhost:8000', changeOrigin: true },
+      '/ws': { target: 'ws://localhost:8000', ws: true, changeOrigin: true },
+    },
   },
 });

@@ -1,19 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "../../services/api";
 import { ArrowLeft, MessageCircle, User, Circle } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 
-const ONLINE_FRIENDS = [
-  { id: "l5", name: "Alex Turner", initial: "A", level: 10, status: "Working on Half Marathon training", color: "#14B8A6" },
-  { id: "l1", name: "Jade Nguyen", initial: "J", level: 15, status: "Studying Japanese kanji", color: "#EC4899" },
-  { id: "om1", name: "Omar Hassan", initial: "O", level: 8, status: "Recording podcast episode 3", color: "#F59E0B" },
-  { id: "l3", name: "Lisa Park", initial: "L", level: 12, status: "Budgeting for the month", color: "#8B5CF6" },
-  { id: "fr2", name: "Noah Kim", initial: "N", level: 6, status: "Reading 'Atomic Habits'", color: "#3B82F6" },
-  { id: "ma1", name: "Maya Rodriguez", initial: "M", level: 9, status: "Sketching new designs", color: "#10B981" },
-  { id: "et1", name: "Ethan Brooks", initial: "E", level: 11, status: "Meal prepping for the week", color: "#6366F1" },
-  { id: "za1", name: "Zara Ahmed", initial: "Z", level: 13, status: "Reviewing investment portfolio", color: "#EF4444" },
-];
+var FRIEND_COLORS = ["#14B8A6","#EC4899","#F59E0B","#8B5CF6","#3B82F6","#10B981","#6366F1","#EF4444"];
 
 const glassStyle = {
   background: "var(--dp-glass-bg)",
@@ -29,6 +22,21 @@ export default function OnlineFriendsScreen() {
   const { resolved } = useTheme();
   const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
+
+  var onlineQuery = useQuery({
+    queryKey: ["friends-online"],
+    queryFn: function () { return apiGet("/api/social/friends/online/"); },
+  });
+
+  var ONLINE_FRIENDS = ((onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || []).map(function (f, i) {
+    return Object.assign({}, f, {
+      name: f.displayName || f.username || "Friend",
+      initial: (f.displayName || f.username || "F")[0].toUpperCase(),
+      level: f.level || 1,
+      status: f.status || f.currentActivity || "",
+      color: f.color || FRIEND_COLORS[i % 8],
+    });
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -71,8 +79,26 @@ export default function OnlineFriendsScreen() {
         </div>
       </div>
 
+      {/* Loading State */}
+      {onlineQuery.isLoading && (
+        <div style={{
+          display: "flex", justifyContent: "center", alignItems: "center",
+          padding: "48px 0",
+          opacity: mounted ? 1 : 0,
+          transition: "opacity 0.4s ease",
+        }}>
+          <div style={{
+            width: 32, height: 32, borderRadius: "50%",
+            border: "3px solid rgba(139,92,246,0.15)",
+            borderTopColor: "#8B5CF6",
+            animation: "spin 0.8s linear infinite",
+          }} />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      )}
+
       {/* Friends List */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {!onlineQuery.isLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {ONLINE_FRIENDS.map((friend, index) => (
           <div
             key={friend.id}
@@ -165,7 +191,7 @@ export default function OnlineFriendsScreen() {
             </button>
           </div>
         ))}
-      </div>
+      </div>}
 
       {/* Bottom spacer */}
       <div style={{ height: 32 }} />

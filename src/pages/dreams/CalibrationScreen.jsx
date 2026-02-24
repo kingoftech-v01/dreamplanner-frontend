@@ -2,16 +2,18 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Bot, Sparkles, ChevronRight, SkipForward,
-  Check, Zap, Target, Star
+  Check, Zap, Target, Star, Loader2
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
+import { apiPost } from "../../services/api";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — AI Dream Calibration Screen
 // ═══════════════════════════════════════════════════════════════
 
-const QUESTIONS = [
+const FALLBACK_QUESTIONS = [
   {
     id: 1,
     text: "What's your biggest motivation for this dream?",
@@ -70,19 +72,49 @@ export default function CalibrationScreen() {
   const { id } = useParams();
   const { resolved } = useTheme();
   const isLight = resolved === "light";
+  var { showToast } = useToast();
   const [mounted, setMounted] = useState(false);
   const [currentQ, setCurrentQ] = useState(0);
   const [answers, setAnswers] = useState({});
   const [textValue, setTextValue] = useState("");
   const [completed, setCompleted] = useState(false);
   const [cardAnim, setCardAnim] = useState(true);
+  var [questions, setQuestions] = useState([]);
+  var [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [generatingPlan, setGeneratingPlan] = useState(false);
 
   useEffect(() => {
     setTimeout(() => setMounted(true), 100);
   }, []);
 
-  const question = QUESTIONS[currentQ];
-  const progress = ((currentQ + (completed ? 1 : 0)) / QUESTIONS.length) * 100;
+  // Fetch calibration questions from API on mount
+  useEffect(() => {
+    var cancelled = false;
+    async function fetchQuestions() {
+      try {
+        var data = await apiPost("/api/dreams/dreams/" + id + "/start_calibration/");
+        if (!cancelled && data && Array.isArray(data.questions) && data.questions.length > 0) {
+          setQuestions(data.questions);
+        } else if (!cancelled) {
+          setQuestions(FALLBACK_QUESTIONS);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          showToast("Could not load calibration questions. Using defaults.", "error");
+          setQuestions(FALLBACK_QUESTIONS);
+        }
+      } finally {
+        if (!cancelled) setLoadingQuestions(false);
+      }
+    }
+    fetchQuestions();
+    return () => { cancelled = true; };
+  }, [id]);
+
+  const question = questions[currentQ];
+  const progress = questions.length > 0
+    ? ((currentQ + (completed ? 1 : 0)) / questions.length) * 100
+    : 0;
   const selectedOption = answers[question?.id];
 
   const handleSelect = (option) => {
@@ -90,30 +122,61 @@ export default function CalibrationScreen() {
   };
 
   const handleNext = () => {
+    var answer;
     if (question.type === "text" && textValue.trim()) {
-      setAnswers((prev) => ({ ...prev, [question.id]: textValue.trim() }));
+      answer = textValue.trim();
+      setAnswers((prev) => ({ ...prev, [question.id]: answer }));
       setTextValue("");
+    } else {
+      answer = selectedOption;
     }
-    if (currentQ < QUESTIONS.length - 1) {
+
+    // Fire-and-forget: submit this answer to the backend
+    if (answer) {
+      apiPost("/api/dreams/dreams/" + id + "/answer_calibration/", {
+        question: question.text,
+        answer: answer,
+        questionNumber: currentQ + 1,
+      }).catch(() => {
+        // Silently ignore — answers are also stored locally
+      });
+    }
+
+    if (currentQ < questions.length - 1) {
       setCardAnim(false);
       setTimeout(() => {
         setCurrentQ((prev) => prev + 1);
         setCardAnim(true);
       }, 200);
     } else {
-      setCompleted(true);
+      handleCalibrationComplete();
     }
   };
 
   const handleSkip = () => {
-    if (currentQ < QUESTIONS.length - 1) {
+    if (currentQ < questions.length - 1) {
       setCardAnim(false);
       setTimeout(() => {
         setCurrentQ((prev) => prev + 1);
         setCardAnim(true);
       }, 200);
     } else {
-      setCompleted(true);
+      // Skipping from the last question — skip all remaining
+      apiPost("/api/dreams/dreams/" + id + "/skip_calibration/").catch(() => {});
+      handleCalibrationComplete();
+    }
+  };
+
+  const handleCalibrationComplete = async () => {
+    setCompleted(true);
+    setGeneratingPlan(true);
+    try {
+      await apiPost("/api/dreams/dreams/" + id + "/generate_plan/");
+      showToast("Your personalized plan is ready!", "success");
+    } catch (err) {
+      showToast("Plan generation started. It may take a moment.", "info");
+    } finally {
+      setGeneratingPlan(false);
     }
   };
 
@@ -184,7 +247,7 @@ export default function CalibrationScreen() {
               Dream Calibration
             </span>
           </div>
-          {!completed && (
+          {!completed && !loadingQuestions && questions.length > 0 && (
             <span
               style={{
                 fontSize: 13,
@@ -196,13 +259,56 @@ export default function CalibrationScreen() {
                 border: "1px solid rgba(139,92,246,0.15)",
               }}
             >
-              {currentQ + 1} of {QUESTIONS.length}
+              {currentQ + 1} of {questions.length}
             </span>
           )}
         </div>
 
-        {/* Completed state */}
-        {completed ? (
+        {/* Loading questions state */}
+        {loadingQuestions ? (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: "60vh",
+              opacity: mounted ? 1 : 0,
+              transition: "opacity 0.5s",
+            }}
+          >
+            <div
+              style={{
+                width: 64,
+                height: 64,
+                borderRadius: 20,
+                background: "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(196,181,253,0.1))",
+                border: "1px solid rgba(139,92,246,0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 20,
+                boxShadow: "0 0 30px rgba(139,92,246,0.15)",
+              }}
+            >
+              <Loader2
+                size={28}
+                color={isLight ? "#6D28D9" : "#C4B5FD"}
+                strokeWidth={2}
+                style={{ animation: "spin 1s linear infinite" }}
+              />
+            </div>
+            <p
+              style={{
+                fontSize: 15,
+                fontWeight: 600,
+                color: "var(--dp-text-secondary)",
+              }}
+            >
+              Preparing your calibration...
+            </p>
+          </div>
+        ) : completed ? (
           <div
             style={{
               display: "flex",
@@ -243,7 +349,7 @@ export default function CalibrationScreen() {
                 textAlign: "center",
               }}
             >
-              Calibration Complete!
+              {generatingPlan ? "Generating Your Plan..." : "Calibration Complete!"}
             </h2>
             <p
               style={{
@@ -255,8 +361,9 @@ export default function CalibrationScreen() {
                 marginBottom: 32,
               }}
             >
-              Your AI coach has analyzed your answers and built a personalized
-              action plan tailored to your goals, schedule, and confidence level.
+              {generatingPlan
+                ? "Your AI coach is analyzing your answers and building a personalized action plan. This may take a moment."
+                : "Your AI coach has analyzed your answers and built a personalized action plan tailored to your goals, schedule, and confidence level."}
             </p>
 
             {/* Summary stats */}
@@ -311,28 +418,40 @@ export default function CalibrationScreen() {
             {/* View Your Plan button */}
             <button
               onClick={() => navigate(id ? `/dream/${id}` : "/")}
+              disabled={generatingPlan}
               style={{
                 width: "100%",
                 maxWidth: 360,
                 padding: "16px 0",
                 borderRadius: 16,
                 border: "none",
-                background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                color: "#fff",
+                background: generatingPlan
+                  ? "var(--dp-glass-bg)"
+                  : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                color: generatingPlan ? "var(--dp-text-muted)" : "#fff",
                 fontSize: 16,
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: generatingPlan ? "not-allowed" : "pointer",
                 fontFamily: "inherit",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
-                boxShadow: "0 4px 20px rgba(139,92,246,0.35)",
+                boxShadow: generatingPlan ? "none" : "0 4px 20px rgba(139,92,246,0.35)",
                 transition: "all 0.2s",
               }}
             >
-              <Sparkles size={18} strokeWidth={2} />
-              View Your Plan
+              {generatingPlan ? (
+                <>
+                  <Loader2 size={18} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+                  Generating Plan...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} strokeWidth={2} />
+                  View Your Plan
+                </>
+              )}
             </button>
           </div>
         ) : (
@@ -481,7 +600,7 @@ export default function CalibrationScreen() {
                 marginBottom: 20,
               }}
             >
-              {QUESTIONS.map((_, i) => (
+              {questions.map((_, i) => (
                 <div
                   key={i}
                   style={{
@@ -555,7 +674,7 @@ export default function CalibrationScreen() {
                   transition: "all 0.25s",
                 }}
               >
-                {currentQ === QUESTIONS.length - 1 ? "Complete" : "Next"}
+                {currentQ === questions.length - 1 ? "Complete" : "Next"}
                 <ChevronRight size={18} strokeWidth={2} />
               </button>
             </div>
@@ -567,6 +686,10 @@ export default function CalibrationScreen() {
           @keyframes calibPulse {
             0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(139,92,246,0.2), inset 0 1px 0 rgba(255,255,255,0.1); }
             50% { transform: scale(1.05); box-shadow: 0 0 60px rgba(139,92,246,0.35), inset 0 1px 0 rgba(255,255,255,0.15); }
+          }
+          @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
           }
         `}</style>
       </div>

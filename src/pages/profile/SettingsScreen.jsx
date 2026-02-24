@@ -1,7 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
 import { useT } from "../../context/I18nContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { apiPut, apiPost, apiDelete } from "../../services/api";
 import {
   ArrowLeft, User, Mail, Lock, Sun, Moon, Monitor, Sparkles,
   Globe, Clock, Bell, Calendar, Crown, ShoppingBag,
@@ -16,8 +20,6 @@ import {
  * Interactive: theme picker, language selector, notification toggles,
  *              delete account confirmation with "DELETE" typing
  * ═══════════════════════════════════════════════════════════════════ */
-
-const USER = { name:"Stephane", email:"stephane@rhematek.com", subscription:"PRO", timezone:"America/Toronto" };
 
 const LANGUAGES = [
   {code:"en",label:"English"},{code:"fr",label:"Français"},
@@ -51,17 +53,74 @@ const TIMEZONES = [
 
 // ═══════════════════════════════════════════════════════════════════
 export default function SettingsScreen(){
-  const navigate=useNavigate();
+  var navigate=useNavigate();
+  var{user,logout}=useAuth();
+  var{showToast}=useToast();
+  var queryClient=useQueryClient();
   const[mounted,setMounted]=useState(false);
   const{theme,setTheme,resolved,uiOpacity,forceMode,setForceMode,visualTheme}=useTheme();const isLight=resolved==="light";
   const{t,locale,setLocale}=useT();
-  const[notifs,setNotifs]=useState({push:true,email:true,buddy:true,streak:true});
-  const[tz,setTz]=useState(()=>{try{return localStorage.getItem("dp-timezone")||USER.timezone;}catch(e){return USER.timezone;}});
+  const[notifs,setNotifs]=useState(function(){
+    if(user)return{push:!!user.pushEnabled,email:!!user.emailEnabled,buddy:!!user.buddyReminders,streak:!!user.streakReminders};
+    return{push:true,email:true,buddy:true,streak:true};
+  });
+  const[dndEnabled,setDndEnabled]=useState(function(){
+    return !!(user&&user.dndEnabled);
+  });
+  const[dndStart,setDndStart]=useState(function(){
+    return (user&&user.dndStart)||"22:00";
+  });
+  const[dndEnd,setDndEnd]=useState(function(){
+    return (user&&user.dndEnd)||"07:00";
+  });
+  const[tz,setTz]=useState(()=>{try{return localStorage.getItem("dp-timezone")||(user&&user.timezone)||"America/Toronto";}catch(e){return(user&&user.timezone)||"America/Toronto";}});
   const[showLang,setShowLang]=useState(false);
   const[showTz,setShowTz]=useState(false);
   const[tzSearch,setTzSearch]=useState("");
   const[showDelete,setShowDelete]=useState(false);
   const[deleteText,setDeleteText]=useState("");
+  const[deletePassword,setDeletePassword]=useState("");
+  const[showEmailChange,setShowEmailChange]=useState(false);
+  const[newEmail,setNewEmail]=useState("");
+
+  // ─── Notification preferences mutation ─────────────────────────
+  var notifMutation=useMutation({
+    mutationFn:function(prefs){return apiPut("/api/users/notification-preferences/",prefs);},
+    onSuccess:function(){
+      queryClient.invalidateQueries({queryKey:["user"]});
+      showToast(t("settings.preferencesSaved")||"Preferences saved","success");
+    },
+    onError:function(err){
+      showToast(err.message||"Failed to save preferences","error");
+    },
+  });
+
+  // ─── Email change mutation ─────────────────────────────────────
+  var emailMutation=useMutation({
+    mutationFn:function(body){return apiPost("/api/users/change-email/",body);},
+    onSuccess:function(){
+      queryClient.invalidateQueries({queryKey:["user"]});
+      showToast(t("settings.emailChanged")||"Verification email sent","success");
+      setShowEmailChange(false);
+      setNewEmail("");
+    },
+    onError:function(err){
+      showToast(err.message||"Failed to change email","error");
+    },
+  });
+
+  // ─── Delete account mutation ───────────────────────────────────
+  var deleteMutation=useMutation({
+    mutationFn:function(body){return apiDelete("/api/users/delete-account/",{body:body});},
+    onSuccess:function(){
+      showToast(t("settings.accountDeleted")||"Account deleted","info");
+      setShowDelete(false);
+      logout();
+    },
+    onError:function(err){
+      showToast(err.message||"Failed to delete account","error");
+    },
+  });
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
@@ -122,8 +181,8 @@ export default function SettingsScreen(){
         <div style={{width:"100%"}}>
 
           <Section title={t("settings.account")} delay={0}>
-            <Tile icon={User} title={t("settings.editProfile")} sub={USER.name} onClick={()=>navigate("/edit-profile")}/>
-            <Tile icon={Mail} title={t("settings.email")} sub={USER.email}/>
+            <Tile icon={User} title={t("settings.editProfile")} sub={(user&&user.displayName)||""} onClick={()=>navigate("/edit-profile")}/>
+            <Tile icon={Mail} title={t("settings.email")} sub={(user&&user.email)||""} onClick={function(){setShowEmailChange(true);setNewEmail("");}}/>
             <Tile icon={Lock} title={t("settings.changePassword")} onClick={()=>navigate("/change-password")}/>
           </Section>
 
@@ -179,14 +238,31 @@ export default function SettingsScreen(){
           <Section title={t("settings.preferences")} delay={200}>
             <Tile icon={Globe} title={t("settings.language")} sub={langLabel} onClick={()=>setShowLang(true)}/>
             <Tile icon={Clock} title={t("settings.timezone")} sub={TIMEZONES.find(tz_item=>tz_item.value===tz)?.label||tz} onClick={()=>setShowTz(true)}/>
-            <Tile icon={BellRing} title={t("settings.pushNotifications")} right={<Toggle on={notifs.push} onToggle={()=>setNotifs(p=>({...p,push:!p.push}))}/>}/>
-            <Tile icon={Mail} title={t("settings.emailNotifications")} right={<Toggle on={notifs.email} onToggle={()=>setNotifs(p=>({...p,email:!p.email}))}/>}/>
-            <Tile icon={User} title={t("settings.buddyReminders")} right={<Toggle on={notifs.buddy} onToggle={()=>setNotifs(p=>({...p,buddy:!p.buddy}))}/>} color="#5EEAD4"/>
+            <Tile icon={BellRing} title={t("settings.pushNotifications")} right={<Toggle on={notifs.push} onToggle={function(){var next={...notifs,push:!notifs.push};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>}/>
+            <Tile icon={Mail} title={t("settings.emailNotifications")} right={<Toggle on={notifs.email} onToggle={function(){var next={...notifs,email:!notifs.email};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>}/>
+            <Tile icon={User} title={t("settings.buddyReminders")} right={<Toggle on={notifs.buddy} onToggle={function(){var next={...notifs,buddy:!notifs.buddy};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>} color="#5EEAD4"/>
+            <Tile icon={BellOff} title="Do Not Disturb" sub={dndEnabled?(dndStart+" - "+dndEnd):undefined} right={<Toggle on={dndEnabled} onToggle={function(){var next=!dndEnabled;setDndEnabled(next);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:next,dndStart:dndStart,dndEnd:dndEnd});}}/>}/>
+            {dndEnabled&&(
+              <div className="dp-g" style={{padding:14,marginBottom:6}}>
+                <div style={{display:"flex",gap:12}}>
+                  <div style={{flex:1}}>
+                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>From</label>
+                    <input type="time" value={dndStart} onChange={function(e){setDndStart(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:e.target.value,dndEnd:dndEnd});}}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+                  </div>
+                  <div style={{flex:1}}>
+                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>To</label>
+                    <input type="time" value={dndEnd} onChange={function(e){setDndEnd(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:dndStart,dndEnd:e.target.value});}}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+                  </div>
+                </div>
+              </div>
+            )}
             <Tile icon={Calendar} title={t("settings.googleCalendar")} sub="Sync your events" color="#93C5FD" onClick={()=>navigate("/calendar-connect")}/>
           </Section>
 
           <Section title={t("settings.subscription")} delay={300}>
-            <Tile icon={Crown} title={t("settings.manageSubscription")} sub={USER.subscription} color="#FCD34D" onClick={()=>navigate("/subscription")}/>
+            <Tile icon={Crown} title={t("settings.manageSubscription")} sub={(user&&user.subscription)||"Free"} color="#FCD34D" onClick={()=>navigate("/subscription")}/>
             <Tile icon={ShoppingBag} title={t("settings.store")} color="#5EEAD4" onClick={()=>navigate("/store")}/>
           </Section>
 
@@ -197,12 +273,12 @@ export default function SettingsScreen(){
           </Section>
 
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"500ms"}}>
-            <button onClick={()=>navigate("/login")} style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(246,154,154,0.15)",background:"rgba(246,154,154,0.06)",color:isLight?"#DC2626":"#F69A9A",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s",marginBottom:10}}
+            <button onClick={function(){logout();}} style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(246,154,154,0.15)",background:"rgba(246,154,154,0.06)",color:isLight?"#DC2626":"#F69A9A",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s",marginBottom:10}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(246,154,154,0.12)"}
               onMouseLeave={e=>e.currentTarget.style.background="rgba(246,154,154,0.06)"}>
               <LogOut size={16} strokeWidth={2}/>{t("settings.signOut")}
             </button>
-            <button onClick={()=>{setShowDelete(true);setDeleteText("");}} style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",color:"rgba(239,68,68,0.8)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"}}
+            <button onClick={function(){setShowDelete(true);setDeleteText("");setDeletePassword("");}} style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",color:"rgba(239,68,68,0.8)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.1)"}
               onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.04)"}>
               <Trash2 size={16} strokeWidth={2}/>{t("settings.deleteAccount")}
@@ -274,6 +350,33 @@ export default function SettingsScreen(){
         </div>
       )}
 
+      {/* ═══ EMAIL CHANGE DIALOG ═══ */}
+      {showEmailChange&&(
+        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
+          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+              <div style={{width:40,height:40,borderRadius:12,background:"rgba(139,92,246,0.1)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Mail size={20} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+              </div>
+              <div>
+                <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Change Email</div>
+                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>A verification email will be sent</div>
+              </div>
+            </div>
+            <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:12}}>
+              Current: <strong>{(user&&user.email)||""}</strong>
+            </div>
+            <input value={newEmail} onChange={function(e){setNewEmail(e.target.value);}} placeholder="New email address" type="email" autoFocus
+              style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")||"Cancel"}</button>
+              <button disabled={!newEmail||emailMutation.isPending} onClick={function(){emailMutation.mutate({newEmail:newEmail});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newEmail?"rgba(139,92,246,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:newEmail?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:newEmail?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{emailMutation.isPending?"Saving...":"Save"}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ═══ DELETE ACCOUNT DIALOG ═══ */}
       {showDelete&&(
         <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -292,10 +395,12 @@ export default function SettingsScreen(){
               This will permanently delete your account, all dreams, progress, and data. Type <strong style={{color:"rgba(239,68,68,0.9)"}}>DELETE</strong> to confirm.
             </div>
             <input value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder="Type DELETE"
+              style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:10}}/>
+            <input value={deletePassword} onChange={function(e){setDeletePassword(e.target.value);}} placeholder="Enter your password" type="password"
               style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>setShowDelete(false)} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")}</button>
-              <button disabled={deleteText!=="DELETE"} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:deleteText==="DELETE"?"rgba(239,68,68,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:deleteText==="DELETE"?"rgba(239,68,68,0.9)":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:deleteText==="DELETE"?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>Delete Forever</button>
+              <button disabled={deleteText!=="DELETE"||!deletePassword||deleteMutation.isPending} onClick={function(){deleteMutation.mutate({password:deletePassword});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:(deleteText==="DELETE"&&deletePassword)?"rgba(239,68,68,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:(deleteText==="DELETE"&&deletePassword)?"rgba(239,68,68,0.9)":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:(deleteText==="DELETE"&&deletePassword)?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{deleteMutation.isPending?"Deleting...":"Delete Forever"}</button>
             </div>
           </div>
         </div>

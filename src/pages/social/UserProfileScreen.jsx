@@ -1,28 +1,25 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiDelete } from "../../services/api";
 import {
   ArrowLeft, UserPlus, MessageCircle, Trophy, Flame, Star,
   Zap, Target, Check, Users, Heart, Briefcase, Palette,
-  Brain, Wallet, TrendingUp
+  Brain, Wallet, TrendingUp, Loader, MoreVertical, Flag,
+  ShieldOff, UserMinus, UserCheck
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_LEADERBOARD, MOCK_BUDDY_SUGGESTIONS, CATEGORIES } from "../../data/mockData";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
 
-const ALL_USERS = [
-  { id: "l1", name: "Jade", initial: "J", level: 15, xp: 3800, streak: 28, bio: "Dreaming big and achieving bigger. Passionate about fitness and tech.", mutualFriends: 3, dreams: ["Run a Marathon", "Learn Japanese"], categories: ["health", "personal"], joinedDate: "Jun 2025" },
-  { id: "l2", name: "Marco", initial: "M", level: 14, xp: 3200, streak: 21, bio: "Building the future one dream at a time. Full-stack developer.", mutualFriends: 5, dreams: ["Launch a Startup", "Learn Piano"], categories: ["career", "hobbies"], joinedDate: "Jul 2025" },
-  { id: "l3", name: "Lisa", initial: "L", level: 12, xp: 2900, streak: 18, bio: "Creative soul on a journey of self-improvement and artistic growth.", mutualFriends: 2, dreams: ["Write a Novel", "Get in Shape"], categories: ["hobbies", "health"], joinedDate: "Aug 2025" },
-  { id: "l5", name: "Alex", initial: "A", level: 10, xp: 2200, streak: 12, bio: "Fitness enthusiast training for my first half marathon.", mutualFriends: 4, dreams: ["Run a Half Marathon", "Learn Cooking"], categories: ["health", "hobbies"], joinedDate: "Sep 2025" },
-  { id: "l6", name: "Sophie", initial: "S", level: 9, xp: 1950, streak: 14, bio: "Triathlon training while building a freelance career.", mutualFriends: 3, dreams: ["Complete a Triathlon", "Freelance Business"], categories: ["health", "career"], joinedDate: "Aug 2025" },
-  { id: "l7", name: "Daniel", initial: "D", level: 8, xp: 1700, streak: 9, bio: "Financial freedom is the goal. One step at a time.", mutualFriends: 1, dreams: ["Save $20K", "Start Investing"], categories: ["finance"], joinedDate: "Oct 2025" },
-  { id: "fr1", name: "Emma", initial: "E", level: 7, xp: 1200, streak: 5, bio: "New to DreamPlanner, excited to achieve my goals!", mutualFriends: 2, dreams: ["Learn Guitar", "Read 24 Books"], categories: ["hobbies", "personal"], joinedDate: "Dec 2025" },
-  { id: "fr2", name: "Noah", initial: "N", level: 11, xp: 2600, streak: 16, bio: "Tech entrepreneur with a passion for personal growth.", mutualFriends: 4, dreams: ["Launch SaaS Product", "Meditate Daily"], categories: ["career", "personal"], joinedDate: "Jul 2025" },
-  { id: "om1", name: "Omar", initial: "O", level: 8, xp: 1600, streak: 10, bio: "Aspiring podcaster and storyteller. Love connecting with people.", mutualFriends: 2, dreams: ["Start a Podcast", "Write a Blog"], categories: ["hobbies", "career"], joinedDate: "Oct 2025" },
-  { id: "ma1", name: "Maya", initial: "M", level: 9, xp: 1850, streak: 11, bio: "Graphic designer exploring new creative horizons.", mutualFriends: 1, dreams: ["Launch Design Portfolio", "Learn 3D Modeling"], categories: ["hobbies", "career"], joinedDate: "Nov 2025" },
-  { id: "za1", name: "Zara", initial: "Z", level: 13, xp: 3100, streak: 20, bio: "Finance nerd on a mission to build wealth and share knowledge.", mutualFriends: 3, dreams: ["Build Investment Portfolio", "Start Finance Blog"], categories: ["finance", "career"], joinedDate: "Jul 2025" },
-  { id: "et1", name: "Ethan", initial: "E", level: 11, xp: 2400, streak: 13, bio: "Health-conscious foodie who loves meal prepping and fitness.", mutualFriends: 2, dreams: ["Run a 5K", "Master Meal Prep"], categories: ["health", "hobbies"], joinedDate: "Sep 2025" },
-];
+var CATEGORIES = {
+  career: { label: "Career" },
+  hobbies: { label: "Hobbies" },
+  health: { label: "Health" },
+  finance: { label: "Finance" },
+  personal: { label: "Personal" },
+  relationships: { label: "Relationships" },
+};
 
 const CAT_ICONS = { career: Briefcase, hobbies: Palette, health: Heart, finance: Wallet, personal: Brain, relationships: Users };
 const CAT_COLORS = { career: "#8B5CF6", hobbies: "#EC4899", health: "#10B981", finance: "#FCD34D", personal: "#6366F1", relationships: "#14B8A6" };
@@ -39,17 +36,127 @@ export default function UserProfileScreen() {
   const { id } = useParams();
   const { resolved } = useTheme();
   const isLight = resolved === "light";
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+
+  var profileQuery = useQuery({
+    queryKey: ["user-profile", id],
+    queryFn: function () { return apiGet("/api/users/" + id + "/"); },
+    enabled: !!id,
+  });
+
+  var countsQuery = useQuery({
+    queryKey: ["user-counts", id],
+    queryFn: function () { return apiGet("/api/social/counts/" + id + "/"); },
+    enabled: !!id,
+  });
 
   useEffect(() => { setTimeout(() => setMounted(true), 50); }, []);
 
-  const user = ALL_USERS.find(u => u.id === id);
+  var rawUser = profileQuery.data || null;
+  var counts = countsQuery.data || {};
+  var user = rawUser ? Object.assign({}, rawUser, {
+    name: rawUser.name || rawUser.displayName || rawUser.username || "User",
+    initial: rawUser.initial || (rawUser.name || rawUser.displayName || rawUser.username || "U")[0].toUpperCase(),
+    level: rawUser.level || counts.level || 1,
+    xp: rawUser.xp || counts.xp || 0,
+    streak: rawUser.streak || counts.streak || 0,
+    bio: rawUser.bio || "",
+    mutualFriends: rawUser.mutualFriends || counts.mutualFriends || 0,
+    dreams: rawUser.dreams || [],
+    categories: rawUser.categories || [],
+    joinedDate: rawUser.joinedDate || rawUser.dateJoined || "",
+  }) : null;
+
+  var handleSendRequest = function () {
+    setRequestSent(true);
+    apiPost("/api/social/friends/request/", { userId: id }).then(function () {
+      showToast("Friend request sent!", "success");
+      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+    }).catch(function (err) {
+      showToast(err.message || "Failed to send request", "error");
+      setRequestSent(false);
+    });
+  };
+
+  var handleFollow = function () {
+    if (isFollowing) {
+      setIsFollowing(false);
+      apiDelete("/api/social/unfollow/" + id + "/").catch(function () { setIsFollowing(true); });
+    } else {
+      setIsFollowing(true);
+      apiPost("/api/social/follow/", { userId: id }).catch(function () { setIsFollowing(false); });
+    }
+  };
+
+  var handleBlock = function () {
+    setShowMenu(false);
+    if (isBlocked) {
+      apiDelete("/api/social/unblock/" + id + "/").then(function () {
+        setIsBlocked(false);
+        showToast("User unblocked", "info");
+      }).catch(function (err) { showToast(err.message || "Failed to unblock", "error"); });
+    } else {
+      apiPost("/api/social/block/", { userId: id }).then(function () {
+        setIsBlocked(true);
+        showToast("User blocked", "info");
+      }).catch(function (err) { showToast(err.message || "Failed to block", "error"); });
+    }
+  };
+
+  var handleReport = function () {
+    setShowMenu(false);
+    setShowReportModal(true);
+  };
+
+  var submitReport = function () {
+    if (!reportReason.trim()) return;
+    apiPost("/api/social/report/", { userId: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
+      showToast("Report submitted", "success");
+      setShowReportModal(false);
+      setReportReason("");
+    }).catch(function (err) { showToast(err.message || "Failed to report", "error"); });
+  };
+
+  var handleRemoveFriend = function () {
+    setShowMenu(false);
+    apiDelete("/api/social/friends/remove/" + id + "/").then(function () {
+      showToast("Friend removed", "info");
+      queryClient.invalidateQueries({ queryKey: ["friends"] });
+    }).catch(function (err) { showToast(err.message || "Failed to remove", "error"); });
+  };
+
   const stagger = (i) => ({
     opacity: mounted ? 1 : 0,
     transform: mounted ? "translateY(0)" : "translateY(18px)",
     transition: `all 0.5s cubic-bezier(0.4,0,0.2,1) ${i * 80}ms`,
   });
+
+  if (profileQuery.isLoading) {
+    return (
+      <PageLayout>
+        <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+            <button className="dp-ib" onClick={() => navigate(-1)}>
+              <ArrowLeft size={20} strokeWidth={2} />
+            </button>
+            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Profile</span>
+          </div>
+          <div style={{ textAlign: "center", padding: "60px 20px" }}>
+            <Loader size={28} color="var(--dp-text-muted)" style={{ animation: "spin 1s linear infinite" }} />
+            <div style={{ fontSize: 14, color: "var(--dp-text-muted)", marginTop: 12 }}>Loading profile...</div>
+          </div>
+        </div>
+      </PageLayout>
+    );
+  }
 
   if (!user) {
     return (
@@ -110,11 +217,12 @@ export default function UserProfileScreen() {
         </div>
 
         {/* Action Buttons */}
-        <div style={{ display: "flex", gap: 10, marginBottom: 28, ...stagger(2) }}>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12, ...stagger(2) }}>
           <button
-            onClick={() => setRequestSent(!requestSent)}
+            onClick={function () { if (!requestSent) handleSendRequest(); }}
+            disabled={requestSent}
             style={{
-              flex: 1, height: 46, borderRadius: 14, border: "none", cursor: "pointer",
+              flex: 1, height: 46, borderRadius: 14, border: "none", cursor: requestSent ? "default" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               fontSize: 14, fontWeight: 600, transition: "all 0.3s",
               background: requestSent ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
@@ -125,7 +233,7 @@ export default function UserProfileScreen() {
             {requestSent ? <Check size={18} /> : <UserPlus size={18} />}
             {requestSent ? "Request Sent" : "Add Friend"}
           </button>
-          <button onClick={() => navigate("/buddy-chat/" + user.id)} style={{
+          <button onClick={() => navigate("/buddy-chat/" + id)} style={{
             flex: 1, height: 46, borderRadius: 14, background: "var(--dp-glass-bg)",
             border: "1px solid var(--dp-input-border)", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -137,6 +245,106 @@ export default function UserProfileScreen() {
             <MessageCircle size={18} /> Message
           </button>
         </div>
+
+        {/* Follow + More Menu Row */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 28, ...stagger(2) }}>
+          <button onClick={handleFollow} style={{
+            flex: 1, height: 40, borderRadius: 12, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
+            fontSize: 13, fontWeight: 600, transition: "all 0.3s",
+            background: isFollowing ? "rgba(139,92,246,0.12)" : "var(--dp-glass-bg)",
+            border: isFollowing ? "1px solid rgba(139,92,246,0.3)" : "1px solid var(--dp-input-border)",
+            color: isFollowing ? (isLight ? "#6D28D9" : "#C4B5FD") : "var(--dp-text-primary)",
+          }}>
+            {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
+            {isFollowing ? "Following" : "Follow"}
+          </button>
+          <div style={{ position: "relative" }}>
+            <button onClick={function () { setShowMenu(!showMenu); }} style={{
+              width: 40, height: 40, borderRadius: 12, background: "var(--dp-glass-bg)",
+              border: "1px solid var(--dp-input-border)", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--dp-text-secondary)", transition: "all 0.2s",
+            }}>
+              <MoreVertical size={18} />
+            </button>
+            {showMenu && (
+              <div style={{
+                position: "absolute", right: 0, top: 46, zIndex: 50, minWidth: 180,
+                background: "var(--dp-card-bg)", border: "1px solid var(--dp-glass-border)",
+                borderRadius: 14, padding: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
+              }}>
+                <button onClick={handleRemoveFriend} style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
+                  background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                  fontSize: 13, fontWeight: 500, color: "var(--dp-text-primary)", transition: "background 0.15s",
+                }}
+                  onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
+                  onMouseLeave={function (e) { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <UserMinus size={16} /> Remove Friend
+                </button>
+                <button onClick={handleBlock} style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
+                  background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                  fontSize: 13, fontWeight: 500, color: isBlocked ? "#10B981" : "#EF4444", transition: "background 0.15s",
+                }}
+                  onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
+                  onMouseLeave={function (e) { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <ShieldOff size={16} /> {isBlocked ? "Unblock User" : "Block User"}
+                </button>
+                <button onClick={handleReport} style={{
+                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
+                  background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                  fontSize: 13, fontWeight: 500, color: "#F59E0B", transition: "background 0.15s",
+                }}
+                  onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
+                  onMouseLeave={function (e) { e.currentTarget.style.background = "transparent"; }}
+                >
+                  <Flag size={16} /> Report User
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Report Modal */}
+        {showReportModal && (
+          <div style={{
+            position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
+          }} onClick={function () { setShowReportModal(false); }}>
+            <div onClick={function (e) { e.stopPropagation(); }} style={{
+              width: "100%", maxWidth: 380, background: "var(--dp-card-bg)",
+              border: "1px solid var(--dp-glass-border)", borderRadius: 20, padding: 24,
+            }}>
+              <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 16px" }}>Report User</h3>
+              <textarea
+                value={reportReason}
+                onChange={function (e) { setReportReason(e.target.value); }}
+                placeholder="Describe the issue..."
+                rows={4}
+                style={{
+                  width: "100%", borderRadius: 12, padding: "12px 14px", fontSize: 14,
+                  background: "var(--dp-input-bg)", border: "1px solid var(--dp-input-border)",
+                  color: "var(--dp-text)", resize: "none", fontFamily: "inherit",
+                }}
+              />
+              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                <button onClick={function () { setShowReportModal(false); setReportReason(""); }} style={{
+                  flex: 1, height: 42, borderRadius: 12, background: "var(--dp-glass-bg)",
+                  border: "1px solid var(--dp-input-border)", cursor: "pointer",
+                  fontSize: 14, fontWeight: 600, color: "var(--dp-text-primary)",
+                }}>Cancel</button>
+                <button onClick={submitReport} style={{
+                  flex: 1, height: 42, borderRadius: 12, border: "none", cursor: "pointer",
+                  background: "#EF4444", fontSize: 14, fontWeight: 600, color: "#fff",
+                }}>Submit Report</button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Bio */}
         {user.bio && (

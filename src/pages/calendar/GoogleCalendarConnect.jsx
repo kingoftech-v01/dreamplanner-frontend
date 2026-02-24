@@ -1,14 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Calendar, Check, RefreshCw, LogOut, ChevronRight } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
-
-const CALENDARS = [
-  { id: "personal", name: "Personal", color: "#8B5CF6", enabled: true },
-  { id: "work", name: "Work", color: "#3B82F6", enabled: true },
-  { id: "holidays", name: "Holidays", color: "#10B981", enabled: false },
-];
+import { useToast } from "../../context/ToastContext";
+import { apiGet, apiPost } from "../../services/api";
+import { openBrowser, isNative } from "../../services/native";
 
 function Toggle({ on, onToggle, color }) {
   return (
@@ -28,44 +26,146 @@ function Toggle({ on, onToggle, color }) {
 }
 
 export default function GoogleCalendarConnect() {
-  const navigate = useNavigate();
-  const { resolved } = useTheme();
-  const isLight = resolved === "light";
+  var navigate = useNavigate();
+  var { resolved } = useTheme();
+  var isLight = resolved === "light";
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
 
-  const [connected, setConnected] = useState(false);
-  const [connecting, setConnecting] = useState(false);
-  const [calendars, setCalendars] = useState(CALENDARS);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSync, setLastSync] = useState(null);
+  var [connected, setConnected] = useState(false);
+  var [connecting, setConnecting] = useState(false);
+  var [calendars, setCalendars] = useState([]);
+  var [lastSync, setLastSync] = useState(null);
 
-  const handleConnect = () => {
-    setConnecting(true);
-    setTimeout(() => {
+  // ── Query connection status ──
+  var statusQuery = useQuery({
+    queryKey: ["google-calendar-status"],
+    queryFn: function () { return apiGet("/api/calendar/google/status/"); },
+  });
+
+  // Sync local state from status query
+  useEffect(function () {
+    if (statusQuery.data) {
+      var data = statusQuery.data;
+      if (data.connected) {
+        setConnected(true);
+        if (data.calendars && data.calendars.length > 0) {
+          setCalendars(data.calendars);
+        }
+        if (data.lastSync) {
+          setLastSync(new Date(data.lastSync));
+        }
+      } else {
+        setConnected(false);
+      }
+    }
+  }, [statusQuery.data]);
+
+  // ── Handle OAuth callback code on mount ──
+  var callbackMut = useMutation({
+    mutationFn: function (payload) { return apiPost("/api/calendar/google/callback/", payload); },
+    onSuccess: function () {
       setConnecting(false);
-      setConnected(true);
+      queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
+      showToast("Google Calendar connected!", "success");
+      // Clean up URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    },
+    onError: function (err) {
+      setConnecting(false);
+      showToast(err.message || "Failed to connect Google Calendar", "error");
+    },
+  });
+
+  useEffect(function () {
+    // On HashRouter the query string is inside the hash: #/calendar-connect?code=xxx
+    var hash = window.location.hash || "";
+    var hashQuery = hash.indexOf("?") !== -1 ? hash.substring(hash.indexOf("?")) : "";
+    var params = new URLSearchParams(hashQuery || window.location.search);
+    var code = params.get("code");
+    if (code) {
+      setConnecting(true);
+      // On native, pass the native redirect_uri so the backend uses the correct one for token exchange
+      var payload = { code: code };
+      if (isNative) {
+        payload.redirectUri = (import.meta.env.VITE_API_BASE || "") + "/api/calendar/google/native-callback/";
+      }
+      callbackMut.mutate(payload);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync mutation ──
+  var syncMut = useMutation({
+    mutationFn: function () { return apiPost("/api/calendar/google/sync/"); },
+    onSuccess: function () {
       setLastSync(new Date());
-    }, 2000);
+      queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
+      showToast("Calendar synced!", "success");
+    },
+    onError: function (err) {
+      showToast(err.message || "Sync failed", "error");
+    },
+  });
+
+  // ── Disconnect mutation ──
+  var disconnectMut = useMutation({
+    mutationFn: function () { return apiPost("/api/calendar/google/disconnect/"); },
+    onSuccess: function () {
+      setConnected(false);
+      setLastSync(null);
+      setCalendars([]);
+      queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
+      showToast("Google Calendar disconnected", "info");
+    },
+    onError: function (err) {
+      showToast(err.message || "Failed to disconnect", "error");
+    },
+  });
+
+  var handleConnect = function () {
+    setConnecting(true);
+    // On native, use the backend's native-callback endpoint as redirect_uri
+    // so Google redirects there, and it redirects to the custom scheme
+    var authUrl = "/api/calendar/google/auth/";
+    if (isNative) {
+      var nativeRedirect = (import.meta.env.VITE_API_BASE || "") + "/api/calendar/google/native-callback/";
+      authUrl += "?redirect_uri=" + encodeURIComponent(nativeRedirect);
+    }
+    apiGet(authUrl)
+      .then(function (data) {
+        if (data.authUrl && /^https:\/\/accounts\.google\.com\b/.test(data.authUrl)) {
+          if (isNative) {
+            openBrowser(data.authUrl);
+          } else {
+            window.location.href = data.authUrl;
+          }
+        } else {
+          setConnecting(false);
+          showToast("Failed to get authorization URL", "error");
+        }
+      })
+      .catch(function (err) {
+        setConnecting(false);
+        showToast(err.message || "Failed to start Google connection", "error");
+      });
   };
 
-  const handleSync = () => {
-    setSyncing(true);
-    setTimeout(() => {
-      setSyncing(false);
-      setLastSync(new Date());
-    }, 1500);
+  var handleSync = function () { syncMut.mutate(); };
+
+  var handleDisconnect = function () { disconnectMut.mutate(); };
+
+  var syncing = syncMut.isPending;
+  var disconnecting = disconnectMut.isPending;
+
+  var toggleCalendar = function (id) {
+    setCalendars(function (prev) {
+      return prev.map(function (c) {
+        return c.id === id ? Object.assign({}, c, { enabled: !c.enabled }) : c;
+      });
+    });
   };
 
-  const handleDisconnect = () => {
-    setConnected(false);
-    setLastSync(null);
-    setCalendars(CALENDARS);
-  };
-
-  const toggleCalendar = (id) => {
-    setCalendars(prev => prev.map(c => c.id === id ? { ...c, enabled: !c.enabled } : c));
-  };
-
-  const tile = {
+  var tile = {
     borderRadius: 18,
     background: isLight ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.03)",
     border: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.06)",
@@ -82,7 +182,7 @@ export default function GoogleCalendarConnect() {
       <div style={{ paddingTop: 16, paddingBottom: 40, fontFamily: "Inter, sans-serif", minHeight: "100vh" }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
-          <button className="dp-ib" onClick={() => navigate(-1)}>
+          <button className="dp-ib" onClick={function () { navigate(-1); }}>
             <ArrowLeft size={20} strokeWidth={2} />
           </button>
           <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Google Calendar</span>
@@ -111,7 +211,7 @@ export default function GoogleCalendarConnect() {
         </div>
 
         {!connected ? (
-          /* ══ NOT CONNECTED STATE ══ */
+          /* NOT CONNECTED STATE */
           <>
             {/* Features list */}
             <div style={{ ...tile, padding: 18, marginBottom: 16 }}>
@@ -119,21 +219,23 @@ export default function GoogleCalendarConnect() {
                 { text: "Sync dream deadlines to your calendar", color: "#8B5CF6" },
                 { text: "See tasks and milestones as events", color: "#10B981" },
                 { text: "Get reminders for upcoming goals", color: "#F59E0B" },
-              ].map((f, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "center", gap: 12,
-                  padding: "10px 0",
-                  borderBottom: i < 2 ? (isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)") : "none",
-                }}>
-                  <div style={{
-                    width: 28, height: 28, borderRadius: 8,
-                    background: `${f.color}15`, display: "flex", alignItems: "center", justifyContent: "center",
+              ].map(function (f, i) {
+                return (
+                  <div key={i} style={{
+                    display: "flex", alignItems: "center", gap: 12,
+                    padding: "10px 0",
+                    borderBottom: i < 2 ? (isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)") : "none",
                   }}>
-                    <Check size={14} color={f.color} strokeWidth={2.5} />
+                    <div style={{
+                      width: 28, height: 28, borderRadius: 8,
+                      background: f.color + "15", display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <Check size={14} color={f.color} strokeWidth={2.5} />
+                    </div>
+                    <span style={{ fontSize: 13, color: "var(--dp-text-primary)", fontWeight: 500 }}>{f.text}</span>
                   </div>
-                  <span style={{ fontSize: 13, color: "var(--dp-text-primary)", fontWeight: 500 }}>{f.text}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Connect Button */}
@@ -166,7 +268,7 @@ export default function GoogleCalendarConnect() {
             </button>
           </>
         ) : (
-          /* ══ CONNECTED STATE ══ */
+          /* CONNECTED STATE */
           <>
             {/* Account info */}
             <div style={{ ...tile, padding: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 14 }}>
@@ -175,9 +277,9 @@ export default function GoogleCalendarConnect() {
                 background: "linear-gradient(135deg, #4285F4, #3367D6)",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontSize: 18, fontWeight: 700, color: "#fff",
-              }}>S</div>
+              }}>{(statusQuery.data?.email || "G")[0].toUpperCase()}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)" }}>stephane@rhematek.com</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)" }}>{statusQuery.data?.email || "Google Account"}</div>
                 <div style={{ fontSize: 12, color: isLight ? "#059669" : "#5DE5A8", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
                   <Check size={12} strokeWidth={3} /> Connected
                 </div>
@@ -192,19 +294,21 @@ export default function GoogleCalendarConnect() {
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-secondary)" }}>Sync Calendars</span>
               </div>
-              {calendars.map((cal, i) => (
-                <div key={cal.id} style={{
-                  display: "flex", alignItems: "center", gap: 12, padding: "13px 18px",
-                  borderBottom: i < calendars.length - 1 ? (isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)") : "none",
-                }}>
-                  <div style={{
-                    width: 10, height: 10, borderRadius: "50%",
-                    background: cal.color, boxShadow: `0 0 6px ${cal.color}40`,
-                  }} />
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "var(--dp-text)" }}>{cal.name}</span>
-                  <Toggle on={cal.enabled} onToggle={() => toggleCalendar(cal.id)} color={cal.color} />
-                </div>
-              ))}
+              {calendars.map(function (cal, i) {
+                return (
+                  <div key={cal.id} style={{
+                    display: "flex", alignItems: "center", gap: 12, padding: "13px 18px",
+                    borderBottom: i < calendars.length - 1 ? (isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)") : "none",
+                  }}>
+                    <div style={{
+                      width: 10, height: 10, borderRadius: "50%",
+                      background: cal.color, boxShadow: "0 0 6px " + cal.color + "40",
+                    }} />
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "var(--dp-text)" }}>{cal.name}</span>
+                    <Toggle on={cal.enabled} onToggle={function () { toggleCalendar(cal.id); }} color={cal.color} />
+                  </div>
+                );
+              })}
             </div>
 
             {/* Sync button + last synced */}
@@ -235,19 +339,30 @@ export default function GoogleCalendarConnect() {
             {/* Disconnect */}
             <button
               onClick={handleDisconnect}
+              disabled={disconnecting}
               style={{
                 width: "100%", padding: "13px 0", borderRadius: 16,
                 border: isLight ? "1px solid rgba(246,154,154,0.2)" : "1px solid rgba(246,154,154,0.15)",
                 background: "rgba(246,154,154,0.06)",
                 color: isLight ? "#DC2626" : "#F69A9A",
-                fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+                fontSize: 13, fontWeight: 600, cursor: disconnecting ? "default" : "pointer", fontFamily: "inherit",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                opacity: disconnecting ? 0.6 : 1,
                 transition: "all 0.2s",
               }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(246,154,154,0.12)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(246,154,154,0.06)"}
+              onMouseEnter={function (e) { if (!disconnecting) e.currentTarget.style.background = "rgba(246,154,154,0.12)"; }}
+              onMouseLeave={function (e) { e.currentTarget.style.background = "rgba(246,154,154,0.06)"; }}
             >
-              <LogOut size={14} strokeWidth={2} /> Disconnect Account
+              {disconnecting ? (
+                <>
+                  <RefreshCw size={14} style={{ animation: "gcSpin 1s linear infinite" }} />
+                  Disconnecting...
+                </>
+              ) : (
+                <>
+                  <LogOut size={14} strokeWidth={2} /> Disconnect Account
+                </>
+              )}
             </button>
           </>
         )}

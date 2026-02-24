@@ -5,6 +5,7 @@ import {
   Sparkles, Flame, Briefcase, Palette, Heart, Wallet, Brain
 } from "lucide-react";
 import { useTaskCall } from "../../context/TaskCallContext";
+import { hapticVibrate, hapticStop } from "../../services/native";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Task Call Overlay
@@ -36,7 +37,7 @@ var CATEGORY_ICONS = {
   personal: Brain,
 };
 
-var MOCK_TASK = {
+var DEFAULT_TASK = {
   id: "t1",
   title: "Work on SaaS Dashboard",
   dream: "Launch my SaaS Platform",
@@ -77,9 +78,7 @@ export default function TaskCallOverlay() {
         document.documentElement.requestFullscreen().catch(function () {});
       }
       // Vibrate for call-like feel
-      if (navigator.vibrate) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
-      }
+      hapticVibrate([200, 100, 200, 100, 200]);
     }
   }, [isOpen, taskData]);
 
@@ -98,13 +97,13 @@ export default function TaskCallOverlay() {
   }
 
   function acceptCall() {
-    if (navigator.vibrate) navigator.vibrate(0); // Stop ringing vibration
+    hapticStop(); // Stop ringing vibration
     setPhase("accepted");
     setTimerRunning(true);
     acquireWakeLock(); // Keep screen on while working
   }
   function declineCall() {
-    if (navigator.vibrate) navigator.vibrate(0);
+    hapticStop();
     setShowSnoozePanel(true);
   }
   function confirmSnooze() {
@@ -120,7 +119,7 @@ export default function TaskCallOverlay() {
 
   if (!isOpen) return null;
 
-  var task = taskData || MOCK_TASK;
+  var task = taskData || DEFAULT_TASK;
   var pc = getPriorityColors(task.priority);
   var TaskIcon = CATEGORY_ICONS[task.category] || Briefcase;
 

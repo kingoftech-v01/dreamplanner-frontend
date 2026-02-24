@@ -1,10 +1,18 @@
 import { useState, useEffect } from "react";
 import { Sparkles } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 
 export default function SplashScreen({ onDone }) {
   var [phase, setPhase] = useState("show"); // show → fade → done
 
   useEffect(function () {
+    // Hide native splash screen once web splash is ready
+    if (Capacitor.isNativePlatform()) {
+      import("@capacitor/splash-screen").then(function (mod) {
+        mod.SplashScreen.hide();
+      }).catch(function () {});
+    }
+
     var t1 = setTimeout(function () { setPhase("fade"); }, 1200);
     var t2 = setTimeout(function () { setPhase("done"); if (onDone) onDone(); }, 1600);
     return function () { clearTimeout(t1); clearTimeout(t2); };

@@ -1,4 +1,6 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
+import { hapticVibrate, hapticStop, acquireWakeLock as nativeAcquireWakeLock, releaseWakeLock as nativeReleaseWakeLock, isNative } from "../services/native";
+import { checkNativePushPermission, scheduleTaskCallNotification, addLocalNotificationActionListener } from "../services/nativeNotifications";
 
 var TaskCallContext = createContext(null);
 
@@ -12,7 +14,11 @@ export function TaskCallProvider({ children }) {
 
   // ─── Track notification permission state ──────────────────────
   useEffect(function () {
-    if ("Notification" in window) {
+    if (isNative) {
+      checkNativePushPermission().then(function (perm) {
+        setNotifPermission(perm === "granted" ? "granted" : perm);
+      });
+    } else if ("Notification" in window) {
       setNotifPermission(Notification.permission);
     }
   }, []);
@@ -36,6 +42,13 @@ export function TaskCallProvider({ children }) {
 
   // ─── Show system notification (when app is hidden) ────────────
   var showSystemNotification = useCallback(function (task) {
+    // On native platforms, use high-priority local notification (full-screen intent)
+    if (isNative) {
+      scheduleTaskCallNotification(task);
+      return;
+    }
+
+    // Web fallback: Service Worker notification or basic Notification API
     if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
       navigator.serviceWorker.ready.then(function (registration) {
         registration.showNotification("DreamPlanner — Task Due!", {
@@ -87,6 +100,29 @@ export function TaskCallProvider({ children }) {
     };
   }, []);
 
+  // ─── Native local notification action listener ──────────────
+  useEffect(function () {
+    if (!isNative) return;
+
+    var listenerPromise = addLocalNotificationActionListener(function (action) {
+      if (action.actionId === "accept") {
+        // User tapped "Start Now" — show the task call overlay
+        var taskInfo = { id: action.taskId, title: action.title, dream: action.dream };
+        pendingTaskRef.current = null;
+        setTaskData(taskInfo);
+        setIsOpen(true);
+        hapticVibrate([200, 100, 200, 100, 200]);
+      }
+      // "snooze" = dismiss, task will be rescheduled by backend
+    });
+
+    return function () {
+      listenerPromise.then(function (listener) {
+        if (listener && listener.remove) listener.remove();
+      });
+    };
+  }, []);
+
   // ─── Visibility change: show pending task when user returns ───
   useEffect(function () {
     function handleVisibilityChange() {
@@ -105,18 +141,14 @@ export function TaskCallProvider({ children }) {
 
   // ─── Wake Lock: keep screen on during active task ─────────────
   var acquireWakeLock = useCallback(function () {
-    if ("wakeLock" in navigator) {
-      navigator.wakeLock.request("screen").then(function (lock) {
-        wakeLockRef.current = lock;
-      }).catch(function () {});
-    }
+    nativeAcquireWakeLock().then(function (lock) {
+      wakeLockRef.current = lock;
+    }).catch(function () {});
   }, []);
 
   var releaseWakeLock = useCallback(function () {
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release().catch(function () {});
-      wakeLockRef.current = null;
-    }
+    nativeReleaseWakeLock(wakeLockRef.current).catch(function () {});
+    wakeLockRef.current = null;
   }, []);
 
   // ─── Core trigger function ────────────────────────────────────
@@ -131,16 +163,14 @@ export function TaskCallProvider({ children }) {
       setTaskData(data);
       setIsOpen(true);
       // Vibrate device for call-like feel
-      if (navigator.vibrate) {
-        navigator.vibrate([200, 100, 200, 100, 200]);
-      }
+      hapticVibrate([200, 100, 200, 100, 200]);
     }
   }, [notifPermission, showSystemNotification]);
 
   var dismissTaskCall = useCallback(function () {
     if (autoCloseRef.current) { clearTimeout(autoCloseRef.current); autoCloseRef.current = null; }
     // Stop vibration
-    if (navigator.vibrate) navigator.vibrate(0);
+    hapticStop();
     // Release wake lock
     releaseWakeLock();
     // Exit fullscreen if active

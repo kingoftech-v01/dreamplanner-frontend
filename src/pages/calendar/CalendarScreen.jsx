@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
+import { SkeletonCard } from "../../components/shared/Skeleton";
 import BottomNav from "../../components/shared/BottomNav";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, Clock,
@@ -17,30 +21,7 @@ const NOW=new Date();const TODAY={y:NOW.getFullYear(),m:NOW.getMonth(),d:NOW.get
 const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-const EVENTS = {
-  [`${TODAY.y}-${TODAY.m}-${TODAY.d}`]:[
-    {id:"e1",title:"Morning Run (8km)",time:"6:30 AM",color:"#5DE5A8",type:"task",done:false,dream:"Half Marathon"},
-    {id:"e2",title:"AI Coach Check-in",time:"12:00 PM",color:"#C4B5FD",type:"event",dream:"Half Marathon"},
-    {id:"e3",title:"Piano Practice",time:"7:00 PM",color:"#FCD34D",type:"task",done:false,dream:"Learn Piano"},
-  ],
-  [`${TODAY.y}-${TODAY.m}-${TODAY.d-1}`]:[
-    {id:"e4",title:"Complete Coursera Module",time:"10:00 AM",color:"#C4B5FD",type:"task",done:true,dream:"Launch SaaS"},
-    {id:"e5",title:"Stretching Routine",time:"6:00 PM",color:"#5DE5A8",type:"task",done:true,dream:"Half Marathon"},
-  ],
-  [`${TODAY.y}-${TODAY.m}-${TODAY.d+1}`]:[
-    {id:"e6",title:"Long Run (10km)",time:"7:00 AM",color:"#5DE5A8",type:"task",done:false,dream:"Half Marathon"},
-    {id:"e7",title:"Budget Review",time:"3:00 PM",color:"#5EEAD4",type:"event",dream:"Save $15K"},
-  ],
-  [`${TODAY.y}-${TODAY.m}-${TODAY.d+3}`]:[
-    {id:"e8",title:"Buddy Chat with Alex",time:"5:00 PM",color:"#14B8A6",type:"event",dream:"Half Marathon"},
-  ],
-  [`${TODAY.y}-${TODAY.m}-${TODAY.d+5}`]:[
-    {id:"e9",title:"Race Day Registration Deadline",time:"All Day",color:"#F69A9A",type:"event",dream:"Half Marathon"},
-  ],
-  [`${TODAY.y}-${TODAY.m}-${TODAY.d-3}`]:[
-    {id:"e10",title:"5km Easy Run",time:"6:30 AM",color:"#5DE5A8",type:"task",done:true,dream:"Half Marathon"},
-  ],
-};
+var TYPE_COLORS = { task: "#5DE5A8", event: "#C4B5FD", reminder: "#FCD34D", deadline: "#F69A9A" };
 
 function getKey(y,m,d){return `${y}-${m}-${d}`;}
 function getDaysInMonth(y,m){return new Date(y,m+1,0).getDate();}
@@ -49,24 +30,136 @@ function getFirstDow(y,m){const d=new Date(y,m,1).getDay();return d===0?6:d-1;}
 export default function CalendarScreen(){
   const navigate=useNavigate();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const[mounted,setMounted]=useState(false);
   const[viewY,setViewY]=useState(TODAY.y);
   const[viewM,setViewM]=useState(TODAY.m);
   const[selDay,setSelDay]=useState(null);
-  const[events,setEvents]=useState(EVENTS);
   const[addEvt,setAddEvt]=useState(false);
   const[newTitle,setNewTitle]=useState("");
   const[newTime,setNewTime]=useState("9:00 AM");
   const[confirmDel,setConfirmDel]=useState(null);
+
+  // Build date range for current view month
+  var startDate = viewY + "-" + String(viewM + 1).padStart(2, "0") + "-01";
+  var endDay = getDaysInMonth(viewY, viewM);
+  var endDate = viewY + "-" + String(viewM + 1).padStart(2, "0") + "-" + String(endDay).padStart(2, "0");
+
+  // ── Monthly calendar view query ──
+  var eventsQuery = useQuery({
+    queryKey: ["calendar-events", startDate, endDate],
+    queryFn: function () { return apiGet("/api/calendar/view/?start=" + startDate + "&end=" + endDate); },
+  });
+
+  // ── Today's events query ──
+  var todayQuery = useQuery({
+    queryKey: ["calendar-today"],
+    queryFn: function () { return apiGet("/api/calendar/today/"); },
+  });
+
+  // Show toast on query errors
+  useEffect(function () {
+    if (eventsQuery.error) showToast(eventsQuery.error.message || "Failed to load calendar", "error");
+  }, [eventsQuery.error]);
+
+  useEffect(function () {
+    if (todayQuery.error) showToast(todayQuery.error.message || "Failed to load today's events", "error");
+  }, [todayQuery.error]);
+
+  // Transform API events array into keyed object by "y-m-d"
+  var rawEvents = (eventsQuery.data && eventsQuery.data.results) || eventsQuery.data || [];
+  var events = {};
+  rawEvents.forEach(function (evt) {
+    var d = new Date(evt.date || evt.startDate || evt.start);
+    var k = getKey(d.getFullYear(), d.getMonth(), d.getDate());
+    if (!events[k]) events[k] = [];
+    events[k].push(Object.assign({}, evt, {
+      color: evt.color || TYPE_COLORS[evt.type] || "#C4B5FD",
+      done: evt.done || evt.completed || false,
+      dream: evt.dream || evt.dreamTitle || "",
+    }));
+  });
+
+  // Transform today query data and merge into events map
+  var rawToday = (todayQuery.data && todayQuery.data.results) || todayQuery.data || [];
+  rawToday.forEach(function (evt) {
+    var d = new Date(evt.date || evt.startDate || evt.start);
+    var k = getKey(d.getFullYear(), d.getMonth(), d.getDate());
+    if (!events[k]) events[k] = [];
+    var exists = events[k].some(function (e) { return e.id === evt.id; });
+    if (!exists) {
+      events[k].push(Object.assign({}, evt, {
+        color: evt.color || TYPE_COLORS[evt.type] || "#C4B5FD",
+        done: evt.done || evt.completed || false,
+        dream: evt.dream || evt.dreamTitle || "",
+      }));
+    }
+  });
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
   const prevMonth=()=>{if(viewM===0){setViewM(11);setViewY(viewY-1);}else setViewM(viewM-1);setSelDay(1);};
   const nextMonth=()=>{if(viewM===11){setViewM(0);setViewY(viewY+1);}else setViewM(viewM+1);setSelDay(1);};
   const goToday=()=>{setViewY(TODAY.y);setViewM(TODAY.m);setSelDay(null);};
-  const toggleTask=(evtKey,evtId)=>{setEvents(p=>{const up={...p};up[evtKey]=up[evtKey].map(e=>e.id===evtId?{...e,done:!e.done}:e);return up;});};
-  const deleteEvent=(evtKey,evtId)=>{setEvents(p=>{const up={...p};up[evtKey]=up[evtKey].filter(e=>e.id!==evtId);if(up[evtKey].length===0)delete up[evtKey];return up;});setConfirmDel(null);};
-  const handleAddEvt=()=>{if(!newTitle.trim())return;const day=selDay||TODAY.d;const k=getKey(viewY,viewM,day);setEvents(p=>{const up={...p};if(!up[k])up[k]=[];up[k]=[...up[k],{id:`e${Date.now()}`,title:newTitle.trim(),time:newTime,color:"#C4B5FD",type:"event",done:false,dream:""}];return up;});setNewTitle("");setAddEvt(false);};
+
+  // ── Mutations ──
+  var toggleMutation = useMutation({
+    mutationFn: function (params) {
+      return apiPatch("/api/calendar/events/" + params.id + "/", { completed: params.completed });
+    },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
+    },
+    onError: function (err) { showToast(err.message || "Failed to update", "error"); },
+  });
+
+  var deleteMutation = useMutation({
+    mutationFn: function (params) {
+      return apiDelete("/api/calendar/events/" + params.id + "/");
+    },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
+      showToast("Event deleted", "success");
+    },
+    onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
+  });
+
+  var createMutation = useMutation({
+    mutationFn: function (body) {
+      return apiPost("/api/calendar/events/", body);
+    },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
+      showToast("Event created", "success");
+    },
+    onError: function (err) { showToast(err.message || "Failed to create event", "error"); },
+  });
+
+  var toggleTask = function (evtKey, evtId) {
+    var evt = (events[evtKey] || []).find(function (e) { return e.id === evtId; });
+    if (!evt) return;
+    toggleMutation.mutate({ id: evtId, completed: !evt.done });
+  };
+
+  var deleteEvent = function (evtKey, evtId) {
+    deleteMutation.mutate({ id: evtId });
+    setConfirmDel(null);
+  };
+
+  var handleAddEvt = function () {
+    if (!newTitle.trim()) return;
+    var day = selDay || TODAY.d;
+    var dateStr = viewY + "-" + String(viewM + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
+    createMutation.mutate({ title: newTitle.trim(), time: newTime, date: dateStr, type: "event" });
+    setNewTitle("");
+    setAddEvt(false);
+  };
+
+  var isLoading = eventsQuery.isLoading || todayQuery.isLoading;
 
   const daysInMonth=getDaysInMonth(viewY,viewM);
 
@@ -181,7 +274,14 @@ export default function CalendarScreen(){
           </div>
 
           {/* ── Events Section ── */}
-          {selDay===null?(
+          {isLoading?(
+            /* ── LOADING SKELETONS ── */
+            <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"160ms",display:"flex",flexDirection:"column",gap:10}}>
+              <SkeletonCard height={64} />
+              <SkeletonCard height={64} />
+              <SkeletonCard height={64} />
+            </div>
+          ):selDay===null?(
             /* ── DEFAULT: Today + Tomorrow ── */
             <>
               {[{label:"Today",evts:todayEvents,key:todayKey,dayNum:TODAY.d},{label:"Tomorrow",evts:tomorrowEvents,key:tomorrowKey,dayNum:tomorrowD.getDate()}].map(({label,evts,key,dayNum},si)=>(

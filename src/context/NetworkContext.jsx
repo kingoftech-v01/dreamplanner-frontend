@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { getNetworkStatus, addNetworkListener } from "../services/native";
 
 var NetworkContext = createContext({ isOnline: true });
 
@@ -7,18 +8,26 @@ export function useNetwork() {
 }
 
 export function NetworkProvider({ children }) {
-  var [isOnline, setIsOnline] = useState(
-    typeof navigator !== "undefined" ? navigator.onLine : true
-  );
+  var [isOnline, setIsOnline] = useState(true);
 
   useEffect(function () {
-    function goOnline() { setIsOnline(true); }
-    function goOffline() { setIsOnline(false); }
-    window.addEventListener("online", goOnline);
-    window.addEventListener("offline", goOffline);
+    // Get initial status
+    getNetworkStatus().then(function (status) {
+      setIsOnline(status.connected);
+    });
+
+    // Listen for changes (works on both native and web)
+    var listenerHandle = null;
+    addNetworkListener(function (status) {
+      setIsOnline(status.connected);
+    }).then(function (handle) {
+      listenerHandle = handle;
+    });
+
     return function () {
-      window.removeEventListener("online", goOnline);
-      window.removeEventListener("offline", goOffline);
+      if (listenerHandle && listenerHandle.remove) {
+        listenerHandle.remove();
+      }
     };
   }, []);
 

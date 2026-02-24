@@ -8,6 +8,8 @@
  * ═══════════════════════════════════════════════════════════════════ */
 
 import { createContext, useContext, useState, useEffect, useRef } from "react";
+import { Capacitor } from "@capacitor/core";
+import { StatusBar, Style } from "@capacitor/status-bar";
 import { COSMOS_TOKENS, computeTwilightTokens } from "./themeTokens";
 import {
   getRealTimeSun, getGraceType,
@@ -66,10 +68,18 @@ export function ThemeProvider({ children }) {
   var isDay = isTwilight ? sun > 0.5 : false;
   var resolved = isDay ? "light" : "dark";
 
-  // Set data-theme attribute for CSS variables
+  // Set data-theme attribute for CSS variables + sync Android status bar
   useEffect(function () {
     document.documentElement.dataset.theme = resolved;
     document.documentElement.dataset.visualTheme = visualTheme;
+    if (Capacitor.isNativePlatform()) {
+      StatusBar.setBackgroundColor({
+        color: resolved === "light" ? "#f0ecff" : "#0F0A1E"
+      });
+      StatusBar.setStyle({
+        style: resolved === "light" ? Style.Light : Style.Dark
+      });
+    }
   }, [resolved, visualTheme]);
 
   // Persist selection

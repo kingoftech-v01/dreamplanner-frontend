@@ -1,16 +1,20 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import ErrorState from "../../components/shared/ErrorState";
 import { StatsSkeleton, SkeletonCard, SkeletonLine } from "../../components/shared/Skeleton";
-import { MOCK_DREAMS, MOCK_DREAM_DETAILS } from "../../data/mockData";
+import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
 import { exportDreamCard } from "../../utils/exportDreamCard";
+import { saveBlobFile, nativeShare, isNative } from "../../services/native";
 import {
   ArrowLeft, MoreVertical, MessageCircle, Target, Clock,
   ChevronDown, ChevronUp, Plus, Check, Circle, Trash2,
   Edit3, Share2, FileText, Copy, Zap, Flame, Star,
   X, CheckCircle, AlertTriangle, Sparkles, Flag,
-  Globe, Lock
+  Globe, Lock, Tag, UserPlus
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -23,17 +27,89 @@ const STATUS_COLORS={active:"#5DE5A8",paused:"#FCD34D",completed:"#C4B5FD",archi
 export default function DreamDetailScreen(){
   const navigate=useNavigate();
   const { id } = useParams();
+  var queryClient = useQueryClient();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+  var { showToast } = useToast();
 
-  // Look up the dream by route param id, with fallback to dream "3"
-  const DREAM = MOCK_DREAM_DETAILS[id] || MOCK_DREAMS.find(d => d.id === id) || MOCK_DREAM_DETAILS["3"];
-  const MILESTONES = (DREAM.milestones || []).map(m => ({ label: m.title, date: m.date, done: m.completed, active: m.active || false }));
-  const initialGoals = (DREAM.goals || []).map((g, i) => ({ ...g, order: g.order !== undefined ? g.order : i, completed: g.completed || false, tasks: (g.tasks || []).map(t => ({ ...t, completed: t.completed || false })) }));
+  var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/"); } });
+  var DREAM = dreamQuery.data || {};
+  var MILESTONES = (DREAM.milestones || []).map(function (m) { return { label: m.title, date: m.date, done: m.completed, active: m.active || false }; });
 
-  const[loading,setLoading]=useState(true);
+  // ── Mutations ──
+  var taskCompleteMut = useMutation({
+    mutationFn: function (taskId) { return apiPost("/api/dreams/tasks/" + taskId + "/complete/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); queryClient.invalidateQueries({ queryKey: ["dreams"] }); },
+  });
+  var addGoalMut = useMutation({
+    mutationFn: function (data) { return apiPost("/api/dreams/goals/", data); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
+  });
+  var addTaskMut = useMutation({
+    mutationFn: function (data) { return apiPost("/api/dreams/tasks/", data); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
+  });
+  var deleteDreamMut = useMutation({
+    mutationFn: function () { return apiDelete("/api/dreams/dreams/" + id + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dreams"] }); showToast("Dream deleted", "success"); navigate("/"); },
+    onError: function (err) { showToast(err.message || "Failed to delete dream", "error"); },
+  });
+  var duplicateDreamMut = useMutation({
+    mutationFn: function () { return apiPost("/api/dreams/dreams/" + id + "/duplicate/"); },
+    onSuccess: function (data) { showToast("Dream duplicated!", "success"); navigate("/dream/" + data.id); },
+    onError: function (err) { showToast(err.message || "Failed to duplicate", "error"); },
+  });
+
+  // ── Obstacles query & mutations ──
+  var obstaclesQuery = useQuery({ queryKey: ["obstacles", id], queryFn: function () { return apiGet("/api/dreams/obstacles/?dream=" + id); } });
+  var obstacles = (obstaclesQuery.data && obstaclesQuery.data.results) || obstaclesQuery.data || [];
+
+  var addObstacleMut = useMutation({
+    mutationFn: function (data) { return apiPost("/api/dreams/obstacles/", data); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle added", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to add obstacle", "error"); },
+  });
+  var resolveObstacleMut = useMutation({
+    mutationFn: function (obstacleId) { return apiPost("/api/dreams/obstacles/" + obstacleId + "/resolve/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle resolved!", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to resolve obstacle", "error"); },
+  });
+  var deleteObstacleMut = useMutation({
+    mutationFn: function (obstacleId) { return apiDelete("/api/dreams/obstacles/" + obstacleId + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle removed", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to delete obstacle", "error"); },
+  });
+
+  // ── Tags mutations ──
+  var addTagMut = useMutation({
+    mutationFn: function (tagName) { return apiPost("/api/dreams/dreams/" + id + "/tags/", { tagName: tagName }); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag added", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to add tag", "error"); },
+  });
+  var removeTagMut = useMutation({
+    mutationFn: function (tagName) { return apiDelete("/api/dreams/dreams/" + id + "/tags/" + tagName + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag removed", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to remove tag", "error"); },
+  });
+
+  // ── Collaborators query & mutations ──
+  var collabsQuery = useQuery({ queryKey: ["collaborators", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/collaborators/list/"); } });
+  var collaborators = (collabsQuery.data && collabsQuery.data.collaborators) || collabsQuery.data || [];
+
+  var inviteCollabMut = useMutation({
+    mutationFn: function (userId) { return apiPost("/api/dreams/dreams/" + id + "/collaborators/", { userId: userId }); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator invited!", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to invite collaborator", "error"); },
+  });
+  var removeCollabMut = useMutation({
+    mutationFn: function (userId) { return apiDelete("/api/dreams/dreams/" + id + "/collaborators/" + userId + "/"); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator removed", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to remove collaborator", "error"); },
+  });
+
   const[mounted,setMounted]=useState(false);
-  const[goals,setGoals]=useState(initialGoals);
-  const[expanded,setExpanded]=useState(()=>{const first=initialGoals.find(g=>!g.completed);return first?{[first.id]:true}:{}});
+  const[goals,setGoals]=useState([]);
+  const[expanded,setExpanded]=useState({});
+  const[goalsInitialized,setGoalsInitialized]=useState(false);
   const[menu,setMenu]=useState(false);
   const[showDeleteConfirm,setShowDeleteConfirm]=useState(false);
   const[addGoal,setAddGoal]=useState(false);
@@ -44,12 +120,31 @@ export default function DreamDetailScreen(){
   const [shareModal, setShareModal] = useState(false);
   const [shareImage, setShareImage] = useState(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [isPublic, setIsPublic] = useState(false);
+  const [isPublic, setIsPublic] = useState(DREAM.isPublic || false);
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(t);
-  }, []);
+  // ── Obstacles state ──
+  var [showAddObstacle, setShowAddObstacle] = useState(false);
+  var [obstacleTitle, setObstacleTitle] = useState("");
+  var [obstacleDesc, setObstacleDesc] = useState("");
+
+  // ── Tags state ──
+  var [showTagInput, setShowTagInput] = useState(false);
+  var [newTag, setNewTag] = useState("");
+
+  // ── Sharing / Collaborators state ──
+  var [showShareModal, setShowShareModal] = useState(false);
+  var [shareUserId, setShareUserId] = useState("");
+
+  useEffect(function () {
+    if (dreamQuery.data && !goalsInitialized) {
+      var initGoals = (dreamQuery.data.goals || []).map(function (g, i) { return { ...g, order: g.order !== undefined ? g.order : i, completed: g.completed || false, tasks: (g.tasks || []).map(function (t) { return { ...t, completed: t.completed || false }; }) }; });
+      setGoals(initGoals);
+      var first = initGoals.find(function (g) { return !g.completed; });
+      setExpanded(first ? { [first.id]: true } : {});
+      setIsPublic(dreamQuery.data.isPublic || false);
+      setGoalsInitialized(true);
+    }
+  }, [dreamQuery.data, goalsInitialized]);
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
   const toggleExpand=(id)=>setExpanded(p=>({...p,[id]:!p[id]}));
@@ -76,9 +171,11 @@ export default function DreamDetailScreen(){
       }
       return next;
     });
+    // Persist task toggle to API
+    apiPost("/api/dreams/tasks/" + tId + "/complete/").catch(function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); });
   };
-  const handleAddGoal=()=>{if(!newTitle.trim())return;setGoals(p=>[...p,{id:`g${Date.now()}`,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);setNewTitle("");setNewDesc("");setAddGoal(false);};
-  const handleAddTask=(gId)=>{if(!newTitle.trim())return;setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:`t${Date.now()}`,title:newTitle.trim(),completed:false,xp:20}]}:g));setNewTitle("");setNewDesc("");setAddTask(null);};
+  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost("/api/dreams/goals/",{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddGoal(false);};
+  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost("/api/dreams/tasks/",{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddTask(null);};
 
   const handleShare = async () => {
     setShareModal(true);
@@ -130,7 +227,7 @@ export default function DreamDetailScreen(){
     </div>
   );
 
-  if (loading) return (
+  if (dreamQuery.isLoading) return (
       <div style={{ width: "100%", padding: "60px 16px 0" }}>
         <SkeletonCard height={200} style={{ marginBottom: 16 }} />
         <StatsSkeleton isLight={isLight} />
@@ -139,6 +236,12 @@ export default function DreamDetailScreen(){
           <SkeletonCard height={60} />
         </div>
       </div>
+  );
+
+  if (dreamQuery.isError) return (
+    <div style={{ width: "100%", padding: "60px 16px 0" }}>
+      <ErrorState message={dreamQuery.error?.message} onRetry={function () { dreamQuery.refetch(); }} />
+    </div>
   );
 
   return(
@@ -161,7 +264,7 @@ export default function DreamDetailScreen(){
           <div style={{position:"relative"}}>
             <button className="dp-ib" aria-label="More options" onClick={()=>setMenu(!menu)}><MoreVertical size={17} strokeWidth={2}/></button>
             {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
-              {[{icon:Edit3,label:"Edit Dream",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:"Generate Plan",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:"Share Dream",action:()=>{setMenu(false);handleShare();}},{icon:FileText,label:"Export PDF",action:()=>{setMenu(false);handleShare();}},{icon:Copy,label:"Duplicate",action:()=>{setMenu(false);navigate("/dream/create");}},{icon:Trash2,label:"Delete",danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
+              {[{icon:Edit3,label:"Edit Dream",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:"Generate Plan",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:"Share Dream",action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:"Generate Vision",action:function(){setMenu(false);apiPost("/api/dreams/dreams/"+id+"/generate_vision/").then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:"Export PDF",action:()=>{setMenu(false);apiGet("/api/dreams/dreams/"+id+"/export-pdf/",{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Copy,label:"Duplicate",action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:"Delete",danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
                 <button key={i} onClick={action||(()=>setMenu(false))} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"),transition:"background 0.15s"}}
                   onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -198,7 +301,7 @@ export default function DreamDetailScreen(){
                   <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
                     <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:isLight?"#7C3AED":"#C4B5FD"}}>{DREAM.categoryLabel}</span>
                     <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}><Clock size={11} strokeWidth={2}/>{DREAM.timeframe}</span>
-                    <button onClick={()=>setIsPublic(!isPublic)} style={{
+                    <button onClick={()=>{var newVal=!isPublic;setIsPublic(newVal);apiPatch("/api/dreams/dreams/"+id+"/",{isPublic:newVal}).catch(function(){setIsPublic(!newVal);});}} style={{
                       display:"flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",
                       background:isPublic?(isLight?"rgba(16,185,129,0.1)":"rgba(93,229,168,0.1)"):(isLight?"rgba(26,21,53,0.06)":"rgba(255,255,255,0.06)"),
                       transition:"all 0.25s ease",
@@ -208,6 +311,36 @@ export default function DreamDetailScreen(){
                     </button>
                   </div>
                 </div>
+              </div>
+
+              {/* ── Tags ── */}
+              <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,marginTop:14,paddingTop:14,borderTop:isLight?"1px solid rgba(139,92,246,0.08)":"1px solid rgba(255,255,255,0.05)"}}>
+                <Tag size={12} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5} style={{marginRight:2}}/>
+                {(DREAM.tags || []).map(function (t, ti) {
+                  return (
+                    <span key={ti} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,background:isLight?"rgba(139,92,246,0.08)":"rgba(139,92,246,0.15)",fontSize:11,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD"}}>
+                      {t.name}
+                      <button onClick={function () { removeTagMut.mutate(t.name); }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}}>
+                        <X size={10} strokeWidth={2.5} color={isLight?"#7C3AED":"#C4B5FD"}/>
+                      </button>
+                    </span>
+                  );
+                })}
+                {showTagInput ? (
+                  <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                    <input value={newTag} onChange={function (e) { setNewTag(e.target.value); }} onKeyDown={function (e) { if (e.key === "Enter" && newTag.trim()) { addTagMut.mutate(newTag.trim()); setNewTag(""); setShowTagInput(false); } if (e.key === "Escape") { setNewTag(""); setShowTagInput(false); } }} autoFocus placeholder="Tag name..." style={{width:90,padding:"3px 8px",borderRadius:10,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:11,fontFamily:"inherit",outline:"none"}}/>
+                    <button onClick={function () { if (newTag.trim()) { addTagMut.mutate(newTag.trim()); setNewTag(""); setShowTagInput(false); } }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}}>
+                      <Check size={12} strokeWidth={2.5} color={isLight?"#059669":"#5DE5A8"}/>
+                    </button>
+                    <button onClick={function () { setNewTag(""); setShowTagInput(false); }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}}>
+                      <X size={12} strokeWidth={2.5} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}/>
+                    </button>
+                  </span>
+                ) : (
+                  <button onClick={function () { setShowTagInput(true); }} style={{width:22,height:22,borderRadius:"50%",border:"1px dashed rgba(139,92,246,0.25)",background:"rgba(139,92,246,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    <Plus size={11} strokeWidth={2.5} color={isLight?"#7C3AED":"#C4B5FD"}/>
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -314,6 +447,86 @@ export default function DreamDetailScreen(){
             );
           })}
 
+          {/* ── Obstacles ── */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"400ms",marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <AlertTriangle size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Obstacles ({obstacles.length})</span>
+              </div>
+              <button onClick={function () { setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                <Plus size={13} strokeWidth={2.5}/>Add
+              </button>
+            </div>
+          </div>
+
+          {obstacles.map(function (ob, oi) {
+            var isResolved = ob.resolved || ob.status === "resolved";
+            return (
+              <div key={ob.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(420 + oi * 60) + "ms"}}>
+                <div className="dp-g" style={{marginBottom:8,padding:"12px 14px"}}>
+                  <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
+                    <div style={{width:30,height:30,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isResolved?"rgba(93,229,168,0.15)":"rgba(252,211,77,0.1)",border:isResolved?"1px solid rgba(93,229,168,0.25)":"1px solid rgba(252,211,77,0.2)"}}>
+                      {isResolved ? <Check size={14} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/> : <AlertTriangle size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2}/>}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:14,fontWeight:600,color:isResolved?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),textDecoration:isResolved?"line-through":"none"}}>{ob.title}</span>
+                        <span style={{padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:700,textTransform:"uppercase",background:isResolved?"rgba(93,229,168,0.12)":"rgba(252,211,77,0.12)",color:isResolved?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D")}}>{isResolved?"Resolved":"Active"}</span>
+                      </div>
+                      {ob.description && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:4,lineHeight:1.4}}>{ob.description}</div>}
+                    </div>
+                    <div style={{display:"flex",gap:4,flexShrink:0}}>
+                      {!isResolved && (
+                        <button onClick={function () { resolveObstacleMut.mutate(ob.id); }} title="Resolve" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(93,229,168,0.2)",background:"rgba(93,229,168,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                          <CheckCircle size={13} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2}/>
+                        </button>
+                      )}
+                      <button onClick={function () { deleteObstacleMut.mutate(ob.id); }} title="Delete" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                        <Trash2 size={13} color="rgba(239,68,68,0.7)" strokeWidth={2}/>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* ── Collaborators ── */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"480ms",marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <UserPlus size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Collaborators ({collaborators.length})</span>
+              </div>
+              <button onClick={function () { setShareUserId(""); setShowShareModal(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                <Plus size={13} strokeWidth={2.5}/>Invite
+              </button>
+            </div>
+            <div className="dp-g" style={{padding:collaborators.length > 0 ? 14 : 16,marginBottom:16}}>
+              {collaborators.length === 0 ? (
+                <div style={{textAlign:"center",padding:"8px 0"}}>
+                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No collaborators yet</span>
+                </div>
+              ) : collaborators.map(function (c, ci) {
+                return (
+                  <div key={c.id || ci} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:ci < collaborators.length - 1 ? (isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)") : "none"}}>
+                    <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>{(c.username || c.email || "U").charAt(0).toUpperCase()}</span>
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.username || c.email || "User " + (c.id || ci + 1)}</div>
+                      {c.role && <div style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{c.role}</div>}
+                    </div>
+                    <button onClick={function () { removeCollabMut.mutate(c.id || c.userId); }} title="Remove" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      <X size={13} color="rgba(239,68,68,0.7)" strokeWidth={2}/>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
         </div>
       </main>
 
@@ -322,6 +535,52 @@ export default function DreamDetailScreen(){
 
       {addGoal&&<Modal title="Add Goal" onClose={()=>setAddGoal(false)} onSubmit={handleAddGoal} submitLabel="Add Goal"/>}
       {addTask&&<Modal title="Add Task" onClose={()=>setAddTask(null)} onSubmit={()=>handleAddTask(addTask)} submitLabel="Add Task"/>}
+
+      {/* ── Add Obstacle Modal ── */}
+      {showAddObstacle && (
+        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={function () { setShowAddObstacle(false); }} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
+          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid var(--dp-input-border)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Add Obstacle</span>
+              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={function () { setShowAddObstacle(false); }}><X size={16} strokeWidth={2}/></button>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Title</label>
+              <input value={obstacleTitle} onChange={function (e) { setObstacleTitle(e.target.value); }} autoFocus placeholder="Obstacle title..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Description (optional)</label>
+              <textarea value={obstacleDesc} onChange={function (e) { setObstacleDesc(e.target.value); }} rows={2} placeholder="Describe the obstacle..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",resize:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function () { setShowAddObstacle(false); }} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={function () { if (!obstacleTitle.trim()) return; addObstacleMut.mutate({ dream: id, title: obstacleTitle.trim(), description: obstacleDesc.trim() }); setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(false); }} disabled={!obstacleTitle.trim()} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:obstacleTitle.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)"),color:obstacleTitle.trim()?"#fff":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.25)"),fontSize:14,fontWeight:600,cursor:obstacleTitle.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>Add Obstacle</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Invite Collaborator Modal ── */}
+      {showShareModal && (
+        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={function () { setShowShareModal(false); }} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
+          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid var(--dp-input-border)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Invite Collaborator</span>
+              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={function () { setShowShareModal(false); }}><X size={16} strokeWidth={2}/></button>
+            </div>
+            <div style={{marginBottom:16}}>
+              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>User ID</label>
+              <input value={shareUserId} onChange={function (e) { setShareUserId(e.target.value); }} autoFocus placeholder="Enter user ID..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={function () { setShowShareModal(false); }} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+              <button onClick={function () { if (!shareUserId.trim()) return; inviteCollabMut.mutate(shareUserId.trim()); setShareUserId(""); setShowShareModal(false); }} disabled={!shareUserId.trim()} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:shareUserId.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)"),color:shareUserId.trim()?"#fff":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.25)"),fontSize:14,fontWeight:600,cursor:shareUserId.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>Invite</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showDeleteConfirm&&(
         <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -336,7 +595,7 @@ export default function DreamDetailScreen(){
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button onClick={()=>setShowDeleteConfirm(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.7)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={()=>{setShowDeleteConfirm(false);navigate(-1);}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EF4444,#DC2626)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+              <button onClick={()=>{setShowDeleteConfirm(false);apiDelete("/api/dreams/dreams/"+id+"/").then(function(){queryClient.invalidateQueries({queryKey:["dreams"]});}).catch(function(){});navigate("/");}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EF4444,#DC2626)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
             </div>
           </div>
         </div>
@@ -448,25 +707,19 @@ export default function DreamDetailScreen(){
                   width: "100%", borderRadius: 12, marginBottom: 16,
                 }} />
                 <div style={{ display: "flex", gap: 8 }}>
-                  <a
-                    href={shareImage}
-                    download="dream-progress.png"
-                    style={{
+                  <button onClick={function () {
+                      fetch(shareImage).then(function (res) { return res.blob(); }).then(function (blob) {
+                        saveBlobFile(blob, "dream-progress.png");
+                      });
+                    }} style={{
                       flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
                       color: "#fff", borderRadius: 14, padding: "12px 0",
-                      textDecoration: "none", fontSize: 14, fontWeight: 600,
+                      border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600,
                       fontFamily: "Inter, sans-serif",
-                    }}
-                  >Download</a>
-                  {navigator.share && (
-                    <button onClick={async () => {
-                      try {
-                        const res = await fetch(shareImage);
-                        const blob = await res.blob();
-                        const file = new File([blob], "dream-progress.png", { type: "image/png" });
-                        await navigator.share({ files: [file], title: "My Dream Progress" });
-                      } catch {}
+                    }}>Download</button>
+                  <button onClick={function () {
+                      nativeShare({ title: "My Dream Progress", text: "Check out my progress on DreamPlanner!" }).catch(function () {});
                     }} style={{
                       flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       background: isLight ? "rgba(139,92,246,0.1)" : "rgba(139,92,246,0.2)",
@@ -474,7 +727,6 @@ export default function DreamDetailScreen(){
                       border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600,
                       fontFamily: "Inter, sans-serif",
                     }}>Share</button>
-                  )}
                 </div>
               </div>
             ) : null}

@@ -1,21 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiDelete } from "../../services/api";
 import { ArrowLeft, Check, X, Clock, UserX, Users, Inbox } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_FRIEND_REQUESTS } from "../../data/mockData";
-
-const RECEIVED_REQUESTS = [
-  { id: "fr1", name: "Emma Wilson", initial: "E", level: 7, mutualFriends: 2, time: "2 hours ago" },
-  { id: "fr2", name: "Noah Chen", initial: "N", level: 11, mutualFriends: 4, time: "1 day ago" },
-  { id: "fr3", name: "Olivia Park", initial: "O", level: 9, mutualFriends: 1, time: "2 days ago" },
-  { id: "fr4", name: "James Lee", initial: "J", level: 5, mutualFriends: 3, time: "3 days ago" },
-];
-
-const SENT_REQUESTS = [
-  { id: "sr1", name: "Maya Rodriguez", initial: "M", level: 8, time: "1 day ago" },
-  { id: "sr2", name: "Ethan Kim", initial: "E", level: 13, time: "3 days ago" },
-  { id: "sr3", name: "Zara Ahmed", initial: "Z", level: 10, time: "5 days ago" },
-];
+import { SkeletonCard } from "../../components/shared/Skeleton";
+import { useToast } from "../../context/ToastContext";
 
 const AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
 
@@ -30,10 +20,41 @@ const glassStyle = {
 
 export default function FriendRequestsScreen() {
   const navigate = useNavigate();
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("received");
   const [receivedStates, setReceivedStates] = useState({});
   const [cancelledSent, setCancelledSent] = useState(new Set());
+
+  var receivedQuery = useQuery({
+    queryKey: ["friend-requests-received"],
+    queryFn: function () { return apiGet("/api/social/friends/requests/pending/"); },
+  });
+
+  var sentQuery = useQuery({
+    queryKey: ["friend-requests-sent"],
+    queryFn: function () { return apiGet("/api/social/friends/requests/sent/"); },
+  });
+
+  var RECEIVED_REQUESTS = ((receivedQuery.data && receivedQuery.data.results) || receivedQuery.data || []).map(function (r) {
+    return Object.assign({}, r, {
+      name: r.name || r.displayName || r.username || "User",
+      initial: r.initial || (r.name || r.displayName || r.username || "U")[0].toUpperCase(),
+      level: r.level || 1,
+      mutualFriends: r.mutualFriends || 0,
+      time: r.time || r.createdAt || "",
+    });
+  });
+
+  var SENT_REQUESTS = ((sentQuery.data && sentQuery.data.results) || sentQuery.data || []).map(function (r) {
+    return Object.assign({}, r, {
+      name: r.name || r.displayName || r.username || "User",
+      initial: r.initial || (r.name || r.displayName || r.username || "U")[0].toUpperCase(),
+      level: r.level || 1,
+      time: r.time || r.createdAt || "",
+    });
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -46,16 +67,38 @@ export default function FriendRequestsScreen() {
     return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
   };
 
-  const handleAccept = (id) => {
-    setReceivedStates((prev) => ({ ...prev, [id]: "accepted" }));
+  var handleAccept = function (id) {
+    setReceivedStates(function (prev) { return Object.assign({}, prev, { [id]: "accepted" }); });
+    apiPost("/api/social/friends/accept/" + id + "/").then(function () {
+      showToast("Friend request accepted!", "success");
+      queryClient.invalidateQueries({ queryKey: ["friend-requests-received"] });
+      queryClient.invalidateQueries({ queryKey: ["friends-online"] });
+    }).catch(function (err) {
+      showToast(err.message || "Failed to accept", "error");
+      setReceivedStates(function (prev) { var n = Object.assign({}, prev); delete n[id]; return n; });
+    });
   };
 
-  const handleDecline = (id) => {
-    setReceivedStates((prev) => ({ ...prev, [id]: "declined" }));
+  var handleDecline = function (id) {
+    setReceivedStates(function (prev) { return Object.assign({}, prev, { [id]: "declined" }); });
+    apiPost("/api/social/friends/reject/" + id + "/").then(function () {
+      showToast("Request declined", "info");
+      queryClient.invalidateQueries({ queryKey: ["friend-requests-received"] });
+    }).catch(function (err) {
+      showToast(err.message || "Failed to decline", "error");
+      setReceivedStates(function (prev) { var n = Object.assign({}, prev); delete n[id]; return n; });
+    });
   };
 
-  const handleCancelSent = (id) => {
-    setCancelledSent((prev) => new Set([...prev, id]));
+  var handleCancelSent = function (id) {
+    setCancelledSent(function (prev) { return new Set([...prev, id]); });
+    apiDelete("/api/social/friends/cancel/" + id + "/").then(function () {
+      showToast("Request cancelled", "info");
+      queryClient.invalidateQueries({ queryKey: ["friend-requests-sent"] });
+    }).catch(function (err) {
+      showToast(err.message || "Failed to cancel", "error");
+      setCancelledSent(function (prev) { var n = new Set(prev); n.delete(id); return n; });
+    });
   };
 
   const pendingReceivedCount = RECEIVED_REQUESTS.filter(
@@ -154,7 +197,10 @@ export default function FriendRequestsScreen() {
       {/* Received Tab */}
       {activeTab === "received" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {RECEIVED_REQUESTS.map((request, index) => {
+          {receivedQuery.isLoading && [1, 2, 3].map(function (i) {
+            return <SkeletonCard key={i} height={110} style={{ borderRadius: 16 }} />;
+          })}
+          {!receivedQuery.isLoading && RECEIVED_REQUESTS.map((request, index) => {
             const state = receivedStates[request.id];
             const avatarColor = getAvatarColor(request.name);
 
@@ -289,7 +335,7 @@ export default function FriendRequestsScreen() {
           })}
 
           {/* Empty received state */}
-          {RECEIVED_REQUESTS.length === 0 && (
+          {!receivedQuery.isLoading && RECEIVED_REQUESTS.length === 0 && (
             <div style={{
               textAlign: "center", padding: "60px 20px",
               opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.3s",
@@ -322,7 +368,10 @@ export default function FriendRequestsScreen() {
       {/* Sent Tab */}
       {activeTab === "sent" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {activeSentRequests.map((request, index) => {
+          {sentQuery.isLoading && [1, 2, 3].map(function (i) {
+            return <SkeletonCard key={i} height={80} style={{ borderRadius: 16 }} />;
+          })}
+          {!sentQuery.isLoading && activeSentRequests.map((request, index) => {
             const avatarColor = getAvatarColor(request.name);
 
             return (
@@ -400,7 +449,7 @@ export default function FriendRequestsScreen() {
           })}
 
           {/* Empty sent state */}
-          {activeSentRequests.length === 0 && (
+          {!sentQuery.isLoading && activeSentRequests.length === 0 && (
             <div style={{
               textAlign: "center", padding: "60px 20px",
               opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.3s",

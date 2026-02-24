@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import { SkeletonCard } from "../../components/shared/Skeleton";
 import {
   ArrowLeft, Settings, Star, Zap, Flame, ChevronRight,
   MessageCircle, Crown, ShoppingBag, Trophy, Bell, Eye,
@@ -9,28 +14,47 @@ import {
   Edit3, Shield, Award, Target, TrendingUp
 } from "lucide-react";
 
-const USER = {
-  name: "Stephane", initial: "S", email: "stephane@rhematek.com",
-  level: 12, xp: 2450, xpToNext: 3000, streak: 7,
-  isPremium: true, subscription: "PRO", renewDate: "Mar 15, 2026",
-  joined: "Nov 2025",
+// ─── Icon map for skill categories returned by API ────────────────
+var SKILL_ICON_MAP = {
+  "health": Heart,
+  "health & fitness": Heart,
+  "career": Briefcase,
+  "career & work": Briefcase,
+  "relationships": Heart,
+  "personal growth": Brain,
+  "personal": Brain,
+  "hobbies": Palette,
+  "hobbies & creativity": Palette,
 };
 
-const SKILLS = [
-  { label: "Health & Fitness", level: 8, xp: 780, color: "#5DE5A8", Icon: Heart },
-  { label: "Career & Work", level: 11, xp: 420, color: "#C4B5FD", Icon: Briefcase },
-  { label: "Relationships", level: 6, xp: 550, color: "#F69A9A", Icon: Heart },
-  { label: "Personal Growth", level: 9, xp: 310, color: "#FCD34D", Icon: Brain },
-  { label: "Hobbies & Creativity", level: 5, xp: 680, color: "#5EEAD4", Icon: Palette },
-];
+var SKILL_COLOR_MAP = {
+  "health": "#5DE5A8",
+  "health & fitness": "#5DE5A8",
+  "career": "#C4B5FD",
+  "career & work": "#C4B5FD",
+  "relationships": "#F69A9A",
+  "personal growth": "#FCD34D",
+  "personal": "#FCD34D",
+  "hobbies": "#5EEAD4",
+  "hobbies & creativity": "#5EEAD4",
+};
 
-const ACHIEVEMENTS = [
-  { label: "7-Day Streak", icon: Flame, color: "#F69A9A" },
-  { label: "Level 10", icon: Star, color: "#FCD34D" },
-  { label: "Dream Master", icon: Target, color: "#C4B5FD" },
-  { label: "50 Tasks", icon: Award, color: "#5DE5A8" },
-  { label: "Social Butterfly", icon: Heart, color: "#5EEAD4" },
-];
+// ─── Icon map for achievement/badge types returned by API ─────────
+var BADGE_ICON_MAP = {
+  "streak": Flame,
+  "level": Star,
+  "dream": Target,
+  "task": Award,
+  "social": Heart,
+};
+
+var BADGE_COLOR_MAP = {
+  "streak": "#F69A9A",
+  "level": "#FCD34D",
+  "dream": "#C4B5FD",
+  "task": "#5DE5A8",
+  "social": "#5EEAD4",
+};
 
 const MENU = [
   { icon: MessageCircle, label: "Conversations", color: "#C4B5FD", path: "/conversations" },
@@ -56,10 +80,76 @@ export default function ProfileScreen() {
   const { resolved, uiOpacity } = useTheme();
   const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
+  var { user, logout } = useAuth();
+  var { showToast } = useToast();
 
   useEffect(() => { setTimeout(() => setMounted(true), 100); }, []);
 
-  const lvlProgress = USER.xp / USER.xpToNext;
+  // ── Fetch gamification data from API ──
+  var gamifQuery = useQuery({
+    queryKey: ["gamification"],
+    queryFn: function () { return apiGet("/api/users/gamification/"); },
+  });
+
+  // ── Fetch stats data from API ──
+  var statsQuery = useQuery({
+    queryKey: ["user-stats"],
+    queryFn: function () { return apiGet("/api/users/stats/"); },
+  });
+
+  // ── Derive profile values from auth user + gamification data ──
+  var displayName = (user && (user.displayName || user.firstName || user.username)) || "User";
+  var initial = displayName.charAt(0).toUpperCase();
+  var email = (user && user.email) || "";
+  var subscription = (user && user.subscription) || "free";
+  var isPremium = subscription.toLowerCase() !== "free";
+  var subscriptionLabel = subscription.toUpperCase();
+
+  var gamif = gamifQuery.data || {};
+  var level = gamif.level || 1;
+  var xp = gamif.xp || 0;
+  var xpToNext = gamif.xpToNext || gamif.xpToNextLevel || 1000;
+  var streak = gamif.streak || gamif.currentStreak || 0;
+  var rank = gamif.rank || gamif.leaderboardRank || null;
+  var renewDate = (user && user.renewDate) || (user && user.subscriptionRenewDate) || "";
+
+  var lvlProgress = xpToNext > 0 ? xp / xpToNext : 0;
+
+  // ── Derive skills from gamification API response ──
+  var rawSkills = gamif.skills || gamif.categorySkills || [];
+  var skills = rawSkills.map(function (s) {
+    var key = (s.label || s.name || s.category || "").toLowerCase();
+    return {
+      label: s.label || s.name || s.category || "Skill",
+      level: s.level || 1,
+      xp: s.xp || 0,
+      maxXp: s.maxXp || s.xpToNext || 1000,
+      color: SKILL_COLOR_MAP[key] || "#C4B5FD",
+      Icon: SKILL_ICON_MAP[key] || Star,
+    };
+  });
+
+  // ── Derive achievements/badges from gamification API response ──
+  var rawBadges = gamif.badges || gamif.achievements || [];
+  var achievements = rawBadges.slice(0, 5).map(function (b) {
+    var key = (b.type || b.category || "").toLowerCase();
+    return {
+      label: b.label || b.name || b.title || "Badge",
+      icon: BADGE_ICON_MAP[key] || Award,
+      color: BADGE_COLOR_MAP[key] || "#C4B5FD",
+    };
+  });
+
+  var isLoadingData = gamifQuery.isLoading || statsQuery.isLoading;
+
+  // ── Sign out handler ──
+  var handleSignOut = function () {
+    logout().then(function () {
+      showToast("Signed out successfully", "success");
+    }).catch(function () {
+      showToast("Sign out failed", "error");
+    });
+  };
 
   const tile = {
     borderRadius: 20,
@@ -96,6 +186,20 @@ export default function ProfileScreen() {
       <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "16px 16px 100px", opacity: uiOpacity, transition: "opacity 0.3s ease" }}>
         <div style={{ width: "100%" }}>
 
+          {/* ══ Loading skeleton while data is fetching ══ */}
+          {isLoadingData ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <SkeletonCard height={220} />
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <SkeletonCard height={140} />
+                <SkeletonCard height={140} />
+              </div>
+              <SkeletonCard height={180} />
+              <SkeletonCard height={120} />
+              <SkeletonCard height={280} />
+            </div>
+          ) : (
+          <>
           {/* ══ BENTO ROW 1: Avatar tile + Stats tiles ══ */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
@@ -175,7 +279,7 @@ export default function ProfileScreen() {
                     fontSize: 32, fontWeight: 800, letterSpacing: "-1px",
                     color: isLight ? "#6D28D9" : "#C4B5FD",
                     textShadow: isLight ? "none" : "0 0 20px rgba(196,181,253,0.3)",
-                  }}>{USER.initial}</span>
+                  }}>{initial}</span>
                 </div>
 
                 {/* Level badge */}
@@ -186,7 +290,7 @@ export default function ProfileScreen() {
                   fontSize: 11, fontWeight: 700, color: "#fff",
                   boxShadow: "0 2px 10px rgba(139,92,246,0.5)",
                   border: isLight ? "2px solid rgba(255,255,255,0.8)" : "2px solid rgba(20,16,40,0.6)",
-                }}>Lv.{USER.level}</div>
+                }}>Lv.{level}</div>
 
                 {/* Edit button */}
                 <button onClick={() => navigate("/edit-profile")} style={{
@@ -206,8 +310,8 @@ export default function ProfileScreen() {
               {/* Name + Badge */}
               <div style={{ textAlign: "center" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 3 }}>
-                  <span style={{ fontSize: 18, fontWeight: 700, color: isLight ? "#1a1535" : "#fff" }}>{USER.name}</span>
-                  {USER.isPremium && (
+                  <span style={{ fontSize: 18, fontWeight: 700, color: isLight ? "#1a1535" : "#fff" }}>{displayName}</span>
+                  {isPremium && (
                     <span style={{
                       padding: "2px 8px", borderRadius: 8,
                       background: isLight ? "linear-gradient(135deg, rgba(180,130,20,0.15), rgba(180,130,20,0.08))" : "linear-gradient(135deg, rgba(252,211,77,0.15), rgba(252,211,77,0.08))",
@@ -215,11 +319,11 @@ export default function ProfileScreen() {
                       fontSize: 10, fontWeight: 700, color: isLight ? "#92400E" : "#FCD34D",
                       display: "flex", alignItems: "center", gap: 3,
                     }}>
-                      <Crown size={10} strokeWidth={2.5} />PRO
+                      <Crown size={10} strokeWidth={2.5} />{subscriptionLabel}
                     </span>
                   )}
                 </div>
-                <div style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)" }}>{USER.email}</div>
+                <div style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)" }}>{email}</div>
               </div>
             </div>
 
@@ -227,13 +331,13 @@ export default function ProfileScreen() {
             <div style={{ ...tile, ...stagger(1), padding: 16, display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
                 <Zap size={14} color={lc("#5DE5A8", isLight)} strokeWidth={2.5} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: isLight ? "rgba(26,21,53,0.65)" : "rgba(255,255,255,0.6)" }}>Level {USER.level}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: isLight ? "rgba(26,21,53,0.65)" : "rgba(255,255,255,0.6)" }}>Level {level}</span>
               </div>
               <div style={{ fontSize: 22, fontWeight: 800, color: isLight ? "#1a1535" : "#fff", marginBottom: 2 }}>
-                {USER.xp.toLocaleString()}
+                {xp.toLocaleString()}
               </div>
               <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.45)", marginBottom: 10 }}>
-                / {USER.xpToNext.toLocaleString()} XP
+                / {xpToNext.toLocaleString()} XP
               </div>
               <div style={{ height: 5, borderRadius: 3, background: isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.06)", overflow: "hidden" }}>
                 <div style={{
@@ -245,7 +349,7 @@ export default function ProfileScreen() {
                 }} />
               </div>
               <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.45)" : "rgba(255,255,255,0.4)", marginTop: 4 }}>
-                {USER.xpToNext - USER.xp} to next
+                {(xpToNext - xp).toLocaleString()} to next
               </div>
             </div>
 
@@ -261,7 +365,7 @@ export default function ProfileScreen() {
                   }}>
                     <Flame size={18} color={lc("#F69A9A", isLight)} strokeWidth={2} />
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: isLight ? "#1a1535" : "#fff" }}>{USER.streak}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: isLight ? "#1a1535" : "#fff" }}>{streak}</div>
                   <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)" }}>Streak</div>
                 </div>
                 {/* Rank */}
@@ -273,7 +377,7 @@ export default function ProfileScreen() {
                   }}>
                     <TrendingUp size={18} color={lc("#C4B5FD", isLight)} strokeWidth={2} />
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: isLight ? "#1a1535" : "#fff" }}>#4</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: isLight ? "#1a1535" : "#fff" }}>{rank ? "#" + rank : "—"}</div>
                   <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)" }}>Rank</div>
                 </div>
               </div>
@@ -281,16 +385,17 @@ export default function ProfileScreen() {
           </div>
 
           {/* ══ SKILLS TILE ══ */}
+          {skills.length > 0 && (
           <div style={{ ...tile, ...stagger(3), padding: 18, marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
               <Shield size={15} color={lc("#C4B5FD", isLight)} strokeWidth={2.5} />
               <span style={{ fontSize: 14, fontWeight: 700, color: isLight ? "#1a1535" : "#fff" }}>Skill Radar</span>
             </div>
-            {SKILLS.map((s, i) => {
-              const prog = s.xp / 1000;
-              const sc = lc(s.color, isLight);
+            {skills.map(function (s, i) {
+              var prog = s.maxXp > 0 ? s.xp / s.maxXp : 0;
+              var sc = lc(s.color, isLight);
               return (
-                <div key={i} style={{ marginBottom: i < SKILLS.length - 1 ? 12 : 0 }}>
+                <div key={i} style={{ marginBottom: i < skills.length - 1 ? 12 : 0 }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <s.Icon size={12} color={sc} strokeWidth={2.5} />
@@ -314,8 +419,10 @@ export default function ProfileScreen() {
               );
             })}
           </div>
+          )}
 
           {/* ══ ACHIEVEMENTS TILE ══ */}
+          {achievements.length > 0 && (
           <div style={{ ...tile, ...stagger(4), padding: 18, marginBottom: 10 }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -328,8 +435,9 @@ export default function ProfileScreen() {
               >See All</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-              {ACHIEVEMENTS.map((a, i) => {
-                const ac = lc(a.color, isLight);
+              {achievements.map(function (a, i) {
+                var ac = lc(a.color, isLight);
+                var BadgeIcon = a.icon;
                 return (
                   <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
                     <div style={{
@@ -337,7 +445,7 @@ export default function ProfileScreen() {
                       background: `${a.color}10`, border: `1px solid ${a.color}15`,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>
-                      <a.icon size={20} color={ac} strokeWidth={1.8} />
+                      <BadgeIcon size={20} color={ac} strokeWidth={1.8} />
                     </div>
                     <span style={{
                       fontSize: 10, fontWeight: 500, textAlign: "center", lineHeight: 1.2,
@@ -348,6 +456,7 @@ export default function ProfileScreen() {
               })}
             </div>
           </div>
+          )}
 
           {/* ══ QUICK LINKS ══ */}
           <div style={{ ...tile, ...stagger(5), overflow: "hidden", marginBottom: 10 }}>
@@ -387,10 +496,10 @@ export default function ProfileScreen() {
           </div>
 
           {/* ══ SUBSCRIPTION INFO ══ */}
-          {USER.isPremium && (
+          {isPremium && renewDate && (
             <div style={{ ...stagger(6), textAlign: "center", marginBottom: 8 }}>
               <span style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.45)" : "rgba(255,255,255,0.35)" }}>
-                PRO renews {USER.renewDate}
+                {subscriptionLabel} renews {renewDate}
               </span>
             </div>
           )}
@@ -398,7 +507,7 @@ export default function ProfileScreen() {
           {/* ══ SIGN OUT ══ */}
           <div style={stagger(7)}>
             <button
-              onClick={() => navigate("/login")}
+              onClick={handleSignOut}
               style={{
                 width: "100%", padding: "14px 0", borderRadius: 16,
                 border: isLight ? "1px solid rgba(246,154,154,0.2)" : "1px solid rgba(246,154,154,0.15)",
@@ -415,6 +524,8 @@ export default function ProfileScreen() {
             </button>
           </div>
 
+          </>
+          )}
         </div>
       </main>
 

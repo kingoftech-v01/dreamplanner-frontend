@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
+import { apiPut, apiPost } from "../../services/api";
+import { takePicture, isNative } from "../../services/native";
 import {
   ArrowLeft, Camera, User, Mail, Clock, MapPin,
   FileText, Check, X, Image, Loader
@@ -14,31 +19,67 @@ import {
  *   inline validation, success toast, unsaved changes warning
  * ═══════════════════════════════════════════════════════════════════ */
 
-const USER = {
-  name:"Stephane", initial:"S", email:"stephane@rhematek.com",
-  timezone:"America/Toronto", bio:"Full-stack dev at Rhematek Solutions. Building dreams one line of code at a time.",
-  avatarUrl:null,
-};
-
 // ═══════════════════════════════════════════════════════════════════
 export default function EditProfileScreen(){
   const navigate=useNavigate();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+  var { user, refreshUser, updateUser } = useAuth();
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const[mounted,setMounted]=useState(false);
-  const[name,setName]=useState(USER.name);
-  const[bio,setBio]=useState(USER.bio);
-  const[timezone,setTimezone]=useState(USER.timezone);
+  const[name,setName]=useState((user && user.displayName) || "");
+  const[bio,setBio]=useState((user && user.bio) || "");
+  const[timezone,setTimezone]=useState((user && user.timezone) || "");
   const[avatarPreview,setAvatarPreview]=useState(null);
+  const[avatarFile,setAvatarFile]=useState(null);
   const[showPicker,setShowPicker]=useState(false);
-  const[saving,setSaving]=useState(false);
-  const[saved,setSaved]=useState(false);
   const[errors,setErrors]=useState({});
   const[focused,setFocused]=useState(null);
   const fileRef=useRef(null);
 
+  var userEmail = (user && user.email) || "";
+  var userInitial = (user && user.displayName) ? user.displayName.charAt(0).toUpperCase() : "?";
+  var userAvatarUrl = (user && user.avatarUrl) || null;
+
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
-  const hasChanges=name!==USER.name||bio!==USER.bio||timezone!==USER.timezone||avatarPreview;
+  var profileMutation = useMutation({
+    mutationFn: function(data) {
+      return apiPut("/api/users/update_profile/", data);
+    },
+    onSuccess: function(data) {
+      updateUser({ displayName: name.trim(), bio: bio.trim(), timezone: timezone });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+      showToast("Profile updated successfully!", "success");
+      navigate(-1);
+    },
+    onError: function(err) {
+      showToast(err.message || "Failed to update profile", "error");
+    },
+  });
+
+  var avatarMutation = useMutation({
+    mutationFn: function(file) {
+      var formData = new FormData();
+      formData.append("file", file);
+      return apiPost("/api/users/upload_avatar/", formData);
+    },
+    onSuccess: function(data) {
+      var newUrl = (data && data.avatarUrl) || null;
+      updateUser({ avatarUrl: newUrl });
+      queryClient.invalidateQueries({ queryKey: ["user"] });
+    },
+    onError: function(err) {
+      showToast(err.message || "Failed to upload avatar", "error");
+    },
+  });
+
+  var saving = profileMutation.isPending || avatarMutation.isPending;
+
+  var origName = (user && user.displayName) || "";
+  var origBio = (user && user.bio) || "";
+  var origTimezone = (user && user.timezone) || "";
+  const hasChanges=name!==origName||bio!==origBio||timezone!==origTimezone||avatarPreview;
 
   const handleFileSelect=(e)=>{
     const file=e.target.files?.[0];
@@ -47,7 +88,7 @@ export default function EditProfileScreen(){
     if(!validTypes.includes(file.type)){setErrors({avatar:"Invalid image type. Use JPEG, PNG, WebP, or GIF."});return;}
     if(file.size>5*1024*1024){setErrors({avatar:"File too large. Maximum 5MB."});return;}
     const reader=new FileReader();
-    reader.onload=(ev)=>{setAvatarPreview(ev.target.result);setShowPicker(false);setErrors({});};
+    reader.onload=(ev)=>{setAvatarPreview(ev.target.result);setAvatarFile(file);setShowPicker(false);setErrors({});};
     reader.readAsDataURL(file);
   };
 
@@ -57,15 +98,21 @@ export default function EditProfileScreen(){
     if(!cleanName)e.name="Display name is required";
     else if(cleanName.length<2)e.name="Name must be at least 2 characters";
     else if(cleanName.length>50)e.name="Name must be under 50 characters";
-    var cleanBio=bio.replace(/[<>`;\\]/g,"");
+    var cleanBio=bio.replace(/[<>"'`;\\]/g,"");
     if(cleanBio.length>200)e.bio="Bio must be under 200 characters";
     setErrors(e);return Object.keys(e).length===0;
   };
 
   const handleSave=()=>{
     if(!validate())return;
-    setSaving(true);
-    setTimeout(()=>{setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2500);},1200);
+    if(avatarFile){
+      avatarMutation.mutate(avatarFile);
+    }
+    profileMutation.mutate({
+      name: name.trim(),
+      bio: bio.trim(),
+      timezone: timezone,
+    });
   };
 
   const Field=({icon:I,label,value,onChange,error,placeholder,disabled,multiline,maxLen,name:fName})=>(
@@ -99,8 +146,8 @@ export default function EditProfileScreen(){
           <button className="dp-ib" aria-label="Go back" onClick={()=>navigate(-1)}><ArrowLeft size={20} strokeWidth={2}/></button>
           <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>Edit Profile</span>
         </div>
-        {hasChanges&&!saved&&<span style={{fontSize:12,color:isLight?"#B45309":"#FCD34D",fontWeight:500}}>Unsaved changes</span>}
-        {saved&&<span style={{fontSize:12,color:isLight?"#059669":"#5DE5A8",fontWeight:600,display:"flex",alignItems:"center",gap:4}}><Check size={14} strokeWidth={2.5}/>Saved!</span>}
+        {hasChanges&&!saving&&<span style={{fontSize:12,color:isLight?"#B45309":"#FCD34D",fontWeight:500}}>Unsaved changes</span>}
+        {saving&&<span style={{fontSize:12,color:isLight?"#059669":"#5DE5A8",fontWeight:600,display:"flex",alignItems:"center",gap:4}}><Loader size={14} strokeWidth={2.5} className="dp-spin"/>Saving...</span>}
       </header>
 
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"24px 16px 32px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
@@ -116,8 +163,10 @@ export default function EditProfileScreen(){
               <div style={{position:"relative",width:120,height:120,borderRadius:"50%",background:isLight?"#f5f3ff":"#0c081a",display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",border:isLight?"4px solid #f5f3ff":"4px solid #0c081a"}}>
                 {avatarPreview?(
                   <img src={avatarPreview} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                ):userAvatarUrl?(
+                  <img src={userAvatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                 ):(
-                  <span style={{fontSize:42,fontWeight:700,color:isLight?"#6D28D9":"#C4B5FD"}}>{USER.initial}</span>
+                  <span style={{fontSize:42,fontWeight:700,color:isLight?"#6D28D9":"#C4B5FD"}}>{userInitial}</span>
                 )}
               </div>
               {/* Camera button */}
@@ -134,7 +183,7 @@ export default function EditProfileScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"100ms"}}>
             <div className="dp-g" style={{padding:20}}>
               <Field icon={User} label="Display Name" name="name" value={name} onChange={setName} error={errors.name} placeholder="Your name"/>
-              <Field icon={Mail} label="Email" name="email" value={USER.email} onChange={()=>{}} disabled placeholder="" />
+              <Field icon={Mail} label="Email" name="email" value={userEmail} onChange={()=>{}} disabled placeholder="" />
               <Field icon={Clock} label="Timezone" name="tz" value={timezone} onChange={setTimezone} placeholder="e.g. America/New_York"/>
               <Field icon={FileText} label="Bio" name="bio" value={bio} onChange={setBio} placeholder="Tell others about yourself..." multiline maxLen={200}/>
             </div>
@@ -156,8 +205,6 @@ export default function EditProfileScreen(){
               onMouseLeave={e=>{if(hasChanges&&!saving)e.currentTarget.style.transform="translateY(0)";}}>
               {saving?(
                 <><Loader size={18} strokeWidth={2} className="dp-spin"/>Saving...</>
-              ):saved?(
-                <><Check size={18} strokeWidth={2.5}/>Saved!</>
               ):(
                 <><Check size={18} strokeWidth={2}/>Save Changes</>
               )}
@@ -177,8 +224,40 @@ export default function EditProfileScreen(){
             <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff",textAlign:"center",marginBottom:16}}>Change Profile Photo</div>
             
             {[
-              {Icon:Camera,label:"Take Photo",color:"#C4B5FD",action:()=>{setShowPicker(false);}},
-              {Icon:Image,label:"Choose from Gallery",color:"#5DE5A8",action:()=>{fileRef.current?.click();}},
+              {Icon:Camera,label:"Take Photo",color:"#C4B5FD",action:()=>{
+                if (isNative) {
+                  takePicture({ source: "camera" }).then(function (photo) {
+                    if (photo && photo.dataUrl) {
+                      setAvatarPreview(photo.dataUrl);
+                      // Convert dataUrl to File for upload
+                      fetch(photo.dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+                        var file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+                        setAvatarFile(file);
+                      });
+                    }
+                    setShowPicker(false);
+                  }).catch(function () { setShowPicker(false); });
+                } else {
+                  setShowPicker(false);
+                  fileRef.current?.click();
+                }
+              }},
+              {Icon:Image,label:"Choose from Gallery",color:"#5DE5A8",action:()=>{
+                if (isNative) {
+                  takePicture({ source: "gallery" }).then(function (photo) {
+                    if (photo && photo.dataUrl) {
+                      setAvatarPreview(photo.dataUrl);
+                      fetch(photo.dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+                        var file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+                        setAvatarFile(file);
+                      });
+                    }
+                    setShowPicker(false);
+                  }).catch(function () { setShowPicker(false); });
+                } else {
+                  fileRef.current?.click();
+                }
+              }},
             ].map(({Icon:I,label,color,action},i)=>(
               <button key={i} onClick={action} style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
@@ -191,7 +270,7 @@ export default function EditProfileScreen(){
             ))}
 
             {avatarPreview&&(
-              <button onClick={()=>{setAvatarPreview(null);setShowPicker(false);}} style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",fontFamily:"inherit",marginTop:4}}
+              <button onClick={()=>{setAvatarPreview(null);setAvatarFile(null);setShowPicker(false);}} style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",fontFamily:"inherit",marginTop:4}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.04)"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                 <div style={{width:40,height:40,borderRadius:12,background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -209,11 +288,6 @@ export default function EditProfileScreen(){
       {/* Hidden file input */}
       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFileSelect}/>
 
-      {/* ═══ SUCCESS TOAST ═══ */}
-      <div style={{position:"fixed",top:80,left:"50%",transform:`translateX(-50%) translateY(${saved?0:-80}px)`,opacity:saved?1:0,transition:"all 0.4s cubic-bezier(0.16,1,0.3,1)",zIndex:400,padding:"10px 20px",borderRadius:14,background:"rgba(93,229,168,0.12)",border:"1px solid rgba(93,229,168,0.2)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",display:"flex",alignItems:"center",gap:8,pointerEvents:"none"}}>
-        <Check size={16} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/>
-        <span style={{fontSize:14,fontWeight:600,color:isLight?"#059669":"#5DE5A8"}}>Profile updated successfully!</span>
-      </div>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

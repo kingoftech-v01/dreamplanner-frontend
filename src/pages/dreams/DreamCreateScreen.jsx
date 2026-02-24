@@ -1,12 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   X, ArrowLeft, ArrowRight, Sparkles, Briefcase, Heart, DollarSign,
   Palette, TrendingUp, Users, Calendar, Clock, Check, ChevronLeft, ChevronRight,
   ChevronDown, Globe, Lock,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { apiPost } from "../../services/api";
+import { useToast } from "../../context/ToastContext";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -56,6 +59,8 @@ const STEPS = ["Details", "Category", "Timeframe", "AI Analysis"];
 
 export default function DreamCreateScreen() {
   const navigate = useNavigate();
+  var queryClient = useQueryClient();
+  var { showToast } = useToast();
   const { resolved } = useTheme(); const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
   const [step, setStep] = useState(0);
@@ -76,30 +81,72 @@ export default function DreamCreateScreen() {
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [pulseOpacity, setPulseOpacity] = useState(0.5);
   const [collapsedGoals, setCollapsedGoals] = useState(new Set([1, 2, 3, 4])); // collapse all except first (index 0)
+  const [submitting, setSubmitting] = useState(false);
+  const [createdDream, setCreatedDream] = useState(null);
+  const [serverError, setServerError] = useState("");
+  var createCalledRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(timer);
   }, []);
 
-  // AI analysis simulation
-  useEffect(() => {
+  // Create dream via API when reaching step 3, then generate AI plan
+  useEffect(function () {
     if (step !== 3) return;
+    if (createCalledRef.current) return;
+    createCalledRef.current = true;
     setAnalyzing(true);
+    setSubmitting(true);
     setAnalysisProgress(0);
+    setServerError("");
 
-    const interval = setInterval(() => {
-      setAnalysisProgress((prev) => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setTimeout(() => setAnalyzing(false), 400);
-          return 100;
-        }
-        return prev + Math.random() * 12 + 3;
+    // Compute target date
+    var targetDate = null;
+    if (customDate) {
+      targetDate = customDate.year + "-" + String(customDate.month + 1).padStart(2, "0") + "-" + String(customDate.day).padStart(2, "0");
+    } else if (timeframe) {
+      var now = new Date();
+      var months = timeframe === "1m" ? 1 : timeframe === "3m" ? 3 : timeframe === "6m" ? 6 : 12;
+      now.setMonth(now.getMonth() + months);
+      targetDate = now.toISOString().split("T")[0];
+    }
+
+    // Progress animation while API works
+    var progressInterval = setInterval(function () {
+      setAnalysisProgress(function (prev) { return Math.min(prev + Math.random() * 8 + 2, 90); });
+    }, 300);
+
+    apiPost("/api/dreams/dreams/", {
+      title: title.trim(),
+      description: description.trim(),
+      category: category,
+      targetDate: targetDate,
+      isPublic: visibility === "public",
+    }).then(function (dream) {
+      // Dream created — now generate AI plan
+      return apiPost("/api/dreams/dreams/" + dream.id + "/generate_plan/").then(function (plan) {
+        return Object.assign({}, dream, plan);
       });
-    }, 200);
+    }).then(function (result) {
+      clearInterval(progressInterval);
+      setAnalysisProgress(100);
+      setCreatedDream(result);
+      setSubmitting(false);
+      queryClient.invalidateQueries({ queryKey: ["dreams"] });
+      setTimeout(function () { setAnalyzing(false); }, 400);
+    }).catch(function (err) {
+      clearInterval(progressInterval);
+      setAnalysisProgress(0);
+      setSubmitting(false);
+      setServerError(err.message || "Failed to create dream. Please try again.");
+      showToast(err.message || "Failed to create dream. Please try again.", "error");
+      setAnalyzing(false);
+      // Reset so user can retry by going back to step 2
+      createCalledRef.current = false;
+    });
 
-    return () => clearInterval(interval);
+    return function () { clearInterval(progressInterval); };
   }, [step]);
 
   // Pulse animation for sparkle
@@ -604,6 +651,27 @@ export default function DreamCreateScreen() {
           {/* STEP 3: AI Analysis */}
           {step === 3 && (
             <div style={stagger(3)}>
+              {serverError && (
+                <div style={{
+                  background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                  borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                  fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+                }}>
+                  {serverError}
+                  <button
+                    onClick={function () { setStep(2); setServerError(""); }}
+                    style={{
+                      display: "block", marginTop: 10, padding: "8px 16px",
+                      borderRadius: 10, border: "1px solid rgba(239,68,68,0.3)",
+                      background: "rgba(239,68,68,0.15)", color: "#FCA5A5",
+                      fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
+                      cursor: "pointer", transition: "background 0.2s ease",
+                    }}
+                  >
+                    Go back and retry
+                  </button>
+                </div>
+              )}
               {analyzing ? (
                 <div style={{
                   display: "flex", flexDirection: "column",
@@ -692,8 +760,8 @@ export default function DreamCreateScreen() {
                     }}>
                       Based on your dream "<strong style={{ color: "var(--dp-text)" }}>{title || "your dream"}</strong>",
                       I've created a structured plan with{" "}
-                      <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>5 goals</strong> and{" "}
-                      <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>18 actionable tasks</strong> spread over your selected timeframe.
+                      <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>{createdDream && createdDream.goals ? createdDream.goals.length : 5} goals</strong> and{" "}
+                      <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>{createdDream && createdDream.goals ? createdDream.goals.reduce(function (s, g) { return s + (g.tasks ? g.tasks.length : 0); }, 0) : 18} actionable tasks</strong> spread over your selected timeframe.
                     </p>
                   </div>
 
@@ -706,7 +774,9 @@ export default function DreamCreateScreen() {
                     Suggested Goals
                   </p>
 
-                  {[
+                  {(createdDream && createdDream.goals && createdDream.goals.length > 0
+                    ? createdDream.goals.map(function (g) { return { title: g.title, weeks: "", tasks: (g.tasks || []).map(function (t) { return t.title; }) }; })
+                    : [
                     { title: "Foundation & Research", weeks: "1-3", tasks: [
                       "Research industry trends and competitors",
                       "Define clear objectives and milestones",
@@ -735,7 +805,7 @@ export default function DreamCreateScreen() {
                       "Final review and polish",
                       "Launch or present your achievement",
                     ]},
-                  ].map((goal, idx) => {
+                  ]).map((goal, idx) => {
                     const isCollapsed = collapsedGoals.has(idx);
                     const toggleGoal = () => {
                       setCollapsedGoals((prev) => {
@@ -908,7 +978,7 @@ export default function DreamCreateScreen() {
           )}
           {step === 3 && !analyzing && (
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate(createdDream ? "/dream/" + createdDream.id : "/")}
               style={{
                 width: "100%",
                 height: 50, borderRadius: 14,
@@ -930,7 +1000,7 @@ export default function DreamCreateScreen() {
               }}
             >
               <Sparkles size={18} />
-              Create Dream
+              {createdDream ? "View Dream" : "Create Dream"}
             </button>
           )}
         </div>

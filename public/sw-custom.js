@@ -5,6 +5,24 @@
  * foreground like a phone call when a task is due.
  * ═══════════════════════════════════════════════════════════════════ */
 
+/* ═══ Push event — show system notification ═══ */
+self.addEventListener("push", function (event) {
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data ? event.data.text() : "" }; }
+  event.waitUntil(
+    self.registration.showNotification(data.title || "DreamPlanner", {
+      body: data.body || "",
+      icon: "/favicon.svg",
+      badge: "/favicon.svg",
+      tag: data.tag || "dp-notification",
+      data: { url: data.action_url || data.url || "/" },
+      vibrate: [200, 100, 200],
+      actions: data.actions || [],
+    })
+  );
+});
+
+/* ═══ Notification click — focus or open app ═══ */
 self.addEventListener("notificationclick", function (event) {
   event.notification.close();
 
@@ -23,7 +41,7 @@ self.addEventListener("notificationclick", function (event) {
       }
       // Otherwise, open the app
       if (clients.openWindow) {
-        return clients.openWindow("/");
+        return clients.openWindow("./");
       }
     })
   );

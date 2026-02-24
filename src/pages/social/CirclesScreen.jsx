@@ -1,5 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiPost } from "../../services/api";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import {
   ArrowLeft, Users, Plus, Flame, Trophy, MessageSquare,
   Search, ChevronRight, UserPlus, Check
@@ -7,7 +10,6 @@ import {
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
-import { MOCK_CIRCLES } from "../../data/mockData";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Circles Screen
@@ -30,30 +32,57 @@ const glass = {
   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
 };
 
+function normalizeCircles(data) {
+  var list = Array.isArray(data) ? data : (data && data.results ? data.results : []);
+  return list.map(function (c) {
+    return {
+      id: c.id,
+      name: c.name || "",
+      description: c.description || "",
+      category: c.category || "Growth",
+      memberCount: c.memberCount != null ? c.memberCount : 0,
+      posts: c.posts != null ? c.posts : 0,
+      activeChallenge: c.activeChallenge || null,
+      isJoined: c.isJoined != null ? c.isJoined : false,
+    };
+  });
+}
+
 export default function CirclesScreen() {
   const navigate = useNavigate();
   const { resolved } = useTheme(); const isLight = resolved === "light";
   const { showToast } = useToast();
+  var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState("my"); // "my" | "discover"
-  const [joinedCircles, setJoinedCircles] = useState(
-    () => new Set(MOCK_CIRCLES.filter((c) => c.isJoined).map((c) => c.id))
-  );
+  var [justJoinedSet, setJustJoinedSet] = useState(function () { return new Set(); });
+
+  var myCirclesInf = useInfiniteList({ queryKey: ["circles", "my"], url: "/api/circles/?filter=my", limit: 20 });
+  var discoverInf = useInfiniteList({ queryKey: ["circles", "discover"], url: "/api/circles/?filter=recommended", limit: 20 });
+
+  var myCircles = normalizeCircles(myCirclesInf.items);
+  var discoverCircles = normalizeCircles(discoverInf.items);
 
   useEffect(() => {
     setTimeout(() => setMounted(true), 100);
   }, []);
 
-  const myCircles = MOCK_CIRCLES.filter((c) => joinedCircles.has(c.id));
-  const discoverCircles = MOCK_CIRCLES.filter((c) => !joinedCircles.has(c.id));
+  var joinMut = useMutation({
+    mutationFn: function (circleId) { return apiPost("/api/circles/" + circleId + "/join/"); },
+    onSuccess: function (_data, circleId) {
+      setJustJoinedSet(function (prev) {
+        var next = new Set(prev);
+        next.add(circleId);
+        return next;
+      });
+      queryClient.invalidateQueries({ queryKey: ["circles"] });
+      showToast("Joined circle!", "success");
+    },
+    onError: function (err) { showToast(err.message || "Failed to join", "error"); },
+  });
 
-  const handleJoin = (id) => {
-    setJoinedCircles((prev) => {
-      const next = new Set(prev);
-      next.add(id);
-      return next;
-    });
-  };
+  var isLoading = (activeTab === "my" && myCirclesInf.isLoading) ||
+    (activeTab === "discover" && discoverInf.isLoading);
 
   const tabs = [
     { key: "my", label: "My Circles" },
@@ -148,7 +177,31 @@ export default function CirclesScreen() {
         </div>
 
         {/* Circle cards */}
-        {currentList.length === 0 ? (
+        {isLoading ? (
+          <div
+            style={{
+              textAlign: "center",
+              padding: "60px 20px",
+              opacity: mounted ? 1 : 0,
+              transition: "all 0.5s ease 0.2s",
+            }}
+          >
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                border: "3px solid var(--dp-glass-border)",
+                borderTopColor: isLight ? "#8B5CF6" : "#C4B5FD",
+                borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+                margin: "0 auto 16px",
+              }}
+            />
+            <p style={{ fontSize: 14, color: "var(--dp-text-tertiary)" }}>
+              Loading circles...
+            </p>
+          </div>
+        ) : currentList.length === 0 ? (
           <div
             style={{
               textAlign: "center",
@@ -174,7 +227,7 @@ export default function CirclesScreen() {
             const categoryColor =
               CATEGORY_COLORS[circle.category] || "#C4B5FD";
             const justJoined =
-              activeTab === "discover" && joinedCircles.has(circle.id);
+              activeTab === "discover" && (circle.isJoined || justJoinedSet.has(circle.id));
 
             return (
               <div
@@ -331,9 +384,9 @@ export default function CirclesScreen() {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleJoin(circle.id);
+                          joinMut.mutate(circle.id);
                         }}
-                        disabled={justJoined}
+                        disabled={justJoined || joinMut.isPending}
                         style={{
                           marginLeft: "auto",
                           padding: "6px 14px",
@@ -377,10 +430,13 @@ export default function CirclesScreen() {
             );
           })
         )}
+        <div ref={myCirclesInf.sentinelRef} style={{height:1}} />
+        <div ref={discoverInf.sentinelRef} style={{height:1}} />
+        {(activeTab === "my" ? myCirclesInf.loadingMore : discoverInf.loadingMore) && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
 
         {/* Create Circle FAB */}
         <button
-          onClick={() => showToast("Create Circle — coming soon!", "info")}
+          onClick={() => navigate("/circles/create")}
           style={{
             position: "fixed",
             bottom: 28,

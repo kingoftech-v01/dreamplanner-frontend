@@ -2,11 +2,14 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Play, Pause, Check, Zap, Sparkles, Bot,
-  Timer, RotateCcw
+  Timer, RotateCcw, Loader
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_DREAMS } from "../../data/mockData";
+import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — 2-Minute Micro Start Screen
@@ -35,14 +38,57 @@ export default function MicroStartScreen() {
   const [showParticles, setShowParticles] = useState(false);
   const intervalRef = useRef(null);
 
-  const dream = MOCK_DREAMS.find((d) => d.id === dreamId) || MOCK_DREAMS[0];
+  var queryClient = useQueryClient();
+  var { showToast } = useToast();
+
+  // ── Fetch dream details ────────────────────────────────────────────
+  var dreamQuery = useQuery({
+    queryKey: ["dream", dreamId],
+    queryFn: function () {
+      return apiGet("/api/dreams/dreams/" + dreamId + "/");
+    },
+  });
+  var dream = dreamQuery.data || {};
+
+  // ── Generate micro action via AI ───────────────────────────────────
+  var [microTask, setMicroTask] = useState(null);
+
+  var microActionMutation = useMutation({
+    mutationFn: function () {
+      return apiPost("/api/dreams/dreams/" + dreamId + "/generate_two_minute_start/");
+    },
+    onSuccess: function (data) {
+      setMicroTask(data);
+    },
+    onError: function () {
+      // Fall back to a generic task with no ID
+      setMicroTask({ title: "Take a small step toward your dream" });
+    },
+  });
+
+  // ── Complete task mutation ─────────────────────────────────────────
+  var completeTaskMutation = useMutation({
+    mutationFn: function () {
+      if (microTask && microTask.id) {
+        return apiPost("/api/dreams/tasks/" + microTask.id + "/complete/");
+      }
+      return Promise.resolve();
+    },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["dream", dreamId] });
+    },
+    onError: function (err) {
+      showToast(err.message || "Failed to save completion", "error");
+    },
+  });
 
   useEffect(() => {
     setTimeout(() => setMounted(true), 100);
+    microActionMutation.mutate();
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startTimer = useCallback(() => {
     setStatus("running");
@@ -53,6 +99,7 @@ export default function MicroStartScreen() {
           intervalRef.current = null;
           setStatus("completed");
           setShowParticles(true);
+          completeTaskMutation.mutate();
           // Animate XP counter
           let count = 0;
           const xpInterval = setInterval(() => {
@@ -65,7 +112,7 @@ export default function MicroStartScreen() {
         return prev - 1;
       });
     }, 1000);
-  }, []);
+  }, [completeTaskMutation]);
 
   const pauseTimer = () => {
     setStatus("paused");
@@ -87,6 +134,7 @@ export default function MicroStartScreen() {
     setStatus("completed");
     setShowParticles(true);
     setSeconds(0);
+    completeTaskMutation.mutate();
     let count = 0;
     const xpInterval = setInterval(() => {
       count += 1;
@@ -106,6 +154,36 @@ export default function MicroStartScreen() {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - progress);
+
+  // ── Loading & error states ──────────────────────────────────────────
+  if (dreamQuery.isLoading) {
+    return (
+      <PageLayout showNav={false}>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          minHeight: "80vh",
+        }}>
+          <Loader
+            size={28}
+            color={isLight ? "#6D28D9" : "#C4B5FD"}
+            style={{ animation: "spin 1s linear infinite" }}
+          />
+          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (dreamQuery.isError) {
+    return (
+      <PageLayout showNav={false}>
+        <ErrorState
+          message={dreamQuery.error?.message || "Failed to load dream"}
+          onRetry={function () { dreamQuery.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout showNav={false}>
@@ -560,7 +638,7 @@ export default function MicroStartScreen() {
                     marginBottom: 12,
                   }}
                 >
-                  Write down 3 API endpoints you need to build today
+                  {microTask?.title || "Take a small step toward your dream"}
                 </p>
                 <div
                   style={{

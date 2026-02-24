@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { clipboardWrite } from "../../services/native";
+import { apiGet } from "../../services/api";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import BottomNav from "../../components/shared/BottomNav";
 import { DreamCardSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
 import GlobalSearch from "../../components/shared/GlobalSearch";
@@ -29,23 +34,6 @@ import {
  * - FAB is the single entry point for creating dreams
  * ═══════════════════════════════════════════════════════════════════ */
 
-// ─── MOCK DATA ───────────────────────────────────────────────────
-const MOCK_USER = {
-  displayName: "Stephane",
-  email: "stephane@rhematek.com",
-  level: 12,
-  xp: 2450,
-  xpToNext: 3000,
-  streakDays: 7,
-  rank: "Achiever",
-};
-
-const MOCK_DREAMS = [
-  { id:"1", title:"Launch my SaaS Platform", description:"Build and deploy a production-grade multi-tenant HR platform with 10k users", category:"career", progress:62, goalCount:8, completedGoalCount:5, status:"active", daysLeft: 45 },
-  { id:"2", title:"Learn Piano in 6 Months", description:"Master 10 worship songs and be able to play in church by summer", category:"hobbies", progress:35, goalCount:6, completedGoalCount:2, status:"active", daysLeft: 120 },
-  { id:"3", title:"Run a Half Marathon", description:"Train progressively and complete a 21km race in under 2 hours", category:"health", progress:18, goalCount:5, completedGoalCount:1, status:"active", daysLeft: 90 },
-  { id:"4", title:"Save $15,000 Emergency Fund", description:"Build a solid financial safety net within 12 months", category:"finance", progress:88, goalCount:4, completedGoalCount:3, status:"active", daysLeft: 30 },
-];
 
 
 // ─── CATEGORY CONFIG ─────────────────────────────────────────────
@@ -68,20 +56,7 @@ const CATEGORY_COLORS = {
   relationships: "#14B8A6",
 };
 
-// Mock data - generate deterministic activity data
-const ACTIVITY_DATA = Array.from({ length: 28 }, (_, i) => {
-  const seed = (i * 7 + 13) % 5; // deterministic 0-4
-  return seed;
-});
-const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
-
-// Generate mock sparkline data for each dream
-const SPARKLINE_DATA = {
-  "1": [30, 35, 42, 48, 52, 58, 62],
-  "2": [10, 15, 20, 28, 32, 38, 45],
-  "3": [5, 12, 18, 22, 25, 28, 35],
-  "4": [60, 63, 68, 72, 75, 80, 85],
-};
+var DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 
 const ACTIONS = [
@@ -93,72 +68,77 @@ const ACTIONS = [
 
 // ═══════════════════════════════════════════════════════════════════
 export default function DreamPlannerHome() {
-  const navigate = useNavigate();
-  const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
-  const { requestNotificationPermission } = useTaskCall();
-  const { showToast } = useToast();
+  var navigate = useNavigate();
+  var{resolved,uiOpacity}=useTheme();var isLight=resolved==="light";
+  var { requestNotificationPermission } = useTaskCall();
+  var { showToast } = useToast();
+  var { user } = useAuth();
+
+  // ── Fetch dreams from API (infinite scroll) ──
+  var dreamsInf = useInfiniteList({ queryKey: ["dreams"], url: "/api/dreams/dreams/", limit: 30 });
+
+  // ── Fetch dashboard stats ──
+  var dashboardQuery = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: function () { return apiGet("/api/users/dashboard/"); },
+  });
+
+  // ── Fetch unread notification count ──
+  var notifQuery = useQuery({
+    queryKey: ["unread-count"],
+    queryFn: function () { return apiGet("/api/notifications/unread_count/"); },
+    refetchInterval: 30000, // refresh every 30s
+  });
 
   // Redirect to onboarding if user hasn't completed it
-  useEffect(() => {
-    if (!localStorage.getItem("dp-onboarded")) {
+  useEffect(function () {
+    if (user && !user.hasOnboarded && !localStorage.getItem("dp-onboarded")) {
       navigate("/onboarding", { replace: true });
     }
-  }, []);
+  }, [user]);
 
   // ── Request notification permission once ──
-  useEffect(() => {
+  useEffect(function () {
     if (localStorage.getItem("dp-notif-asked")) return;
-    const t = setTimeout(() => {
-      requestNotificationPermission().then(() => {
+    var t = setTimeout(function () {
+      requestNotificationPermission().then(function () {
         localStorage.setItem("dp-notif-asked", "true");
       });
     }, 5000);
-    return () => clearTimeout(t);
+    return function () { clearTimeout(t); };
   }, []);
 
-  const [loading, setLoading] = useState(true);
-  const [mounted, setMounted] = useState(false);
-  const [hoveredDream, setHoveredDream] = useState(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [notifCount, setNotifCount] = useState(() => {
-    try {
-      const stored = localStorage.getItem("dp-unread-notifs");
-      return stored !== null ? parseInt(stored, 10) : 3;
-    } catch { return 3; }
-  });
+  var [mounted, setMounted] = useState(false);
+  var [hoveredDream, setHoveredDream] = useState(null);
+  var [searchOpen, setSearchOpen] = useState(false);
 
-  const [streak] = useState(() => {
-    const saved = localStorage.getItem("dp-streak");
-    return saved ? parseInt(saved) : 7; // Default 7-day streak
-  });
-  const bestStreak = 14; // Mock best streak
+  useEffect(function () { setTimeout(function () { setMounted(true); }, 100); }, []);
 
-  useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 400);
-    return () => clearTimeout(t);
-  }, []);
+  // ── Derive data from queries ──
+  var dreams = dreamsInf.items;
+  var dashboard = dashboardQuery.data || {};
+  var notifCount = (notifQuery.data && notifQuery.data.count) || notifQuery.data || 0;
+  if (typeof notifCount === "object") notifCount = notifCount.unreadCount || 0;
 
-  useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
+  // ── User data with fallbacks ──
+  var u = {
+    displayName: (user && user.displayName) || (user && user.email) || "Dreamer",
+    email: (user && user.email) || "",
+    level: (dashboard.level) || (user && user.level) || 1,
+    xp: (dashboard.xp) || (user && user.xp) || 0,
+    xpToNext: (dashboard.xpToNext) || (user && user.xpToNext) || 1000,
+    streakDays: (dashboard.streakDays) || (user && user.streakDays) || 0,
+    rank: (dashboard.rank) || (user && user.rank) || "Starter",
+  };
+  var levelPct = u.xpToNext > 0 ? Math.round((u.xp / u.xpToNext) * 100) : 0;
 
-  useEffect(() => {
-    const sync = () => {
-      try {
-        const v = localStorage.getItem("dp-unread-notifs");
-        if (v !== null) setNotifCount(parseInt(v, 10));
-      } catch {}
-    };
-    window.addEventListener("focus", sync);
-    window.addEventListener("visibilitychange", sync);
-    sync();
-    return () => {
-      window.removeEventListener("focus", sync);
-      window.removeEventListener("visibilitychange", sync);
-    };
-  }, []);
+  var streak = u.streakDays;
+  var bestStreak = (dashboard.bestStreak) || (user && user.bestStreak) || 0;
 
+  // ── Activity heatmap from dashboard ──
+  var activityData = (dashboard.activityHeatmap) || Array.from({ length: 28 }, function () { return 0; });
 
-  const u = MOCK_USER;
-  const levelPct = Math.round((u.xp / u.xpToNext) * 100);
+  var loading = dreamsInf.isLoading;
 
   if (loading) return (
       <div style={{ width: "100%", padding: "20px 16px" }}>
@@ -322,7 +302,7 @@ export default function DreamPlannerHome() {
                 <span style={{
                   padding:"2px 8px",borderRadius:10,fontSize:12,fontWeight:600,
                   background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.72)",
-                }}>{MOCK_DREAMS.length}</span>
+                }}>{dreams.length}</span>
               </div>
               <button onClick={()=>navigate("/dream/create")} className="dp-gh" style={{
                 display:"flex",alignItems:"center",gap:5,padding:"7px 14px",
@@ -339,10 +319,11 @@ export default function DreamPlannerHome() {
           </div>
 
           {/* ── Dream Cards ── */}
-          {MOCK_DREAMS.map((dream,i)=>{
-            const cat = CATS[dream.category] || {Icon:Sparkles,color:"#8B5CF6",label:"Other"};
-            const CatIcon = cat.Icon;
-            const isHovered = hoveredDream === dream.id;
+          {dreams.map(function (dream, i) {
+            var cat = CATS[dream.category] || {Icon:Sparkles,color:"#8B5CF6",label:"Other"};
+            var CatIcon = cat.Icon;
+            var isHovered = hoveredDream === dream.id;
+            var daysLeft = dream.daysLeft || (dream.targetDate ? Math.max(0, Math.ceil((new Date(dream.targetDate) - new Date()) / 86400000)) : null);
             return(
               <div key={dream.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${600+i*100}ms`}}>
                 <div
@@ -393,28 +374,29 @@ export default function DreamPlannerHome() {
                         <Target size={12} strokeWidth={2.5} /> {dream.completedGoalCount}/{dream.goalCount} goals
                       </span>
                       <span style={{display:"flex",alignItems:"center",gap:4}}>
-                        <Clock size={12} strokeWidth={2.5} /> {dream.daysLeft}d left
+                        <Clock size={12} strokeWidth={2.5} /> {daysLeft != null ? daysLeft + "d left" : ""}
                       </span>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       {/* Sparkline */}
-                      {(() => {
-                        const data = SPARKLINE_DATA[dream.id] || [0,10,20,30,40,50,60];
-                        const max = Math.max(...data);
-                        const min = Math.min(...data);
-                        const range = max - min || 1;
-                        const w = 60, h = 20;
-                        const points = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`).join(" ");
-                        const sparkColor = CATEGORY_COLORS[dream.category] || "#8B5CF6";
+                      {(function () {
+                        var data = dream.progressHistory || [0, Math.round(dream.progress * 0.5), dream.progress];
+                        if (data.length < 2) data = [0, dream.progress];
+                        var max = Math.max.apply(null, data);
+                        var min = Math.min.apply(null, data);
+                        var range = max - min || 1;
+                        var w = 60, h = 20;
+                        var points = data.map(function (v, idx) { return (idx / (data.length - 1)) * w + "," + (h - ((v - min) / range) * h); }).join(" ");
+                        var sparkColor = CATEGORY_COLORS[dream.category] || "#8B5CF6";
                         return (
                           <svg width={w} height={h} style={{ flexShrink: 0 }}>
                             <defs>
-                              <linearGradient id={`sp-${dream.id}`} x1="0" y1="0" x2="0" y2="1">
+                              <linearGradient id={"sp-" + dream.id} x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="0%" stopColor={sparkColor} stopOpacity="0.3" />
                                 <stop offset="100%" stopColor={sparkColor} stopOpacity="0" />
                               </linearGradient>
                             </defs>
-                            <polygon points={`0,${h} ${points} ${w},${h}`} fill={`url(#sp-${dream.id})`} />
+                            <polygon points={"0," + h + " " + points + " " + w + "," + h} fill={"url(#sp-" + dream.id + ")"} />
                             <polyline points={points} fill="none" stroke={sparkColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
                         );
@@ -432,7 +414,7 @@ export default function DreamPlannerHome() {
                     {[
                       {I:Bot,t:"Coach",action:()=>navigate("/chat/dream-"+dream.id)},
                       {I:Pencil,t:"Edit",action:()=>navigate("/dream/"+dream.id+"/edit")},
-                      {I:Share2,t:"Share",action:()=>{navigator.clipboard.writeText("Check out my dream on DreamPlanner: "+dream.title).catch(()=>{});showToast("Copied!","success");}},
+                      {I:Share2,t:"Share",action:()=>{clipboardWrite("Check out my dream on DreamPlanner: "+dream.title);showToast("Copied!","success");}},
                     ].map(({I,t,action},j)=>(
                       <button key={j} title={t} aria-label={t} style={{
                         width:32,height:32,borderRadius:10,border:isLight?"1px solid rgba(139,92,246,0.18)":"1px solid rgba(255,255,255,0.1)",
@@ -452,6 +434,10 @@ export default function DreamPlannerHome() {
               </div>
             );
           })}
+
+          {/* ── Infinite scroll sentinel + loading ── */}
+          <div ref={dreamsInf.sentinelRef} style={{height:1}} />
+          {dreamsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more dreams…</div>}
 
           {/* ═══ ACTIVITY HEATMAP ═══ */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"1000ms"}}>
@@ -473,7 +459,7 @@ export default function DreamPlannerHome() {
               {[0, 1, 2, 3].map(week => (
                 <div key={week} style={{ display: "flex", gap: 3, marginBottom: 3 }}>
                   {[0, 1, 2, 3, 4, 5, 6].map(day => {
-                    const level = ACTIVITY_DATA[week * 7 + day];
+                    var level = activityData[week * 7 + day] || 0;
                     const colors = isLight
                       ? ["rgba(139,92,246,0.06)", "rgba(139,92,246,0.15)", "rgba(139,92,246,0.3)", "rgba(139,92,246,0.5)", "rgba(139,92,246,0.75)"]
                       : ["rgba(139,92,246,0.08)", "rgba(139,92,246,0.2)", "rgba(139,92,246,0.35)", "rgba(139,92,246,0.55)", "rgba(139,92,246,0.8)"];
@@ -522,7 +508,7 @@ export default function DreamPlannerHome() {
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────
 function StatBlock({Icon,value,label,color}){
-  const{resolved}=useTheme();const isLight=resolved==="light";
+  var{resolved}=useTheme();var isLight=resolved==="light";
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
       <div style={{filter:`drop-shadow(0 0 6px ${color}40)`}}>
@@ -535,6 +521,6 @@ function StatBlock({Icon,value,label,color}){
 }
 
 function Divider(){
-  const{resolved}=useTheme();const isLight=resolved==="light";
+  var{resolved}=useTheme();var isLight=resolved==="light";
   return <div style={{width:1,height:40,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}}/>;
 }

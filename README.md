@@ -1,12 +1,12 @@
-# DreamPlanner
+# DreamPlanner Frontend
 
-A gamified goal-tracking PWA where users create "dreams," break them into AI-generated goals and tasks, and track progress with XP, streaks, achievements, and social accountability.
+A gamified goal-tracking PWA + native Android app where users create "dreams," break them into AI-generated goals and tasks, and track progress with XP, streaks, achievements, and social accountability.
 
 ![React](https://img.shields.io/badge/React-18.3-61DAFB?logo=react)
 ![Vite](https://img.shields.io/badge/Vite-6.0-646CFF?logo=vite)
+![Capacitor](https://img.shields.io/badge/Capacitor-8-119EFF?logo=capacitor)
 ![PWA](https://img.shields.io/badge/PWA-ready-5A0FC8)
 ![DOMPurify](https://img.shields.io/badge/DOMPurify-secured-10B981)
-![Status](https://img.shields.io/badge/status-frontend_prototype-orange)
 
 ---
 
@@ -21,34 +21,73 @@ npm install
 npm run dev
 ```
 
-The app opens automatically at `http://localhost:3000`. No backend or API keys required — all data is mocked.
-
 | Command | Description |
 | --- | --- |
-| `npm run dev` | Vite dev server on port 3000, auto-opens browser |
+| `npm run dev` | Vite dev server on port 3000 |
 | `npm run build` | Production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
+| `npm run build:android` | Build + sync + open Android Studio |
+
+### Environment Variables
+
+Create `.env` or `.env.local`:
+
+```env
+VITE_API_BASE=https://your-api-domain.com
+VITE_WS_BASE=wss://your-api-domain.com
+
+# Optional: TURN server for WebRTC NAT traversal
+VITE_TURN_URL=turn:turn.example.com:3478
+VITE_TURN_USERNAME=myuser
+VITE_TURN_CREDENTIAL=mypassword
+```
 
 ---
 
-## Project Overview
+## Architecture
 
-DreamPlanner helps users define big-picture goals ("dreams"), which are automatically broken into milestones, goals, and tasks. Users earn XP for completing tasks, maintain daily streaks, unlock achievements, and compete on leaderboards. Social features include accountability buddies, circles, an activity feed, and AI coaching conversations.
+### Backend Integration
 
-**Current status:** Frontend prototype. All data comes from `src/data/mockData.js`. There is no backend, no real authentication, no AI integration, and no payment processing. The PWA infrastructure (offline caching, push notifications, service worker) is fully functional.
+The frontend connects to a Django REST Framework + Django Channels backend. All API calls go through `src/services/api.js` which handles:
 
----
+- **Token auth** — `Authorization: Token <key>` header on every request
+- **Case transforms** — camelCase (JS) <-> snake_case (Python) automatic conversion
+- **Token persistence** — `@capacitor/preferences` on native, `localStorage` on web
+- **CSRF** — auto-attached on mutating requests
 
-## Tech Stack
+### Provider Tree (src/main.jsx)
 
-| Dependency | Version | Purpose |
+```text
+<HashRouter>                  Hash-based routing for Capacitor WebView
+  <QueryClientProvider>       React Query (2min stale time, 1 retry)
+    <AuthProvider>            Token auth, login/register/logout, user state
+      <I18nProvider>          Locale state (en/fr), provides useT()
+        <ThemeProvider>       Visual theme, sun position, tokens
+          <TaskCallProvider>  Task reminders, native notifications
+            <ToastProvider>   Toast stack
+              <NetworkProvider>  Online/offline detection
+                <App />
+```
+
+### Real-Time Communication
+
+| WebSocket Path | Consumer | Purpose |
 | --- | --- | --- |
-| React | 18.3 | UI framework |
-| React Router | 6.28 | Client-side routing (38 routes) |
-| Vite | 6.0.3 | Build tool + dev server |
-| vite-plugin-pwa | 1.2 | PWA manifest + Workbox service worker |
-| Lucide React | 0.468 | Icon library |
-| DOMPurify | 3.3.1 | HTML sanitization for AI chat messages |
+| `ws/conversations/<id>/` | `ChatConsumer` | AI chat with streaming responses |
+| `ws/buddy-chat/<id>/` | `BuddyChatConsumer` | P2P buddy messaging |
+| `ws/call/<id>/` | `CallSignalingConsumer` | WebRTC signaling (offer/answer/ICE) |
+| `ws/notifications/` | `NotificationConsumer` | Real-time notification updates |
+
+All WebSocket connections use token auth via query string (`?token=...`), auto-reconnect with exponential backoff, and heartbeat pings.
+
+### WebRTC Voice/Video Calls
+
+Implemented in `src/services/webrtc.js`:
+
+1. **Initiate call** — `POST /api/conversations/calls/initiate/` (creates Call record, sends FCM to callee)
+2. **Signaling** — WebSocket at `ws/call/<callId>/` relays SDP offers/answers and ICE candidates
+3. **Media** — `getUserMedia()` for local audio/video, `RTCPeerConnection` with STUN servers
+4. **Incoming calls** — `IncomingCallOverlay.jsx` listens for `dp-incoming-call` custom events from FCM
 
 ---
 
@@ -56,123 +95,268 @@ DreamPlanner helps users define big-picture goals ("dreams"), which are automati
 
 ```text
 dreamplanner-frontend/
-├── index.html                          # Entry HTML, CSP headers, font loading
-├── vite.config.js                      # Vite + React + PWA plugin config
-├── package.json                        # Dependencies and scripts
+├── android/                              # Capacitor Android project
+├── index.html                            # Entry HTML, CSP headers, font loading
+├── capacitor.config.ts                   # Capacitor configuration
+├── vite.config.js                        # Vite + React + PWA plugin config
 │
-├── public/
-│   ├── favicon.svg                     # App icon (purple gradient)
-│   └── sw-custom.js                    # Custom service worker (notification clicks)
-│
-└── src/
-    ├── main.jsx                        # React root, provider tree (5 providers)
-    ├── App.jsx                         # 38 routes, lazy loading, ErrorBoundary, SplashScreen
-    │
-    ├── components/shared/              # 14 reusable components
-    │   ├── ErrorBoundary.jsx           # Catches render errors, shows reload button
-    │   ├── SplashScreen.jsx            # Animated splash (1.6s, once per session)
-    │   ├── OfflineBanner.jsx           # Slides down when network is lost
-    │   ├── Toast.jsx                   # Stacked toasts (success/error/warning/info)
-    │   ├── PageLayout.jsx              # Standard page wrapper with BottomNav
-    │   ├── BottomNav.jsx               # 5-tab fixed bottom navigation
-    │   ├── ThemeBackground.jsx         # Routes to the correct canvas background
-    │   ├── CosmicBackground.jsx        # Canvas: animated starfield (cosmos theme)
-    │   ├── TwilightBackground.jsx      # Canvas: dynamic sky with day/night cycle
-    │   ├── SaturnBackground.jsx        # Canvas: sci-fi ringed planet
-    │   ├── PageTransition.jsx          # Fade + slide route transitions (150ms)
-    │   ├── GlobalSearch.jsx            # Cmd+K style search overlay
-    │   ├── TaskCallOverlay.jsx         # Phone-call-like task reminder overlay
-    │   └── Skeleton.jsx                # Shimmer loading placeholders
-    │
-    ├── context/                        # 5 context providers + theme utilities
-    │   ├── ThemeContext.jsx             # Visual theme state + twilight engine
-    │   ├── I18nContext.jsx              # Internationalization (en/fr)
-    │   ├── TaskCallContext.jsx          # Task reminders, notifications, wake lock
-    │   ├── ToastContext.jsx             # Toast notification system
-    │   ├── NetworkContext.jsx           # Online/offline detection
-    │   ├── themeTokens.js              # Color palettes + dynamic token computation
-    │   └── twilightEngine.js           # Real-time sun tracking + cinematic spectacle
-    │
-    ├── pages/                          # ~41 screen components
-    │   ├── auth/                       # Login, Register, ForgotPassword, ChangePassword
-    │   ├── onboarding/                 # OnboardingScreen (swipeable intro)
-    │   ├── home/                       # HomeScreen (dashboard)
-    │   ├── dreams/                     # DreamCreate, DreamDetail, DreamEdit, Templates,
-    │   │                               #   Calibration, VisionBoard, MicroStart
-    │   ├── chat/                       # ConversationList, AIChat, BuddyChat, NewChat,
-    │   │                               #   VoiceCall, VideoCall
-    │   ├── social/                     # SocialHub, FindBuddy, Leaderboard, UserSearch,
-    │   │                               #   FriendRequests, OnlineFriends, UserProfile,
-    │   │                               #   Circles, CircleDetail
-    │   ├── calendar/                   # CalendarScreen, GoogleCalendarConnect
-    │   ├── profile/                    # Profile, Settings, EditProfile, Achievements,
-    │   │                               #   AppVersion, TermsOfService, PrivacyPolicy
-    │   ├── store/                      # StoreScreen, SubscriptionScreen
-    │   └── notifications/              # NotificationsScreen
-    │
-    ├── utils/
-    │   ├── sanitize.js                 # Input sanitization (stripHtml, escapeHtml, etc.)
-    │   ├── api.js                      # CSRF-ready fetch wrapper
-    │   ├── haptics.js                  # Vibration feedback (light/medium/heavy)
-    │   └── exportDreamCard.js          # Canvas-based 1080x1080 PNG export
-    │
-    ├── data/
-    │   └── mockData.js                 # All mock data (user, dreams, conversations, etc.)
-    │
-    ├── styles/
-    │   ├── globals.css                 # CSS variables, glass classes, animation keyframes
-    │   └── theme.js                    # Design tokens (colors, spacing, timing, categories)
-    │
-    └── i18n/
-        ├── en.json                     # English translations
-        └── fr.json                     # French translations
+├── src/
+│   ├── main.jsx                          # App bootstrap, native setup, provider tree
+│   ├── App.jsx                           # Routes, overlays, notification socket
+│   │
+│   ├── services/                         # Core services
+│   │   ├── api.js                        # HTTP client (auth, CORS, case transforms)
+│   │   ├── websocket.js                  # WebSocket manager (reconnect, heartbeat)
+│   │   ├── webrtc.js                     # WebRTC call sessions (signaling, media)
+│   │   ├── native.js                     # Capacitor native APIs (keyboard, haptics, etc.)
+│   │   ├── nativeNotifications.js        # FCM push registration + local notifications
+│   │   └── transforms.js                 # camelCase <-> snake_case converters
+│   │
+│   ├── hooks/
+│   │   └── useNotificationSocket.js      # Global notification WebSocket hook
+│   │
+│   ├── components/shared/                # Reusable components
+│   │   ├── ErrorBoundary.jsx             # Catches render errors
+│   │   ├── ProtectedRoute.jsx            # Auth guard for routes
+│   │   ├── SplashScreen.jsx              # Animated splash (once per session)
+│   │   ├── OfflineBanner.jsx             # Slides in when network lost
+│   │   ├── Toast.jsx                     # Stacked toast notifications
+│   │   ├── PageLayout.jsx                # Page wrapper with BottomNav
+│   │   ├── BottomNav.jsx                 # 5-tab navigation
+│   │   ├── TaskCallOverlay.jsx           # Full-screen task reminder
+│   │   ├── IncomingCallOverlay.jsx       # Incoming call accept/reject
+│   │   ├── ThemeBackground.jsx           # Canvas background router
+│   │   ├── PageTransition.jsx            # Route transition animations
+│   │   ├── GlobalSearch.jsx              # Cmd+K search overlay
+│   │   └── Skeleton.jsx                  # Loading placeholders
+│   │
+│   ├── context/                          # React contexts
+│   │   ├── AuthContext.jsx               # Auth state, login/logout/register
+│   │   ├── ThemeContext.jsx              # Visual theme + twilight engine
+│   │   ├── I18nContext.jsx               # Internationalization (en/fr)
+│   │   ├── TaskCallContext.jsx           # Task call notifications
+│   │   ├── ToastContext.jsx              # Toast notification system
+│   │   └── NetworkContext.jsx            # Online/offline detection
+│   │
+│   ├── pages/
+│   │   ├── auth/                         # Login, Register, ForgotPassword, ChangePassword
+│   │   ├── onboarding/                   # OnboardingScreen
+│   │   ├── home/                         # HomeScreen (dashboard)
+│   │   ├── dreams/                       # DreamCreate, DreamDetail, DreamEdit, Templates,
+│   │   │                                 #   Calibration, VisionBoard, MicroStart
+│   │   ├── chat/                         # ConversationList, AIChat, BuddyChat, NewChat,
+│   │   │                                 #   VoiceCall, VideoCall
+│   │   ├── social/                       # SocialHub, FindBuddy, Leaderboard, UserSearch,
+│   │   │                                 #   FriendRequests, OnlineFriends, UserProfile,
+│   │   │                                 #   Circles, CircleDetail, CircleCreate,
+│   │   │                                 #   CircleInvitations, Seasons, BuddyRequests
+│   │   ├── calendar/                     # CalendarScreen, GoogleCalendarConnect, TimeBlocks
+│   │   ├── profile/                      # Profile, Settings, EditProfile, Achievements,
+│   │   │                                 #   AppVersion, TwoFactor, DataExport, Terms, Privacy
+│   │   ├── store/                        # StoreScreen, SubscriptionScreen, Gifting
+│   │   └── notifications/                # NotificationsScreen
+│   │
+│   ├── utils/
+│   │   ├── sanitize.js                   # Input sanitization helpers
+│   │   └── exportDreamCard.js            # Canvas PNG export (roundRect polyfilled)
+│   │
+│   ├── styles/
+│   │   └── globals.css                   # CSS variables, glass classes, animations
+│   │
+│   └── i18n/
+│       ├── en.json                       # English translations
+│       └── fr.json                       # French translations
 ```
 
 ---
 
-## Architecture
+## API Endpoints Used
 
-### Provider Tree
-
-Defined in `src/main.jsx`. Each provider wraps the next, making its context available to all descendants:
-
-```text
-<BrowserRouter>              React Router v6 (v7 compat flags enabled)
-  <I18nProvider>              Locale state (en/fr), provides useT()
-    <ThemeProvider>            Visual theme, sun position, tokens, provides useTheme()
-      <TaskCallProvider>      Task reminders, notifications, provides useTaskCall()
-        <ToastProvider>       Toast stack, provides useToast()
-          <NetworkProvider>   Online/offline state, provides useNetwork()
-            <App />
-```
-
-### App Shell
-
-Defined in `src/App.jsx`. The rendering order matters:
-
-```text
-<SplashScreen />            Once per session (sessionStorage: dp-splash-shown)
-<ThemeBackground />         Fixed full-screen canvas (behind everything)
-<OfflineBanner />           Slides in from top when offline
-<ErrorBoundary>             Catches render errors across all routes
-  <Suspense>                Shows spinner while lazy chunks load
-    <PageTransition>        Animates route changes (fade + slide)
-      <Routes>              38 route definitions
-    </PageTransition>
-  </Suspense>
-</ErrorBoundary>
-<TaskCallOverlay />         Global task reminder (above everything)
-```
-
-### Context Hooks
-
-| Context | Hook | Key Values |
+### Auth
+| Method | Endpoint | Description |
 | --- | --- | --- |
-| `ThemeContext` | `useTheme()` | `visualTheme`, `resolved` ("light"/"dark"), `sun` (0-1), `isDay`, `setTheme()`, `toggleMode()`, `startCinematic()`, `uiOpacity`, all token values (cardBg, textPrimary, accentColor, etc.) |
-| `I18nContext` | `useT()` | `t(key)` translation function, `locale`, `setLocale()` |
-| `TaskCallContext` | `useTaskCall()` | `triggerTaskCall(data)`, `dismissTaskCall()`, `isOpen`, `taskData`, `requestNotificationPermission()` |
-| `ToastContext` | `useToast()` | `showToast(message, type?, duration?)` — types: "success", "error", "warning", "info" |
-| `NetworkContext` | `useNetwork()` | `isOnline` (boolean) |
+| POST | `/api/auth/login/` | Email/password login, returns token |
+| POST | `/api/auth/registration/` | Register new user |
+| POST | `/api/auth/google/` | Google OAuth social login |
+| POST | `/api/auth/apple/` | Apple OAuth social login |
+| POST | `/api/auth/logout/` | Invalidate token |
+| POST | `/api/auth/password/reset/` | Request password reset |
+| POST | `/api/auth/password/change/` | Change password |
+
+### Users
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/users/me/` | Current user profile |
+| PATCH | `/api/users/me/` | Update profile |
+| GET | `/api/users/<id>/` | View user profile |
+| GET | `/api/users/search/` | Search users |
+
+### Dreams
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET/POST | `/api/dreams/` | List/create dreams |
+| GET/PUT/DELETE | `/api/dreams/<id>/` | Dream CRUD |
+| POST | `/api/dreams/<id>/generate-goals/` | AI goal generation |
+| GET | `/api/dreams/<id>/export-pdf/` | PDF export |
+| GET | `/api/dreams/templates/` | Dream templates |
+| GET/POST | `/api/dreams/obstacles/` | List/create obstacles |
+| PUT/DELETE | `/api/dreams/obstacles/<id>/` | Obstacle CRUD |
+| POST | `/api/dreams/obstacles/<id>/resolve/` | Resolve obstacle |
+| POST | `/api/dreams/dreams/<id>/tags/` | Add tag to dream |
+| DELETE | `/api/dreams/dreams/<id>/tags/<name>/` | Remove tag |
+| POST | `/api/dreams/dreams/<id>/share/` | Share dream |
+| POST | `/api/dreams/dreams/<id>/collaborators/` | Invite collaborator |
+| GET | `/api/dreams/dreams/<id>/collaborators/list/` | List collaborators |
+| POST | `/api/dreams/dreams/<id>/generate_vision/` | DALL-E vision generation |
+
+### Conversations
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET/POST | `/api/conversations/` | List/create conversations |
+| GET | `/api/conversations/<id>/messages/` | Get messages |
+| POST | `/api/conversations/<id>/send_message/` | Send message |
+| POST | `/api/conversations/<id>/send-voice/` | Send voice message |
+| POST | `/api/conversations/<id>/pin-message/<mid>/` | Pin message |
+| POST | `/api/conversations/<id>/like-message/<mid>/` | Like message |
+
+### Calls
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| POST | `/api/conversations/calls/initiate/` | Start a call |
+| POST | `/api/conversations/calls/<id>/accept/` | Accept call |
+| POST | `/api/conversations/calls/<id>/reject/` | Reject call |
+| POST | `/api/conversations/calls/<id>/end/` | End call |
+
+### Social
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/buddies/` | List buddies |
+| POST | `/api/buddies/request/` | Send buddy request |
+| GET/POST | `/api/circles/` | Circles CRUD |
+| GET | `/api/circles/<id>/` | Circle detail |
+| POST | `/api/circles/<id>/members/<mid>/promote/` | Promote member |
+| POST | `/api/circles/<id>/members/<mid>/demote/` | Demote member |
+| POST | `/api/circles/<id>/members/<mid>/remove/` | Remove member |
+| GET | `/api/social/feed/friends` | Activity feed |
+| POST | `/api/social/feed/<id>/like/` | Like feed item |
+| POST | `/api/social/feed/<id>/comment/` | Comment on feed item |
+| GET | `/api/social/friends/` | List friends |
+| POST | `/api/social/friends/request/` | Send friend request |
+| POST | `/api/social/friends/accept/<id>/` | Accept friend request |
+| POST | `/api/social/friends/reject/<id>/` | Reject friend request |
+| DELETE | `/api/social/friends/remove/<id>/` | Remove friend |
+| POST | `/api/social/follow/` | Follow a user |
+| DELETE | `/api/social/unfollow/<id>/` | Unfollow a user |
+| POST | `/api/social/block/` | Block a user |
+| DELETE | `/api/social/unblock/<id>/` | Unblock a user |
+| GET | `/api/social/blocked/` | List blocked users |
+| POST | `/api/social/report/` | Report a user |
+| GET | `/api/leagues/leaderboard/global/` | Global leaderboard |
+| GET | `/api/leagues/leaderboard/friends/` | Friends leaderboard |
+| GET | `/api/leagues/leaderboard/league/` | League leaderboard |
+| GET | `/api/leagues/leaderboard/nearby/` | Nearby leaderboard |
+
+### Notifications
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/notifications/` | List notifications |
+| POST | `/api/notifications/<id>/mark_read/` | Mark as read |
+| POST | `/api/notifications/mark_all_read/` | Mark all read |
+| GET | `/api/notifications/unread_count/` | Unread count |
+| POST | `/api/notifications/devices/` | Register FCM token |
+
+### Calendar
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/calendar/events/` | List events |
+| GET | `/api/calendar/google/auth/` | Google OAuth URL |
+| POST | `/api/calendar/google/callback/` | Exchange code for token |
+| GET | `/api/calendar/google/status/` | Connection status |
+
+### Store & Subscriptions
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/store/items/` | List store items |
+| POST | `/api/store/purchase/` | Purchase item |
+| GET | `/api/store/inventory/history/` | Purchase history |
+| POST | `/api/store/refunds/` | Request refund |
+| POST | `/api/subscriptions/subscription/checkout/` | Stripe checkout |
+| GET | `/api/subscriptions/plans/` | List plans |
+| POST | `/api/subscriptions/subscription/portal/` | Stripe billing portal |
+| POST | `/api/subscriptions/subscription/apply-coupon/` | Apply coupon code |
+| GET | `/api/subscriptions/invoices/` | Invoice history |
+
+### Users (extended)
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| GET | `/api/users/ai-usage/` | AI credits remaining/limit |
+| PUT | `/api/users/notification-preferences/` | Notification + DND settings |
+| GET | `/api/users/2fa/status/` | 2FA status |
+| POST | `/api/users/2fa/setup/` | Enable 2FA |
+| POST | `/api/users/2fa/verify/` | Verify 2FA code |
+| POST | `/api/users/2fa/disable/` | Disable 2FA |
+| GET | `/api/users/2fa/backup-codes/` | Regenerate backup codes |
+
+---
+
+## Native (Android) Configuration
+
+### Capacitor Plugins
+
+The app uses these Capacitor plugins for native functionality:
+
+- `@capacitor/app` — Deep links, back button, app lifecycle
+- `@capacitor/preferences` — Secure token storage
+- `@capacitor/push-notifications` — FCM push notifications
+- `@capacitor/local-notifications` — Task call reminders
+- `@capacitor/keyboard` — Keyboard management
+- `@capacitor/haptics` — Vibration feedback
+- `@capacitor/network` — Connectivity detection
+- `@capacitor/camera` — Photo capture
+- `@capacitor/share` — Native share sheet
+- `@capacitor/clipboard` — Clipboard access
+
+### Android Permissions
+
+Declared in `android/app/src/main/AndroidManifest.xml`:
+
+```
+INTERNET, CAMERA, VIBRATE, WAKE_LOCK, POST_NOTIFICATIONS,
+READ_MEDIA_IMAGES, USE_FULL_SCREEN_INTENT, FOREGROUND_SERVICE,
+RECEIVE_BOOT_COMPLETED, SCHEDULE_EXACT_ALARM, RECORD_AUDIO,
+MODIFY_AUDIO_SETTINGS
+```
+
+### Deep Links
+
+Custom scheme: `com.dreamplanner.app://`
+
+| Deep Link | Handler |
+| --- | --- |
+| `auth/google/callback` | Google OAuth token extraction |
+| `stripe/return` | Stripe checkout completion |
+| `calendar/callback` | Google Calendar OAuth code |
+| `notification?route=...` | Navigate to route from notification tap |
+
+---
+
+## Security
+
+- **HTML sanitization** — AI chat messages rendered via `dangerouslySetInnerHTML` are sanitized with DOMPurify
+- **Input sanitization** — `src/utils/sanitize.js` provides `stripHtml`, `escapeHtml`, `sanitizeText`, etc.
+- **CSP headers** — Both in `index.html` meta tag and backend `SecurityHeadersMiddleware`
+- **Token storage** — `@capacitor/preferences` on native (more secure than localStorage)
+- **Auth cleanup** — `clearAuth()` removes token from both localStorage and Capacitor Preferences
+- **WebSocket auth** — Token passed via query string, validated by backend middleware
+- **Rate limiting** — Backend WebSocket consumers have per-connection rate limits (30 msg/min)
+- **Message size limits** — 8KB WebSocket frame limit, 5000 char content limit
+- **Content moderation** — Three-tier: regex patterns -> harmful content detection -> OpenAI Moderation API (cached)
+- **URL redirect validation** — Stripe and Google OAuth redirects validated against domain allowlists
+- **CSRF header** — `X-CSRFToken` auto-attached on all mutating API requests
+- **No eval/innerHTML** — No dynamic code execution; all HTML rendering uses DOMPurify
+- **Dependency audit** — 0 known vulnerabilities (npm audit clean)
 
 ---
 
@@ -180,368 +364,47 @@ Defined in `src/App.jsx`. The rendering order matters:
 
 ### Three Visual Themes
 
-| Theme ID | Name | Background Component | Mode | Description |
-| --- | --- | --- | --- | --- |
-| `cosmos` | Cosmos | `CosmicBackground.jsx` | Dark only | Animated starfield with nebulae, shooting stars, parallax |
-| `default` | Twilight | `TwilightBackground.jsx` | Dynamic | Day/night cycle based on real time (6 AM = day, 6 PM = night) |
-| `saturn` | Saturn | `SaturnBackground.jsx` | Dark only | Sci-fi scene with ringed planet, aurora, volumetric clouds |
-
-### How It Works
-
-1. **Selection**: Stored in `localStorage` key `dp-theme`. `ThemeBackground.jsx` renders the matching canvas.
-2. **CSS variables**: `ThemeContext` sets `data-theme="light"` or `data-theme="dark"` on `<html>`, which activates the corresponding CSS variable set in `globals.css`.
-3. **Tokens**: Components access computed color tokens via `useTheme()` (e.g., `cardBg`, `textPrimary`, `accentColor`).
-
-### Twilight Engine
-
-The twilight theme has the most complex logic, spread across three files:
-
-- **`twilightEngine.js`** — `useTwilightClock()` polls every 500ms and computes a `sun` value (0 = night, 1 = day) based on the current hour. `useCinematicSpectacle()` triggers animated transitions at sunrise/sunset.
-- **`themeTokens.js`** — `computeTwilightTokens(sun)` interpolates between `TWILIGHT_DAY` and `TWILIGHT_NIGHT` palettes using step functions at specific sun thresholds.
-- **`ThemeContext.jsx`** — Orchestrates the engine, manages force mode (manual day/night override via `dp-force-mode` in localStorage), and exposes everything through `useTheme()`.
-
-**Cinematic spectacle**: At real sunrise (5:55-6:05) and sunset (17:55-18:05), a 3-phase animation plays: UI fades out (2.5s) → sky spectacle runs (6s) → UI fades in (2.5s).
+| Theme ID | Background | Mode |
+| --- | --- | --- |
+| `cosmos` | Animated starfield | Dark only |
+| `default` | Real-time day/night cycle | Dynamic |
+| `saturn` | Sci-fi ringed planet | Dark only |
 
 ### CSS Variables
-
-Two sets are defined in `globals.css`:
 
 | Variable | Dark | Light |
 | --- | --- | --- |
 | `--dp-glass-bg` | `rgba(255,255,255,0.04)` | `rgba(255,255,255,0.48)` |
-| `--dp-glass-border` | `rgba(255,255,255,0.06)` | `rgba(180,170,210,0.25)` |
 | `--dp-text` | `rgba(255,255,255,0.95)` | `rgba(25,30,50,0.95)` |
 | `--dp-accent` | `#C4B5FD` | `#7C3AED` |
-| `--dp-input-bg` | `rgba(255,255,255,0.04)` | `rgba(255,255,255,0.55)` |
-| `--dp-surface` | `rgba(255,255,255,0.03)` | `rgba(255,255,255,0.35)` |
 
-### Consuming Themes
-
-Two approaches are used in the codebase:
-
-**CSS classes** (preferred for glass cards):
+### Glass Classes
 
 ```jsx
-<div className="dp-g">Glass card</div>       // Base glass card
-<div className="dp-g dp-gh">Hoverable</div>  // Glass card with hover lift
-<button className="dp-ib">...</button>        // 40x40 icon button
-```
-
-**Inline styles** (for dynamic values):
-
-```jsx
-const { cardBg, textPrimary, resolved } = useTheme();
-const isLight = resolved === "light";
-
-<div style={{ background: cardBg, color: textPrimary }}>
-  <span style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>Accent</span>
-</div>
+<div className="dp-g">Glass card</div>
+<div className="dp-g dp-gh">Hoverable glass</div>
+<button className="dp-ib">Icon button</button>
 ```
 
 ---
 
-## Security
-
-### Content Security Policy
-
-`index.html` includes a CSP meta tag restricting resource origins:
-
-```
-default-src 'self';
-script-src 'self' 'unsafe-inline';
-style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-font-src 'self' https://fonts.gstatic.com;
-img-src 'self' data: blob:;
-connect-src 'self';
-```
-
-### HTML Sanitization
-
-AI chat messages are rendered as HTML (for markdown formatting) using `dangerouslySetInnerHTML`. DOMPurify sanitizes the content before rendering in `src/pages/chat/AIChatScreen.jsx`.
-
-### Input Sanitization
-
-`src/utils/sanitize.js` provides reusable functions:
-
-| Function | Purpose |
-| --- | --- |
-| `stripHtml(str)` | Remove all HTML tags |
-| `escapeHtml(str)` | Escape `<`, `>`, `&`, `"`, `'` |
-| `isValidEmail(email)` | Email format validation |
-| `getPasswordStrength(pw)` | Returns `{ score: 0-4, label, errors[] }` |
-| `sanitizeParam(param)` | Alphanumeric + dash + underscore only (URL params) |
-| `sanitizeSearch(query)` | Strip dangerous chars, limit 200 chars |
-| `sanitizeText(str, maxLen?)` | Strip HTML + trim + optional length limit |
-
-### CSRF Protection
-
-`src/utils/api.js` exports `fetchApi()`, a fetch wrapper that:
-
-- Automatically reads `csrftoken` from cookies
-- Attaches `X-CSRF-Token` header on mutating requests (POST, PUT, DELETE, etc.)
-- Sets `credentials: "same-origin"`
-- Parses JSON responses and throws structured errors
-
----
-
-## Code Splitting
-
-All screens except `HomeScreen` are lazy-loaded using `React.lazy()`:
-
-```jsx
-// Eagerly loaded (critical path)
-import HomeScreen from "./pages/home/HomeScreen";
-
-// Lazy loaded
-var LoginScreen = lazy(function () { return import("./pages/auth/LoginScreen"); });
-```
-
-- `<Suspense>` wraps all routes with a purple spinner fallback
-- `<ErrorBoundary>` wraps `<Suspense>` to catch chunk load failures and show a reload button
-
----
-
-## Routes
-
-All routes are defined in `src/App.jsx`. Every route is wrapped in `<PageTransition>`.
-
-### Onboarding & Auth
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/onboarding` | `OnboardingScreen` | First-run swipeable intro (4 slides) |
-| `/login` | `LoginScreen` | Email/password + OAuth buttons (mock) |
-| `/register` | `RegisterScreen` | Account creation form (mock) |
-| `/forgot-password` | `ForgotPasswordScreen` | Password reset flow (mock) |
-| `/change-password` | `ChangePasswordScreen` | Change existing password (mock) |
-
-### Main
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/` | `HomeScreen` | Dashboard: dream cards, XP, streaks, activity heatmap |
-
-### Chat
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/conversations` | `ConversationList` | Chat hub with search, filters, pinned conversations |
-| `/chat` | `NewChatScreen` | Start a new conversation |
-| `/chat/:id` | `AIChatScreen` | AI coaching conversation |
-| `/buddy-chat/:id` | `BuddyChatScreen` | Peer-to-peer messaging |
-| `/voice-call/:id` | `VoiceCallScreen` | Voice call UI (mock) |
-| `/video-call/:id` | `VideoCallScreen` | Video call UI (mock) |
-
-### Dreams
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/dream/create` | `DreamCreateScreen` | 4-step wizard with AI goal generation |
-| `/dream/templates` | `DreamTemplatesScreen` | Pre-made dream templates |
-| `/dream/:id` | `DreamDetail` | Progress, milestones, goals, tasks, celebrations |
-| `/dream/:id/edit` | `DreamEditScreen` | Edit dream details |
-| `/dream/:id/calibration` | `CalibrationScreen` | AI-assisted goal refinement |
-| `/vision-board` | `VisionBoardScreen` | Visual mood board |
-| `/micro-start/:dreamId` | `MicroStartScreen` | Quick task entry |
-
-### Social
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/social` | `SocialHub` | Feed, leaderboard, online friends, friend requests |
-| `/find-buddy` | `FindBuddy` | Buddy matching interface |
-| `/leaderboard` | `LeaderboardScreen` | XP rankings (weekly/monthly/all-time) |
-| `/search` | `UserSearchScreen` | Find users |
-| `/friend-requests` | `FriendRequestsScreen` | Pending requests |
-| `/online-friends` | `OnlineFriendsScreen` | Currently online contacts |
-| `/user/:id` | `UserProfileScreen` | View another user's profile |
-| `/circles` | `CirclesScreen` | Interest/goal circles |
-| `/circle/:id` | `CircleDetailScreen` | Circle details and members |
-
-### Calendar
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/calendar` | `CalendarScreen` | Monthly view, events, task scheduling |
-| `/calendar-connect` | `GoogleCalendarConnect` | Google Calendar sync UI (mock) |
-
-### Profile
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/profile` | `ProfileScreen` | Bento-grid profile: avatar, XP, skills, achievements |
-| `/settings` | `SettingsScreen` | App preferences (theme, language, notifications) |
-| `/edit-profile` | `EditProfileScreen` | Edit name, bio, avatar |
-| `/achievements` | `AchievementsScreen` | Full achievement list |
-| `/app-version` | `AppVersionScreen` | App info and version |
-| `/terms` | `TermsOfServiceScreen` | Terms of service |
-| `/privacy` | `PrivacyPolicyScreen` | Privacy policy |
-
-### Store & Notifications
-
-| Path | Component | Description |
-| --- | --- | --- |
-| `/store` | `StoreScreen` | XP-based cosmetics shop with rarity system |
-| `/subscription` | `SubscriptionScreen` | Premium plan options |
-| `/notifications` | `NotificationsScreen` | Notification center with filters |
-
----
-
-## Patterns & Conventions
-
-### Component Structure
-
-- Each page is a single `.jsx` file in `src/pages/<section>/`
-- Pages use `<PageLayout>` for consistent scrollable layout + bottom navigation
-- Sub-components (cards, modals, stat blocks) are defined inside the screen file
-
-### Styling
-
-- **Primary approach**: Inline `style={}` objects using `useTheme()` tokens
-- **Glass cards**: `className="dp-g"` for automatic glassmorphism (`blur(40px)`, border, shadow, `borderRadius: 20px`)
-- **Glass hover**: `className="dp-g dp-gh"` adds hover lift effect
-- **Icon buttons**: `className="dp-ib"` for 40x40 rounded buttons
-- **Icons**: All from `lucide-react`, imported individually
-
-### Animations
-
-- **Entry**: Elements start with `className="dp-a"`, then add `"dp-s"` when mounted (opacity 0 → 1, translateY 18px → 0)
-- **Staggered**: Apply `animationDelay: "${index * 60}ms"` for cascading entrances
-- **Keyframes**: `dpPulse` (glow), `dpShimmer` (skeleton loading), `dpSpin` (spinner)
-- **Easing**: `cubic-bezier(0.16, 1, 0.3, 1)` used throughout for elastic feel
-- **Page transitions**: Automatic via `<PageTransition>` (150ms fade + translateY)
-
-### Toasts
-
-```jsx
-import { useToast } from "../context/ToastContext";
-
-const { showToast } = useToast();
-showToast("Dream created!", "success");          // Green
-showToast("Something went wrong", "error");      // Red
-showToast("Check your connection", "warning");   // Amber
-showToast("New feature available", "info");       // Purple
-```
-
-### Network Status
-
-```jsx
-import { useNetwork } from "../context/NetworkContext";
-
-const { isOnline } = useNetwork();
-if (!isOnline) { /* show offline state */ }
-```
-
-### API Calls
-
-```jsx
-import { fetchApi } from "../utils/api";
-
-// GET (no CSRF token needed)
-const dreams = await fetchApi("/api/dreams");
-
-// POST (CSRF token auto-attached)
-await fetchApi("/api/dreams", { method: "POST", body: { title: "Learn Piano" } });
-```
-
-### Haptic Feedback
-
-```jsx
-import { hapticLight, hapticMedium, hapticHeavy } from "../utils/haptics";
-
-hapticLight();   // 10ms vibration (button taps)
-hapticMedium();  // 25ms vibration (confirmations)
-hapticHeavy();   // Pattern vibration (errors, alerts)
-```
-
-### Skeleton Loading
-
-```jsx
-import { DreamCardSkeleton, ConversationSkeleton, StatsSkeleton } from "../components/shared/Skeleton";
-
-// Show while loading, then replace with real content
-{loading ? <DreamCardSkeleton /> : <DreamCard data={dream} />}
-```
-
-### Internationalization
-
-```jsx
-import { useT } from "../context/I18nContext";
-
-const { t, locale, setLocale } = useT();
-<h1>{t("home.welcome")}</h1>
-<button onClick={() => setLocale("fr")}>Francais</button>
-```
-
-Translation keys are in `src/i18n/en.json` and `src/i18n/fr.json` using flat dot notation (e.g., `"nav.home"`, `"settings.language"`).
-
-### Persisted State
-
-| Key | Storage | Type | Purpose |
-| --- | --- | --- | --- |
-| `dp-theme` | localStorage | `"cosmos"` / `"default"` / `"saturn"` | Selected visual theme |
-| `dp-force-mode` | localStorage | `"day"` / `"night"` / null | Twilight manual override |
-| `dp-language` | localStorage | `"en"` / `"fr"` | Selected locale |
-| `dp-onboarded` | localStorage | `"true"` | Skip onboarding on repeat visits |
-| `dp-streak` | localStorage | JSON | Cached streak data |
-| `dp-notif-asked` | localStorage | `"true"` | Notification permission already requested |
-| `dp-unread-notifs` | localStorage | number string | Unread notification count |
-| `dp-recent-searches` | localStorage | JSON array | GlobalSearch history |
-| `dp-vision-order` | localStorage | JSON array | Vision board card ordering |
-| `dp-timezone` | localStorage | string | User's timezone setting |
-| `dp-splash-shown` | sessionStorage | `"1"` | Splash screen shown this session |
-
----
-
-## Mock Data & Backend Integration
-
-### What Is Mocked
-
-Everything in `src/data/mockData.js`:
-
-| Feature | Status | Integration Point |
-| --- | --- | --- |
-| Authentication | Mock — login/register are UI only | Replace with real auth (JWT/session) |
-| AI Chat | Static messages, no LLM | Connect to AI API, render with DOMPurify |
-| Dream CRUD | Local mock data | REST API via `fetchApi()` |
-| Social features | Hardcoded users, feed, leaderboard | REST API endpoints |
-| Store / Payments | Display only, no transactions | Payment provider SDK |
-| Calendar sync | Google Calendar connect is UI only | Google Calendar API |
-| Voice / Video calls | UI screens only, no WebRTC | WebRTC or call SDK |
-| Notifications | Triggered locally, not from server | Push notification server |
-
-### What Is Real
-
-- PWA install + offline caching (Workbox service worker)
-- Theme persistence and dynamic switching
-- Locale switching (en/fr) with localStorage persistence
-- System notifications + vibration for task reminders (requires permission)
-- Wake lock API (keeps screen on during task calls)
-- Canvas-based dream card PNG export (`exportDreamCard.js`)
-- Network status detection (online/offline banner)
-- Error boundary with reload
-
----
-
-## PWA Configuration
-
-Defined in `vite.config.js` using `vite-plugin-pwa`:
-
-- **Manifest**: App name "DreamPlanner", standalone display, portrait orientation, theme color `#1A1535`
-- **Service worker**: `autoUpdate` registration (updates in background, no prompt)
-- **Custom SW**: `public/sw-custom.js` handles notification click events to bring the app to the foreground
-- **Precaching**: All static assets (`**/*.{js,css,html,ico,png,svg,woff2}`)
-- **Runtime caching**: Google Fonts cached with `CacheFirst` strategy (365-day expiration, max 10 entries)
-- **Font loading**: Inter (300-800 weights) with `preconnect` optimization
+## Scalability Notes
+
+- **WebSocket connections** — Redis channel layer with connection pooling (capacity: 1500, expiry: 60s, group_expiry: 1h)
+- **Rate limiting** — Per-connection sliding window (30 messages / 60 seconds) on all WebSocket consumers
+- **Message size** — 8KB frame limit prevents memory abuse
+- **Moderation caching** — OpenAI Moderation API results cached for 5 minutes (SHA-256 keyed)
+- **Query optimization** — `select_related()` on conversation/dream access checks to avoid N+1
+- **Code splitting** — All screens except HomeScreen are lazy-loaded
+- **React Query** — 2-minute stale time, single retry, no refetch on window focus
 
 ---
 
 ## Known Limitations
 
 - **No test suite** — no Jest, Vitest, or Cypress
-- **No linting/formatting** — no ESLint or Prettier config
-- **No CI/CD pipeline**
-- **No TypeScript** — `@types/react` is in devDependencies but all files are `.jsx`
-- **`var` usage** — some context files use `var` instead of `const`/`let`
-- **Mobile-first only** — UI is optimized for ~480px width; desktop layout needs work
-- **No error tracking** — no Sentry or similar integration
+- **No linting** — no ESLint or Prettier config
+- **TURN server recommended** — WebRTC supports TURN via `VITE_TURN_*` env vars and backend `TURN_SERVER_*` settings; without it, calls behind symmetric NATs will fail
+- **Mobile-first** — UI optimized for ~480px; desktop layout needs work
+- **OAuth implicit flow** — Google login uses `response_type=token` (consider migrating to Authorization Code + PKCE)
+- **Voice messages** — Backend supports Whisper transcription but frontend recording UI not yet implemented

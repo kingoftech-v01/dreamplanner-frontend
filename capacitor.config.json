@@ -1,0 +1,33 @@
+{
+  "appId": "com.dreamplanner.app",
+  "appName": "DreamPlanner",
+  "webDir": "dist",
+  "server": {
+    "allowNavigation": [
+      "fonts.googleapis.com",
+      "fonts.gstatic.com",
+      "api.dreamplanner.com",
+      "dpapi.jhpetitfrere.com",
+      "accounts.google.com",
+      "checkout.stripe.com"
+    ]
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#0F0A1E",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0F0A1E"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    },
+    "Keyboard": {
+      "resize": "body"
+    }
+  }
+}

@@ -1,13 +1,14 @@
 // ─── Haptic Feedback Utilities ────────────────────────────────────
+import { hapticImpact } from "../services/native";
 
 export function hapticLight() {
-  if (navigator.vibrate) navigator.vibrate(10);
+  hapticImpact("Light");
 }
 
 export function hapticMedium() {
-  if (navigator.vibrate) navigator.vibrate(25);
+  hapticImpact("Medium");
 }
 
 export function hapticHeavy() {
-  if (navigator.vibrate) navigator.vibrate([30, 20, 30]);
+  hapticImpact("Heavy");
 }

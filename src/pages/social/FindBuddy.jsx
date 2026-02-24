@@ -1,7 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import SubscriptionGate from "../../components/shared/SubscriptionGate";
 import {
   ArrowLeft, Target, Heart, MessageCircle, Users, Star,
   Zap, ChevronRight, UserPlus, RefreshCw, Sparkles,
@@ -30,23 +35,7 @@ import {
  * - All 9:1+ contrast
  * ═══════════════════════════════════════════════════════════════════ */
 
-const ME = { name:"Stephane", initial:"S", level:12, xp:2450, streak:7, dreams:["Launch SaaS","Learn Piano","Run Half Marathon","Save $15K"] };
-
-const CURRENT_BUDDY = {
-  id:"b1", name:"Alex", initial:"A", color:"#14B8A6", online:true,
-  level:10, xp:2100, streak:12, compatibility:87,
-  sharedDreams:["Run Half Marathon"],
-  sharedCategories:["health","personal"],
-  joinedDate:"3 weeks ago",
-  encouragements:5,
-};
-
-const SUGGESTIONS = [
-  { id:"s1", name:"Sophie", initial:"S", color:"#EC4899", level:9, xp:1850, compatibility:82, sharedCategories:["career","finance"], sharedDreams:["Launch SaaS"], bio:"Full-stack dev building side projects", streak:8, dreams:["Launch SaaS","Travel to Japan","Build an audience"], achievements:["7-day streak","First Dream","10 Tasks Done"], joined:"2 months ago", mutualFriends:2 },
-  { id:"s2", name:"Liam", initial:"L", color:"#3B82F6", level:14, xp:3100, compatibility:76, sharedCategories:["health","personal"], sharedDreams:["Run Half Marathon"], bio:"Marathon runner training for first ultra", streak:21, dreams:["Run Half Marathon","Complete a Triathlon","Meditate Daily"], achievements:["21-day streak","Level 10","Dream Master"], joined:"4 months ago", mutualFriends:1 },
-  { id:"s3", name:"Nina", initial:"N", color:"#F59E0B", level:7, xp:1100, compatibility:71, sharedCategories:["hobbies"], sharedDreams:["Learn Piano"], bio:"Music lover, just started learning keys", streak:4, dreams:["Learn Piano","Write 12 Songs","Play at Open Mic"], achievements:["First Dream","3-day streak"], joined:"3 weeks ago", mutualFriends:0 },
-  { id:"s4", name:"Kai", initial:"K", color:"#8B5CF6", level:11, xp:2200, compatibility:68, sharedCategories:["finance","career"], sharedDreams:["Save $15K"], bio:"Budgeting nerd on a savings mission", streak:14, dreams:["Save $15K","Start Investing","Side Hustle to $5K/mo"], achievements:["14-day streak","Level 10","Finance Pro"], joined:"3 months ago", mutualFriends:3 },
-];
+var SUGGESTION_COLORS = ["#EC4899","#3B82F6","#F59E0B","#8B5CF6","#14B8A6","#10B981","#6366F1","#EF4444"];
 
 const CAT_ICONS = { career:Briefcase, hobbies:Palette, health:Heart, finance:Wallet, personal:Brain };
 const CAT_COLORS = { career:"#C4B5FD", hobbies:"#FCD34D", health:"#5DE5A8", finance:"#5EEAD4", personal:"#F69A9A" };
@@ -64,6 +53,9 @@ const ENCOURAGE_PRESETS = [
 export default function FindBuddyScreen(){
   const navigate=useNavigate();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+  var { user } = useAuth();
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const[mounted,setMounted]=useState(false);
   const[encourage,setEncourage]=useState(false);
   const[encourageMsg,setEncourageMsg]=useState(ENCOURAGE_PRESETS[0]);
@@ -71,13 +63,54 @@ export default function FindBuddyScreen(){
   const[sentEncourage,setSentEncourage]=useState(false);
   const[selectedProfile,setSelectedProfile]=useState(null);
 
+  var ME = {
+    name: user?.displayName || user?.username || "You",
+    initial: (user?.displayName || user?.username || "U")[0].toUpperCase(),
+    level: user?.level || 1, xp: user?.xp || 0, streak: user?.streak || 0,
+    dreams: user?.dreams || [],
+  };
+
+  var buddyQuery = useQuery({ queryKey: ["buddy-current"], queryFn: function () { return apiGet("/api/buddies/current/"); } });
+  var suggestionsQuery = useQuery({ queryKey: ["buddy-suggestions"], queryFn: function () { return apiGet("/api/buddies/find-match/"); } });
+
+  var CURRENT_BUDDY = buddyQuery.data || null;
+  var SUGGESTIONS = ((suggestionsQuery.data && suggestionsQuery.data.results) || suggestionsQuery.data || []).map(function (s, i) {
+    return Object.assign({}, s, {
+      initial: (s.name || s.displayName || "?")[0].toUpperCase(),
+      color: s.color || SUGGESTION_COLORS[i % SUGGESTION_COLORS.length],
+      sharedDreams: s.sharedDreams || [],
+      sharedCategories: s.sharedCategories || [],
+      dreams: s.dreams || [],
+      achievements: s.achievements || [],
+    });
+  });
+
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
-  const sendRequest=(id)=>{setSent(p=>({...p,[id]:true}));};
-  const sendEncourage=()=>{setSentEncourage(true);setTimeout(()=>{setEncourage(false);setSentEncourage(false);},1500);};
+  var sendRequest=function(id){
+    setSent(function(p){return Object.assign({},p,{[id]:true});});
+    apiPost("/api/buddies/pair/",{buddyId:id}).then(function(){
+      showToast("Buddy request sent!","success");
+      queryClient.invalidateQueries({queryKey:["buddy-current"]});
+      queryClient.invalidateQueries({queryKey:["buddy-suggestions"]});
+    }).catch(function(err){
+      showToast(err.message||"Failed to send request","error");
+      setSent(function(p){var n=Object.assign({},p);delete n[id];return n;});
+    });
+  };
+  var sendEncourage=function(){
+    if(!CURRENT_BUDDY)return;
+    setSentEncourage(true);
+    apiPost("/api/buddies/"+CURRENT_BUDDY.id+"/encourage/",{message:encourageMsg}).then(function(){
+      showToast("Encouragement sent!","success");
+    }).catch(function(err){
+      showToast(err.message||"Failed to send","error");
+    }).finally(function(){
+      setTimeout(function(){setEncourage(false);setSentEncourage(false);},1500);
+    });
+  };
 
-
-  const b=CURRENT_BUDDY;
+  var b=CURRENT_BUDDY || {};
   const ringR=40,ringC=2*Math.PI*ringR,ringOff=ringC*(1-b.compatibility/100);
 
   return(
@@ -90,14 +123,18 @@ export default function FindBuddyScreen(){
           <Target size={20} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2}/>
           <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>Dream Buddy</span>
         </div>
-        <button className="dp-ib" aria-label="Refresh suggestions"><RefreshCw size={17} strokeWidth={2}/></button>
+        <button className="dp-ib" onClick={function(){suggestionsQuery.refetch();buddyQuery.refetch();}} aria-label="Refresh suggestions"><RefreshCw size={17} strokeWidth={2}/></button>
       </header>
 
       {/* CONTENT */}
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
+       <SubscriptionGate required="pro" feature="Dream Buddy">
         <div style={{width:"100%"}}>
 
           {/* ── Current Buddy Card ── */}
+          {CURRENT_BUDDY && (()=>{
+          var ringR=40,ringC=2*Math.PI*ringR,ringOff=ringC*(1-(b.compatibility||0)/100);
+          return(
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>
             <div className="dp-g" style={{padding:20,marginBottom:16,border:"1px solid rgba(20,184,166,0.15)"}}>
               <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
@@ -110,7 +147,7 @@ export default function FindBuddyScreen(){
                       style={{transition:"stroke-dashoffset 1.5s cubic-bezier(0.16,1,0.3,1)",filter:"drop-shadow(0 0 6px rgba(94,234,212,0.4))"}}/>
                   </svg>
                   <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
-                    <div style={{width:52,height:52,borderRadius:16,background:`${b.color}18`,border:`2px solid ${b.color}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:b.color}}>{b.initial}</div>
+                    <div style={{width:52,height:52,borderRadius:16,background:`${b.color||"#14B8A6"}18`,border:`2px solid ${b.color||"#14B8A6"}30`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,fontWeight:700,color:b.color||"#14B8A6"}}>{b.initial||(b.name||"B")[0].toUpperCase()}</div>
                   </div>
                   {b.online&&<div style={{position:"absolute",bottom:8,right:8,width:12,height:12,borderRadius:"50%",background:"#5DE5A8",border:isLight?"3px solid #f0ecff":"3px solid #0c081a",boxShadow:"0 0 8px rgba(93,229,168,0.5)"}}/>}
                 </div>
@@ -119,10 +156,10 @@ export default function FindBuddyScreen(){
                     <span style={{fontSize:18,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{b.name}</span>
                     <span style={{padding:"2px 8px",borderRadius:8,background:"rgba(20,184,166,0.1)",fontSize:12,fontWeight:600,color:isLight?"#0D9488":"#5EEAD4"}}>Your Buddy</span>
                   </div>
-                  <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6}}>Paired {b.joinedDate}</div>
+                  <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6}}>Paired {b.joinedDate||"recently"}</div>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
                     <Heart size={14} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5}/>
-                    <span style={{fontSize:14,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{b.compatibility}% Match</span>
+                    <span style={{fontSize:14,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{b.compatibility||0}% Match</span>
                   </div>
                 </div>
               </div>
@@ -151,10 +188,10 @@ export default function FindBuddyScreen(){
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Shared Dreams</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {b.sharedDreams.map((d,i)=>(
+                  {(b.sharedDreams||[]).map((d,i)=>(
                     <span key={i} style={{padding:"5px 10px",borderRadius:10,background:"rgba(20,184,166,0.08)",border:"1px solid rgba(20,184,166,0.12)",fontSize:12,fontWeight:500,color:isLight?"#0D9488":"#5EEAD4"}}>{d}</span>
                   ))}
-                  {b.sharedCategories.map((c,i)=>{
+                  {(b.sharedCategories||[]).map((c,i)=>{
                     const CI=CAT_ICONS[c]||Target;const cc=CAT_COLORS[c]||"#C4B5FD";
                     const ccL=cc==="#C4B5FD"?(isLight?"#6D28D9":"#C4B5FD"):cc==="#FCD34D"?(isLight?"#B45309":"#FCD34D"):cc==="#5DE5A8"?(isLight?"#059669":"#5DE5A8"):cc==="#5EEAD4"?(isLight?"#0D9488":"#5EEAD4"):cc==="#F69A9A"?(isLight?"#DC2626":"#F69A9A"):cc;
                     return <span key={`c${i}`} style={{padding:"5px 10px",borderRadius:10,background:`${cc}10`,border:`1px solid ${cc}18`,fontSize:12,fontWeight:500,color:ccL,display:"flex",alignItems:"center",gap:4}}><CI size={11} color={ccL} strokeWidth={2.5}/>{c}</span>;
@@ -164,7 +201,7 @@ export default function FindBuddyScreen(){
 
               {/* Action buttons */}
               <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>navigate("/buddy-chat/buddy1")} style={{flex:1,padding:"11px 0",borderRadius:14,border:"none",background:"linear-gradient(135deg,#14B8A6,#0D9488)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 16px rgba(20,184,166,0.25)",transition:"all 0.2s"}}
+                <button onClick={()=>navigate("/buddy-chat/"+(CURRENT_BUDDY&&CURRENT_BUDDY.id||"buddy1"))} style={{flex:1,padding:"11px 0",borderRadius:14,border:"none",background:"linear-gradient(135deg,#14B8A6,#0D9488)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 16px rgba(20,184,166,0.25)",transition:"all 0.2s"}}
                   onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
                   onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
                   <MessageCircle size={16} strokeWidth={2}/>Chat
@@ -177,6 +214,7 @@ export default function FindBuddyScreen(){
               </div>
             </div>
           </div>
+          );})()}
 
           {/* ── Suggested Buddies ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
@@ -232,7 +270,7 @@ export default function FindBuddyScreen(){
           })}
 
           {/* ── How it works ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+SUGGESTIONS.length*80+80}ms`}}>
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+(SUGGESTIONS.length||0)*80+80}ms`}}>
             <div className="dp-g" style={{padding:20,marginTop:8}}>
               <div style={{fontSize:14,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:12}}>How Buddy Matching Works</div>
               {[
@@ -256,6 +294,7 @@ export default function FindBuddyScreen(){
           </div>
 
         </div>
+       </SubscriptionGate>
       </main>
 
       {/* ═══ BOTTOM NAV ═══ */}
@@ -393,14 +432,14 @@ export default function FindBuddyScreen(){
                   <Check size={28} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/>
                 </div>
                 <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Encouragement Sent!</div>
-                <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:4}}>{b.name} will appreciate it</div>
+                <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:4}}>{b.name||"Your buddy"} will appreciate it</div>
               </div>
             ):(
               <>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     <Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/>
-                    <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Encourage {b.name}</span>
+                    <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Encourage {b.name||"Buddy"}</span>
                   </div>
                   <button onClick={()=>setEncourage(false)} className="dp-ib" style={{width:32,height:32}} aria-label="Close"><X size={16} strokeWidth={2}/></button>
                 </div>

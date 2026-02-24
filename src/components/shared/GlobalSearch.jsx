@@ -1,31 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, X, Target, MessageCircle, Users, Clock, ArrowRight } from "lucide-react";
+import { Search, X, Target, MessageCircle, Users, Clock, ArrowRight, Loader } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { apiGet } from "../../services/api";
 
-// Searchable mock data (duplicates some data from screens but that's OK for a frontend-only app)
-const SEARCH_DATA = {
-  dreams: [
-    { id: "1", title: "Launch my SaaS Platform", desc: "Build and deploy a production-ready SaaS", category: "career", path: "/dream/1" },
-    { id: "2", title: "Learn Piano in 6 Months", desc: "Master basic piano skills and chord progressions", category: "hobbies", path: "/dream/2" },
-    { id: "3", title: "Run a Half Marathon", desc: "Train for and complete a 21km race", category: "health", path: "/dream/3" },
-    { id: "4", title: "Save $10K Emergency Fund", desc: "Build financial safety net", category: "finance", path: "/dream/4" },
-  ],
-  conversations: [
-    { id: "1", title: "Launch SaaS Platform — Coaching", desc: "Great progress on the deployment pipeline!", path: "/chat/1" },
-    { id: "2", title: "Piano Practice Plan", desc: "I've structured your weekly practice into 30-minute blocks", path: "/chat/2" },
-    { id: "5", title: "Alex — Buddy Chat", desc: "See you at the park tomorrow morning!", path: "/buddy-chat/5" },
-  ],
-  users: [
-    { id: "l5", title: "Alex Thompson", desc: "Running buddy • Level 8", path: "/user/l5" },
-    { id: "l1", title: "Jade Rivers", desc: "Piano enthusiast • Level 12", path: "/user/l1" },
-    { id: "l3", title: "Lisa Chen", desc: "Finance guru • Level 10", path: "/user/l3" },
-    { id: "om1", title: "Omar Hassan", desc: "Tech entrepreneur • Level 9", path: "/user/om1" },
-  ],
-};
-
-const CATEGORY_ICONS = { dreams: Target, conversations: MessageCircle, users: Users };
-const CATEGORY_LABELS = { dreams: "Dreams", conversations: "Conversations", users: "People" };
+const CATEGORY_ICONS = { dreams: Target, messages: MessageCircle, users: Users, goals: Target, tasks: Target, calendar: Clock };
+const CATEGORY_LABELS = { dreams: "Dreams", messages: "Messages", users: "People", goals: "Goals", tasks: "Tasks", calendar: "Calendar" };
 
 export default function GlobalSearch({ isOpen, onClose }) {
   const navigate = useNavigate();
@@ -55,15 +35,63 @@ export default function GlobalSearch({ isOpen, onClose }) {
     return () => document.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
-  const results = query.trim().length < 2 ? {} : Object.fromEntries(
-    Object.entries(SEARCH_DATA).map(([cat, items]) => [
-      cat,
-      items.filter(item =>
-        item.title.toLowerCase().includes(query.toLowerCase()) ||
-        item.desc.toLowerCase().includes(query.toLowerCase())
-      ),
-    ]).filter(([_, items]) => items.length > 0)
-  );
+  // ─── Debounced API search ────────────────────────────────────
+  var [results, setResults] = useState({});
+  var [searching, setSearching] = useState(false);
+  var debounceRef = useRef(null);
+
+  useEffect(function () {
+    if (query.trim().length < 2) {
+      setResults({});
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(function () {
+      var q = query.trim();
+      apiGet("/api/search/?q=" + encodeURIComponent(q) + "&type=dreams,messages,users,goals,tasks,calendar")
+        .then(function (data) {
+          var combined = {};
+          if (data.dreams && data.dreams.length > 0) {
+            combined.dreams = data.dreams.slice(0, 5).map(function (d) {
+              return { id: d.id, title: d.title, desc: d.status || "", path: "/dream/" + d.id };
+            });
+          }
+          if (data.messages && data.messages.length > 0) {
+            combined.messages = data.messages.slice(0, 5).map(function (m) {
+              return { id: m.id, title: m.content, desc: m.role, path: "/chat/" + m.conversation_id };
+            });
+          }
+          if (data.users && data.users.length > 0) {
+            combined.users = data.users.slice(0, 5).map(function (u) {
+              return { id: u.id, title: u.display_name || "User", desc: "", path: "/user/" + u.id };
+            });
+          }
+          if (data.goals && data.goals.length > 0) {
+            combined.goals = data.goals.slice(0, 5).map(function (g) {
+              return { id: g.id, title: g.title, desc: "", path: "/dream/" + g.dream_id };
+            });
+          }
+          if (data.tasks && data.tasks.length > 0) {
+            combined.tasks = data.tasks.slice(0, 5).map(function (t) {
+              return { id: t.id, title: t.title, desc: "", path: "/" };
+            });
+          }
+          if (data.calendar && data.calendar.length > 0) {
+            combined.calendar = data.calendar.slice(0, 5).map(function (e) {
+              return { id: e.id, title: e.title, desc: e.start_time, path: "/calendar" };
+            });
+          }
+          setResults(combined);
+          setSearching(false);
+        })
+        .catch(function () {
+          setSearching(false);
+        });
+    }, 300);
+    return function () { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query]);
 
   const hasResults = Object.keys(results).length > 0;
 
@@ -150,9 +178,16 @@ export default function GlobalSearch({ isOpen, onClose }) {
           </div>
         )}
 
-        {query.trim().length >= 2 && !hasResults && (
+        {query.trim().length >= 2 && searching && (
           <div style={{ textAlign: "center", marginTop: 60 }}>
-            <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
+            <Loader size={24} style={{ color: "#8B5CF6", animation: "spin 1s linear infinite" }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        )}
+
+        {query.trim().length >= 2 && !searching && !hasResults && (
+          <div style={{ textAlign: "center", marginTop: 60 }}>
+            <Search size={36} style={{ color: isLight ? "rgba(26,21,53,0.15)" : "rgba(255,255,255,0.15)", marginBottom: 12 }} />
             <p style={{ fontSize: 15, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>
               No results for "{query}"
             </p>

@@ -1,18 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Flame, Trophy, Globe, Users, Shield } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "../../services/api";
+import useInfiniteList from "../../hooks/useInfiniteList";
+import { ArrowLeft, Flame, Trophy, Globe, Users, Shield, MapPin } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_LEADERBOARD } from "../../data/mockData";
-
-const EXTENDED_LEADERBOARD = [
-  ...MOCK_LEADERBOARD,
-  { id: "l8", name: "Nina", initial: "N", xp: 1500, level: 7, rank: 8, streak: 6 },
-  { id: "l9", name: "Kai", initial: "K", xp: 1350, level: 6, rank: 9, streak: 4 },
-  { id: "l10", name: "Rosa", initial: "R", xp: 1200, level: 6, rank: 10, streak: 10 },
-  { id: "l11", name: "Liam", initial: "L", xp: 1050, level: 5, rank: 11, streak: 3 },
-  { id: "l12", name: "Priya", initial: "P", xp: 980, level: 5, rank: 12, streak: 7 },
-];
 
 const TIME_FILTERS = [
   { id: "weekly", label: "Weekly" },
@@ -24,6 +18,7 @@ const SCOPE_FILTERS = [
   { id: "global", label: "Global", icon: Globe },
   { id: "friends", label: "Friends", icon: Users },
   { id: "league", label: "League", icon: Shield },
+  { id: "nearby", label: "Nearby", icon: MapPin },
 ];
 
 const MEDAL_COLORS = {
@@ -52,9 +47,30 @@ const MEDAL_DARK_TEXT = {
 export default function LeaderboardScreen() {
   const navigate = useNavigate();
   const { resolved } = useTheme(); const isLight = resolved === "light";
+  var { user } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [timeFilter, setTimeFilter] = useState("weekly");
   const [scopeFilter, setScopeFilter] = useState("global");
+
+  var lbInf = useInfiniteList({ queryKey: ["leaderboard", scopeFilter, timeFilter], url: "/api/leagues/leaderboard/" + scopeFilter + "/?period=" + timeFilter, limit: 50 });
+
+  var myRankQuery = useQuery({
+    queryKey: ["leaderboard-me", timeFilter],
+    queryFn: function () { return apiGet("/api/leagues/leaderboard/me/?period=" + timeFilter); },
+  });
+
+  var rawData = lbInf.items;
+  var EXTENDED_LEADERBOARD = rawData.map(function (entry, i) {
+    return Object.assign({}, entry, {
+      initial: entry.initial || (entry.name || entry.displayName || "?")[0].toUpperCase(),
+      name: entry.name || entry.displayName || "User",
+      rank: entry.rank || i + 1,
+      xp: entry.xp || 0,
+      level: entry.level || 1,
+      streak: entry.streak || 0,
+      isUser: String(entry.id) === String(user?.id),
+    });
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -382,6 +398,8 @@ export default function LeaderboardScreen() {
           );
         })}
       </div>
+      <div ref={lbInf.sentinelRef} style={{height:1}} />
+      {lbInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
 
     </PageLayout>
   );

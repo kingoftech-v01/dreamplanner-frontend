@@ -1,3 +1,18 @@
+// roundRect polyfill for Android < 12 WebView
+function drawRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
 // Category color map
 const CATEGORY_COLORS = {
   career: "#8B5CF6",
@@ -38,8 +53,7 @@ export async function exportDreamCard({ title, category, progress, goalCount, co
   // Card background
   const cardX = 80, cardY = 200, cardW = 920, cardH = 600, cardR = 32;
   ctx.fillStyle = "rgba(255,255,255,0.06)";
-  ctx.beginPath();
-  ctx.roundRect(cardX, cardY, cardW, cardH, cardR);
+  drawRoundRect(ctx, cardX, cardY, cardW, cardH, cardR);
   ctx.fill();
   ctx.strokeStyle = "rgba(255,255,255,0.08)";
   ctx.lineWidth = 1;
@@ -79,8 +93,7 @@ export async function exportDreamCard({ title, category, progress, goalCount, co
   const catText = category.charAt(0).toUpperCase() + category.slice(1);
   ctx.font = "600 18px Inter, sans-serif";
   const catWidth = ctx.measureText(catText).width + 24;
-  ctx.beginPath();
-  ctx.roundRect(540 - catWidth / 2, 620, catWidth, 32, 10);
+  drawRoundRect(ctx, 540 - catWidth / 2, 620, catWidth, 32, 10);
   ctx.fill();
   ctx.fillStyle = "#FFFFFF";
   ctx.fillText(catText, 540, 636);
@@ -96,8 +109,7 @@ export async function exportDreamCard({ title, category, progress, goalCount, co
   ctx.font = "bold 16px Inter, sans-serif";
   const statusText = status.charAt(0).toUpperCase() + status.slice(1);
   const statusW = ctx.measureText(statusText).width + 20;
-  ctx.beginPath();
-  ctx.roundRect(540 - statusW / 2, 740, statusW, 28, 8);
+  drawRoundRect(ctx, 540 - statusW / 2, 740, statusW, 28, 8);
   ctx.fill();
   ctx.fillStyle = "#FFFFFF";
   ctx.fillText(statusText, 540, 754);

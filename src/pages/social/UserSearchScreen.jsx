@@ -1,32 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
 import { ArrowLeft, Search, X, UserPlus, Check, Users } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
 
 const AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
-
-const MOCK_SEARCH_RESULTS = [
-  { id: "u1", name: "Emma Wilson", initial: "E", level: 7, mutualFriends: 3, bio: "Dream chaser" },
-  { id: "u2", name: "Noah Chen", initial: "N", level: 11, mutualFriends: 5, bio: "Building the future" },
-  { id: "u3", name: "Olivia Park", initial: "O", level: 9, mutualFriends: 2, bio: "Fitness & goals" },
-  { id: "u4", name: "Liam Torres", initial: "L", level: 14, mutualFriends: 1, bio: "Indie hacker" },
-  { id: "u5", name: "Ava Johnson", initial: "A", level: 6, mutualFriends: 4, bio: "Piano learner" },
-];
-
-const SUGGESTED_PEOPLE = [
-  { id: "s1", name: "Maya Rodriguez", initial: "M", level: 8, mutualFriends: 6, bio: "Marathon runner" },
-  { id: "s2", name: "Ethan Kim", initial: "E", level: 13, mutualFriends: 3, bio: "SaaS founder" },
-  { id: "s3", name: "Zara Ahmed", initial: "Z", level: 10, mutualFriends: 2, bio: "Creative designer" },
-  { id: "s4", name: "Kai Nakamura", initial: "K", level: 7, mutualFriends: 1, bio: "Language learner" },
-];
-
-const RECENT_SEARCHES = [
-  { id: "r1", name: "Sophie Martin" },
-  { id: "r2", name: "Alex Rivera" },
-  { id: "r3", name: "Marco Bianchi" },
-  { id: "r4", name: "Lisa Chang" },
-];
 
 const glassStyle = {
   background: "var(--dp-glass-bg)",
@@ -41,10 +22,54 @@ export default function UserSearchScreen() {
   const navigate = useNavigate();
   const { resolved } = useTheme();
   const isLight = resolved === "light";
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [query, setQuery] = useState("");
-  const [recentSearches, setRecentSearches] = useState(RECENT_SEARCHES);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
   const [sentRequests, setSentRequests] = useState(new Set());
+
+  // Debounce search query
+  useEffect(function () {
+    var timer = setTimeout(function () { setDebouncedQuery(query); }, 350);
+    return function () { clearTimeout(timer); };
+  }, [query]);
+
+  var searchQuery = useQuery({
+    queryKey: ["user-search", debouncedQuery],
+    queryFn: function () { return apiGet("/api/social/users/search?q=" + encodeURIComponent(debouncedQuery)); },
+    enabled: debouncedQuery.length > 0,
+  });
+
+  var recentSearchesQuery = useQuery({
+    queryKey: ["recent-searches"],
+    queryFn: function () { return apiGet("/api/social/recent-searches/list/"); },
+  });
+
+  var suggestionsQuery = useQuery({
+    queryKey: ["follow-suggestions"],
+    queryFn: function () { return apiGet("/api/social/follow-suggestions/"); },
+  });
+
+  var searchResults = ((searchQuery.data && searchQuery.data.results) || searchQuery.data || []).map(function (u) {
+    return Object.assign({}, u, {
+      name: u.name || u.displayName || u.username || "User",
+      initial: u.initial || (u.name || u.displayName || u.username || "U")[0].toUpperCase(),
+      level: u.level || 1,
+      mutualFriends: u.mutualFriends || 0,
+    });
+  });
+
+  var recentSearches = (recentSearchesQuery.data && (recentSearchesQuery.data.recentSearches || recentSearchesQuery.data.results)) || recentSearchesQuery.data || [];
+
+  var SUGGESTED_PEOPLE = ((suggestionsQuery.data && suggestionsQuery.data.results) || suggestionsQuery.data || []).map(function (u) {
+    return Object.assign({}, u, {
+      name: u.name || u.displayName || u.username || "User",
+      initial: u.initial || (u.name || u.displayName || u.username || "U")[0].toUpperCase(),
+      level: u.level || 1,
+      mutualFriends: u.mutualFriends || 0,
+    });
+  });
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -57,19 +82,25 @@ export default function UserSearchScreen() {
     return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
   };
 
-  const handleAddFriend = (userId) => {
-    setSentRequests((prev) => new Set([...prev, userId]));
+  var handleAddFriend = function (userId) {
+    setSentRequests(function (prev) { return new Set([...prev, userId]); });
+    apiPost("/api/social/friends/request/", { userId: userId }).then(function () {
+      showToast("Friend request sent!", "success");
+    }).catch(function (err) {
+      showToast(err.message || "Failed to send request", "error");
+      setSentRequests(function (prev) { var n = new Set(prev); n.delete(userId); return n; });
+    });
   };
 
-  const removeRecentSearch = (id) => {
-    setRecentSearches((prev) => prev.filter((s) => s.id !== id));
+  var removeRecentSearch = function (id) {
+    queryClient.setQueryData(["recent-searches"], function (old) {
+      if (!old) return old;
+      var list = old.results || old;
+      var filtered = (Array.isArray(list) ? list : []).filter(function (s) { return s.id !== id; });
+      return old.results ? Object.assign({}, old, { results: filtered }) : filtered;
+    });
+    // Backend only supports clear-all (DELETE /api/social/recent-searches/clear/), no individual delete
   };
-
-  const searchResults = query.length > 0
-    ? MOCK_SEARCH_RESULTS.filter((u) =>
-        u.name.toLowerCase().includes(query.toLowerCase())
-      )
-    : [];
 
   const isSearching = query.length > 0;
 
@@ -289,13 +320,13 @@ export default function UserSearchScreen() {
                   border: "1px solid var(--dp-input-border)",
                   cursor: "pointer",
                 }}
-                onClick={() => setQuery(search.name)}
+                onClick={function () { setQuery(search.name || search.query || ""); }}
               >
                 <span style={{
                   fontSize: 13, color: "var(--dp-text-secondary)",
                   fontFamily: "Inter, sans-serif",
                 }}>
-                  {search.name}
+                  {search.name || search.query || "Search"}
                 </span>
                 <button
                   onClick={(e) => { e.stopPropagation(); removeRecentSearch(search.id); }}
@@ -313,7 +344,7 @@ export default function UserSearchScreen() {
       )}
 
       {/* Empty state when no search */}
-      {!isSearching && recentSearches.length === 0 && (
+      {!isSearching && (!recentSearches || recentSearches.length === 0) && (
         <div style={{
           textAlign: "center", padding: "40px 20px", marginBottom: 28,
           opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.2s",

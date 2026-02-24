@@ -1,9 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost } from "../../services/api";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
+import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
 import { FeedItemSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
-import { MOCK_LEADERBOARD } from "../../data/mockData";
 import {
   ArrowLeft, Users, UserPlus, Search, Trophy, Flame, Star,
   Zap, Heart, MessageCircle, ChevronRight, CheckCircle,
@@ -31,45 +35,8 @@ import {
  * - All 9:1+ contrast
  * ═══════════════════════════════════════════════════════════════════ */
 
-// ─── MOCK DATA ───────────────────────────────────────────────────
-const ME = { displayName:"Stephane", initial:"S", rank:4, xp:2450, level:12, friends:8, streak:7 };
-
-const FRIEND_REQUESTS = [
-  { id:"r1", name:"Sophie", initial:"S", level:9, mutualFriends:3 },
-  { id:"r2", name:"Marco", initial:"M", level:14, mutualFriends:1 },
-];
-
-const ONLINE_FRIENDS = [
-  { id:"l5", name:"Alex", initial:"A", level:10, color:"#14B8A6", dream:"Half Marathon" },
-  { id:"l1", name:"Jade", initial:"J", level:15, color:"#EC4899", dream:"Learn Japanese" },
-  { id:"om1", name:"Omar", initial:"O", level:8, color:"#F59E0B", dream:"Start a Podcast" },
-  { id:"l3", name:"Lisa", initial:"L", level:12, color:"#8B5CF6", dream:"Save $20K" },
-  { id:"fr2", name:"Noah", initial:"N", level:6, color:"#3B82F6", dream:"Read 50 Books" },
-];
-
-const LB_COLORS = ["#EC4899","#F59E0B","#8B5CF6","#14B8A6","#14B8A6","#3B82F6","#10B981","#6366F1"];
-const LEADERBOARD = MOCK_LEADERBOARD.map((entry,i) => ({
-  ...entry,
-  color: LB_COLORS[i % LB_COLORS.length],
-  isMe: !!entry.isUser,
-}));
-
-const FEED = [
-  { id:"a1", user:{name:"Jade",initial:"J",color:"#EC4899"}, type:"level_up", data:{level:15}, time:new Date(Date.now()-1000*60*20), likes:5, liked:false, comments:[
-    {id:"c1",user:{name:"Alex",initial:"A",color:"#14B8A6"},text:"Congrats Jade! That's insane progress 🎉",time:new Date(Date.now()-1000*60*15)},
-    {id:"c2",user:{name:"Stephane",initial:"S",color:"#8B5CF6"},text:"Keep it up! 💪",time:new Date(Date.now()-1000*60*10)},
-  ]},
-  { id:"a2", user:{name:"Alex",initial:"A",color:"#14B8A6"}, type:"task_completed", data:{task:"Ran 8km without stopping"}, time:new Date(Date.now()-1000*60*60*2), likes:3, liked:true, comments:[
-    {id:"c3",user:{name:"Jade",initial:"J",color:"#EC4899"},text:"Beast mode! Saturday run is going to be great",time:new Date(Date.now()-1000*60*60)},
-  ]},
-  { id:"a3", user:{name:"Omar",initial:"O",color:"#F59E0B"}, type:"dream_created", data:{dream:"Start a Podcast"}, time:new Date(Date.now()-1000*60*60*5), likes:7, liked:false, comments:[] },
-  { id:"a4", user:{name:"Lisa",initial:"L",color:"#8B5CF6"}, type:"streak", data:{days:18}, time:new Date(Date.now()-1000*60*60*8), likes:12, liked:true, comments:[
-    {id:"c4",user:{name:"Marco",initial:"M",color:"#F59E0B"},text:"18 days is no joke! Respect 🙌",time:new Date(Date.now()-1000*60*60*6)},
-    {id:"c5",user:{name:"Alex",initial:"A",color:"#14B8A6"},text:"Consistency queen!",time:new Date(Date.now()-1000*60*60*4)},
-    {id:"c6",user:{name:"Omar",initial:"O",color:"#F59E0B"},text:"Inspiring me to keep mine going",time:new Date(Date.now()-1000*60*60*2)},
-  ]},
-  { id:"a5", user:{name:"Marco",initial:"M",color:"#F59E0B"}, type:"task_completed", data:{task:"Completed React module on Coursera"}, time:new Date(Date.now()-1000*60*60*24), likes:4, liked:false, comments:[] },
-];
+var LB_COLORS = ["#EC4899","#F59E0B","#8B5CF6","#14B8A6","#14B8A6","#3B82F6","#10B981","#6366F1"];
+var FRIEND_COLORS = ["#14B8A6","#EC4899","#F59E0B","#8B5CF6","#3B82F6","#10B981","#6366F1"];
 
 const FEED_CONFIG = {
   level_up:    { Icon:ArrowUpCircle, color:"#C4B5FD", text:(d)=>`Reached level ${d.level}` },
@@ -85,31 +52,82 @@ function timeAgo(d){const s=Math.floor((Date.now()-d.getTime())/1000);if(s<60)re
 export default function SocialHubScreen(){
   const navigate=useNavigate();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
-  const[loading,setLoading]=useState(true);
+  var { user } = useAuth();
+  var { showToast } = useToast();
+  var queryClient = useQueryClient();
   const[mounted,setMounted]=useState(false);
-  const[feed,setFeed]=useState(FEED);
-  const[requests,setRequests]=useState(FRIEND_REQUESTS);
   const[lbTab,setLbTab]=useState("weekly");
   const[showSearch,setShowSearch]=useState(false);
   const[searchQ,setSearchQ]=useState("");
-  const[expandedComments,setExpandedComments]=useState(null); // feed item id
+  const[expandedComments,setExpandedComments]=useState(null);
   const[commentInput,setCommentInput]=useState("");
 
+  var ME = {
+    displayName: user?.displayName || user?.username || "You",
+    initial: (user?.displayName || user?.username || "U")[0].toUpperCase(),
+    rank: user?.rank || 0, xp: user?.xp || 0, level: user?.level || 1,
+    friends: user?.friendsCount || 0, streak: user?.streak || 0,
+  };
+
+  var feedInf = useInfiniteList({ queryKey: ["feed"], url: "/api/social/feed/friends", limit: 20 });
+  var feedData = feedInf.items.map(function (item) {
+    return Object.assign({}, item, {
+      time: new Date(item.time || item.createdAt || Date.now()),
+      user: Object.assign({}, item.user, { color: item.user?.color || FRIEND_COLORS[0] }),
+      comments: (item.comments || []).map(function (c) {
+        return Object.assign({}, c, { time: new Date(c.time || c.createdAt || Date.now()) });
+      }),
+    });
+  });
+  var [feed, setFeed] = useState([]);
+  useEffect(function () { if (feedData.length > 0) setFeed(feedData); }, [feedInf.items]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  var requestsQuery = useQuery({ queryKey: ["friend-requests"], queryFn: function () { return apiGet("/api/social/friends/requests/pending/"); } });
+  var requests = (requestsQuery.data && requestsQuery.data.results) || requestsQuery.data || [];
+  requests = requests.map(function (r) {
+    return Object.assign({}, r, { initial: (r.name || r.displayName || "?")[0].toUpperCase() });
+  });
+
+  var onlineQuery = useQuery({ queryKey: ["friends-online"], queryFn: function () { return apiGet("/api/social/friends/online/"); } });
+  var ONLINE_FRIENDS = ((onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || []).map(function (f, i) {
+    return { id: f.id, name: f.displayName || f.username || "Friend", initial: (f.displayName || f.username || "F")[0].toUpperCase(), level: f.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], dream: f.currentDream || "" };
+  });
+
+  var lbQuery = useQuery({ queryKey: ["leaderboard", lbTab], queryFn: function () { return apiGet("/api/leagues/leaderboard/friends/?period=" + lbTab); } });
+  var LEADERBOARD = ((lbQuery.data && lbQuery.data.results) || lbQuery.data || []).map(function (entry, i) {
+    return Object.assign({}, entry, { color: LB_COLORS[i % LB_COLORS.length], isMe: String(entry.id) === String(user?.id) });
+  });
+
+  var loading = feedInf.isLoading;
+
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 400);
+    var t;
     return () => clearTimeout(t);
   }, []);
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
-  const toggleFeedLike=(id)=>setFeed(p=>p.map(f=>f.id===id?{...f,liked:!f.liked,likes:f.liked?f.likes-1:f.likes+1}:f));
-  const toggleComments=(id)=>{setExpandedComments(prev=>prev===id?null:id);setCommentInput("");};
-  const addComment=(feedId)=>{
-    const text=commentInput.trim();if(!text)return;
-    setFeed(p=>p.map(f=>f.id===feedId?{...f,comments:[...f.comments,{id:Date.now()+"c",user:{name:"Stephane",initial:"S",color:"#8B5CF6"},text,time:new Date()}]}:f));
-    setCommentInput("");
+  const toggleFeedLike=function(id){
+    setFeed(p=>p.map(f=>f.id===id?{...f,liked:!f.liked,likes:f.liked?f.likes-1:f.likes+1}:f));
+    apiPost("/api/social/feed/" + id + "/like/").catch(function () {});
   };
-  const acceptReq=(id)=>setRequests(p=>p.filter(r=>r.id!==id));
-  const declineReq=(id)=>setRequests(p=>p.filter(r=>r.id!==id));
+  const toggleComments=(id)=>{setExpandedComments(prev=>prev===id?null:id);setCommentInput("");};
+  const addComment=function(feedId){
+    const text=commentInput.trim();if(!text)return;
+    setFeed(p=>p.map(f=>f.id===feedId?{...f,comments:[...f.comments,{id:Date.now()+"c",user:{name:ME.displayName,initial:ME.initial,color:"#8B5CF6"},text:text,time:new Date()}]}:f));
+    setCommentInput("");
+    apiPost("/api/social/feed/" + feedId + "/comment/", { text: text }).catch(function () {});
+  };
+  const acceptReq=function(id){
+    apiPost("/api/social/friends/accept/" + id + "/").then(function () {
+      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+      showToast("Friend request accepted!", "success");
+    }).catch(function (err) { showToast(err.message || "Failed", "error"); });
+  };
+  const declineReq=function(id){
+    apiPost("/api/social/friends/reject/" + id + "/").then(function () {
+      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
+    }).catch(function (err) { showToast(err.message || "Failed", "error"); });
+  };
 
 
   const RANK_STYLES=[
@@ -369,6 +387,8 @@ export default function SocialHubScreen(){
               </div>
             );
           })}
+          <div ref={feedInf.sentinelRef} style={{height:1}} />
+          {feedInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
 
           {/* ── Find a Buddy CTA ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${400+feed.length*80+80}ms`}}>

@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Lock, Mail, CheckCircle, ArrowRight } from "lucide-react";
+import { ArrowLeft, Lock, Mail, CheckCircle, ArrowRight, Loader2 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import { apiPost } from "../../services/api";
+import { isValidEmail } from "../../utils/sanitize";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -31,26 +33,45 @@ const inputFocusStyle = {
 };
 
 export default function ForgotPasswordScreen() {
-  const navigate = useNavigate();
-  const [mounted, setMounted] = useState(false);
-  const [email, setEmail] = useState("");
-  const [focused, setFocused] = useState(false);
-  const [sent, setSent] = useState(false);
+  var navigate = useNavigate();
+  var [mounted, setMounted] = useState(false);
+  var [email, setEmail] = useState("");
+  var [focused, setFocused] = useState(false);
+  var [sent, setSent] = useState(false);
+  var [serverError, setServerError] = useState("");
+  var [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 50);
-    return () => clearTimeout(timer);
+  useEffect(function () {
+    var timer = setTimeout(function () { setMounted(true); }, 50);
+    return function () { clearTimeout(timer); };
   }, []);
 
-  const stagger = (index) => ({
-    opacity: mounted ? 1 : 0,
-    transform: mounted ? "translateY(0)" : "translateY(20px)",
-    transition: `opacity 0.6s cubic-bezier(0.4,0,0.2,1) ${index * 0.08}s, transform 0.6s cubic-bezier(0.4,0,0.2,1) ${index * 0.08}s`,
-  });
+  var stagger = function (index) {
+    return {
+      opacity: mounted ? 1 : 0,
+      transform: mounted ? "translateY(0)" : "translateY(20px)",
+      transition: "opacity 0.6s cubic-bezier(0.4,0,0.2,1) " + (index * 0.08) + "s, transform 0.6s cubic-bezier(0.4,0,0.2,1) " + (index * 0.08) + "s",
+    };
+  };
 
-  const handleSend = (e) => {
+  var handleSend = function (e) {
     e.preventDefault();
-    setSent(true);
+    setServerError("");
+    if (!isValidEmail(email)) {
+      setServerError("Please enter a valid email address.");
+      return;
+    }
+    setSubmitting(true);
+    apiPost("/api/auth/password/reset/", { email: email })
+      .then(function () {
+        setSent(true);
+      })
+      .catch(function (err) {
+        setServerError(err.message || "Failed to send reset email. Please try again.");
+      })
+      .finally(function () {
+        setSubmitting(false);
+      });
   };
 
   return (
@@ -120,6 +141,16 @@ export default function ForgotPasswordScreen() {
               </div>
 
               <form onSubmit={handleSend}>
+                {serverError && (
+                  <div style={{
+                    background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                    borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                    fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+                  }}>
+                    {serverError}
+                  </div>
+                )}
+
                 <div style={{ ...stagger(3), marginBottom: 24 }}>
                   <label style={{
                     fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
@@ -151,27 +182,41 @@ export default function ForgotPasswordScreen() {
                 <div style={stagger(4)}>
                   <button
                     type="submit"
+                    disabled={submitting}
                     style={{
                       width: "100%", height: 50, borderRadius: 14,
-                      background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                      border: "none", cursor: "pointer",
+                      background: submitting
+                        ? "linear-gradient(135deg, rgba(139,92,246,0.5), rgba(124,58,237,0.5))"
+                        : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                      border: "none", cursor: submitting ? "not-allowed" : "pointer",
                       color: "#fff", fontSize: 15, fontWeight: 700,
                       fontFamily: "Inter, sans-serif",
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                      transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                      transition: "transform 0.2s ease, box-shadow 0.2s ease, background 0.25s ease",
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.transform = "translateY(-1px)";
-                      e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
+                    onMouseEnter={function (e) {
+                      if (!submitting) {
+                        e.currentTarget.style.transform = "translateY(-1px)";
+                        e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
+                      }
                     }}
-                    onMouseLeave={(e) => {
+                    onMouseLeave={function (e) {
                       e.currentTarget.style.transform = "translateY(0)";
                       e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
                     }}
                   >
-                    Send Reset Link
-                    <ArrowRight size={18} />
+                    {submitting ? (
+                      <>
+                        <Loader2 size={18} className="dp-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        Send Reset Link
+                        <ArrowRight size={18} />
+                      </>
+                    )}
                   </button>
                 </div>
               </form>

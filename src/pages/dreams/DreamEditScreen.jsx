@@ -2,11 +2,15 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Save, Trash2, X, Briefcase, Heart, DollarSign,
-  Palette, TrendingUp, Users, AlertTriangle, Globe, Lock,
+  Palette, TrendingUp, Users, AlertTriangle, Globe, Lock, Loader2,
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
-import { MOCK_DREAMS } from "../../data/mockData";
+import { apiGet, apiPatch, apiDelete } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
+import { useToast } from "../../context/ToastContext";
+import ErrorState from "../../components/shared/ErrorState";
+import { SkeletonCard } from "../../components/shared/Skeleton";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -55,19 +59,36 @@ const TIMEFRAMES = [
 export default function DreamEditScreen() {
   const navigate = useNavigate();
   const { id } = useParams();
+  var queryClient = useQueryClient();
+  var { showToast } = useToast();
   const { resolved } = useTheme();
   const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
   const [focusedField, setFocusedField] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState("");
+  const [initialized, setInitialized] = useState(false);
 
-  // Pre-fill with existing dream data
-  const dream = MOCK_DREAMS[0];
-  const [title, setTitle] = useState(dream.title);
-  const [description, setDescription] = useState(dream.description);
-  const [category, setCategory] = useState(dream.category);
+  var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/"); } });
+  var dream = dreamQuery.data || {};
+
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState(null);
   const [timeframe, setTimeframe] = useState("6m");
   const [visibility, setVisibility] = useState("private");
+
+  useEffect(function () {
+    if (dreamQuery.data && !initialized) {
+      setTitle(dreamQuery.data.title || "");
+      setDescription(dreamQuery.data.description || "");
+      setCategory(dreamQuery.data.category || null);
+      setTimeframe(dreamQuery.data.timeframe || "6m");
+      setVisibility(dreamQuery.data.isPublic ? "public" : "private");
+      setInitialized(true);
+    }
+  }, [dreamQuery.data, initialized]);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -80,14 +101,63 @@ export default function DreamEditScreen() {
     transition: `opacity 0.6s cubic-bezier(0.4,0,0.2,1) ${index * 0.08}s, transform 0.6s cubic-bezier(0.4,0,0.2,1) ${index * 0.08}s`,
   });
 
-  const handleSave = () => {
-    navigate(-1);
+  const handleSave = function () {
+    setSubmitting(true);
+    setServerError("");
+    apiPatch("/api/dreams/dreams/" + id + "/", {
+      title: title.trim(),
+      description: description.trim(),
+      category: category,
+      timeframe: timeframe,
+      isPublic: visibility === "public",
+    }).then(function () {
+      queryClient.invalidateQueries({ queryKey: ["dream", id] });
+      queryClient.invalidateQueries({ queryKey: ["dreams"] });
+      navigate(-1);
+    }).catch(function (err) {
+      setServerError(err.message || "Failed to save changes.");
+    }).finally(function () {
+      setSubmitting(false);
+    });
   };
 
-  const handleDelete = () => {
+  const handleDelete = function () {
     setShowDeleteModal(false);
-    navigate("/");
+    apiDelete("/api/dreams/dreams/" + id + "/").then(function () {
+      queryClient.invalidateQueries({ queryKey: ["dreams"] });
+      showToast("Dream deleted", "success");
+      navigate("/");
+    }).catch(function () {
+      showToast("Failed to delete dream", "error");
+      navigate("/");
+    });
   };
+
+  if (dreamQuery.isLoading) {
+    return (
+      <PageLayout>
+        <div style={{ paddingTop: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          <SkeletonCard height={48} />
+          <SkeletonCard height={80} />
+          <SkeletonCard height={120} />
+          <SkeletonCard height={60} />
+          <SkeletonCard height={60} />
+          <SkeletonCard height={80} />
+        </div>
+      </PageLayout>
+    );
+  }
+
+  if (dreamQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={dreamQuery.error?.message || "Could not load dream."}
+          onRetry={function () { dreamQuery.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>
@@ -360,12 +430,24 @@ export default function DreamEditScreen() {
 
         {/* Save Button */}
         <div style={stagger(7)}>
+          {serverError && (
+            <div style={{
+              background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: 12, padding: "12px 16px", marginBottom: 12,
+              fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+            }}>
+              {serverError}
+            </div>
+          )}
           <button
             onClick={handleSave}
+            disabled={submitting}
             style={{
               width: "100%", height: 50, borderRadius: 14,
-              background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-              border: "none", cursor: "pointer",
+              background: submitting
+                ? "linear-gradient(135deg, rgba(139,92,246,0.5), rgba(124,58,237,0.5))"
+                : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+              border: "none", cursor: submitting ? "not-allowed" : "pointer",
               color: "#fff", fontSize: 15, fontWeight: 700,
               fontFamily: "Inter, sans-serif",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -381,8 +463,8 @@ export default function DreamEditScreen() {
               e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
             }}
           >
-            <Save size={18} />
-            Save Changes
+            {submitting ? <Loader2 size={18} className="dp-spin" /> : <Save size={18} />}
+            {submitting ? "Saving..." : "Save Changes"}
           </button>
         </div>
 

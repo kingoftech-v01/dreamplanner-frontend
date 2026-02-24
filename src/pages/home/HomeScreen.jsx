@@ -128,7 +128,7 @@ export default function DreamPlannerHome() {
     xp: (dashboard.xp) || (user && user.xp) || 0,
     xpToNext: (dashboard.xpToNext) || (user && user.xpToNext) || 1000,
     streakDays: (dashboard.streakDays) || (user && user.streakDays) || 0,
-    rank: (dashboard.rank) || (user && user.rank) || "Starter",
+    rank: (dashboard.rank && typeof dashboard.rank === "object" ? dashboard.rank.leagueName : dashboard.rank) || (user && user.rank && typeof user.rank === "object" ? user.rank.leagueName : (user && user.rank)) || "Starter",
   };
   var levelPct = u.xpToNext > 0 ? Math.round((u.xp / u.xpToNext) * 100) : 0;
 

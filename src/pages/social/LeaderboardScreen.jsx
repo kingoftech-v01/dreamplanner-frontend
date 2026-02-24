@@ -61,16 +61,18 @@ export default function LeaderboardScreen() {
 
   var rawData = lbInf.items;
   var EXTENDED_LEADERBOARD = rawData.map(function (entry, i) {
+    if (!entry) return null;
+    var entryName = entry.name || entry.displayName || "User";
     return Object.assign({}, entry, {
-      initial: entry.initial || (entry.name || entry.displayName || "?")[0].toUpperCase(),
-      name: entry.name || entry.displayName || "User",
+      initial: entry.initial || entryName[0].toUpperCase(),
+      name: entryName,
       rank: entry.rank || i + 1,
       xp: entry.xp || 0,
       level: entry.level || 1,
       streak: entry.streak || 0,
       isUser: String(entry.id) === String(user?.id),
     });
-  });
+  }).filter(Boolean);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -78,6 +80,7 @@ export default function LeaderboardScreen() {
   }, []);
 
   const getAvatarColor = (name) => {
+    if (!name) return AVATAR_COLORS[0];
     let hash = 0;
     for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
     return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
@@ -289,6 +292,7 @@ export default function LeaderboardScreen() {
         transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.4s",
       }}>
         {rest.map((entry, index) => {
+          if (!entry) return null;
           const avatarColor = getAvatarColor(entry.name);
           const isUser = entry.isUser;
 

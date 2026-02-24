@@ -23,6 +23,7 @@ var glassStyle = {
 };
 
 function getAvatarColor(name) {
+  if (!name) return AVATAR_COLORS[0];
   var hash = 0;
   for (var i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
@@ -59,6 +60,7 @@ export default function BuddyRequestsScreen() {
   });
 
   var ALL_REQUESTS = ((historyQuery.data && historyQuery.data.results) || historyQuery.data || []).map(function (req) {
+    if (!req) return null;
     var name = req.name || req.displayName || req.username || req.buddyName || "User";
     return Object.assign({}, req, {
       name: name,
@@ -68,7 +70,7 @@ export default function BuddyRequestsScreen() {
       matchScore: req.matchScore || req.compatibility || req.compatibilityScore || null,
       time: req.createdAt || req.time || "",
     });
-  });
+  }).filter(Boolean);
 
   var pendingRequests = ALL_REQUESTS.filter(function (r) {
     if (actionStates[r.id]) return false;
@@ -279,6 +281,7 @@ export default function BuddyRequestsScreen() {
         )}
 
         {!historyQuery.isLoading && currentList.map(function (request, index) {
+          if (!request) return null;
           var avatarColor = getAvatarColor(request.name);
           var isAccepted = request.status === "accepted" || actionStates[request.id] === "accepted";
           var compatColor = request.matchScore ? getCompatColor(request.matchScore) : null;

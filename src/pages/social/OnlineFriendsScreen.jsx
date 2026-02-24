@@ -29,6 +29,7 @@ export default function OnlineFriendsScreen() {
   });
 
   var ONLINE_FRIENDS = ((onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || []).map(function (f, i) {
+    if (!f) return null;
     return Object.assign({}, f, {
       name: f.displayName || f.username || "Friend",
       initial: (f.displayName || f.username || "F")[0].toUpperCase(),
@@ -36,7 +37,7 @@ export default function OnlineFriendsScreen() {
       status: f.status || f.currentActivity || "",
       color: f.color || FRIEND_COLORS[i % 8],
     });
-  });
+  }).filter(Boolean);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -99,7 +100,9 @@ export default function OnlineFriendsScreen() {
 
       {/* Friends List */}
       {!onlineQuery.isLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {ONLINE_FRIENDS.map((friend, index) => (
+        {ONLINE_FRIENDS.map((friend, index) => {
+          if (!friend) return null;
+          return (
           <div
             key={friend.id}
             style={{
@@ -190,7 +193,8 @@ export default function OnlineFriendsScreen() {
               Message
             </button>
           </div>
-        ))}
+        );
+        })}
       </div>}
 
       {/* Bottom spacer */}

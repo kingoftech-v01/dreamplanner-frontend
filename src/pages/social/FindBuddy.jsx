@@ -75,6 +75,7 @@ export default function FindBuddyScreen(){
 
   var CURRENT_BUDDY = buddyQuery.data || null;
   var SUGGESTIONS = ((suggestionsQuery.data && suggestionsQuery.data.results) || suggestionsQuery.data || []).map(function (s, i) {
+    if (!s) return null;
     return Object.assign({}, s, {
       initial: (s.name || s.displayName || "?")[0].toUpperCase(),
       color: s.color || SUGGESTION_COLORS[i % SUGGESTION_COLORS.length],
@@ -83,7 +84,7 @@ export default function FindBuddyScreen(){
       dreams: s.dreams || [],
       achievements: s.achievements || [],
     });
-  });
+  }).filter(Boolean);
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
@@ -111,7 +112,7 @@ export default function FindBuddyScreen(){
   };
 
   var b=CURRENT_BUDDY || {};
-  const ringR=40,ringC=2*Math.PI*ringR,ringOff=ringC*(1-b.compatibility/100);
+  const ringR=40,ringC=2*Math.PI*ringR,ringOff=ringC*(1-(b.compatibility||0)/100);
 
   return(
     <div style={{width:"100%",height:"100dvh",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
@@ -228,6 +229,7 @@ export default function FindBuddyScreen(){
           </div>
 
           {SUGGESTIONS.map((s,i)=>{
+            if(!s) return null;
             const isSent=sent[s.id];
             return(
               <div key={s.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+i*80}ms`}}>
@@ -236,7 +238,7 @@ export default function FindBuddyScreen(){
                     {/* Avatar + score */}
                     <div style={{position:"relative",flexShrink:0}}>
                       <div style={{width:50,height:50,borderRadius:16,background:`${s.color}15`,border:`2px solid ${s.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:700,color:s.color}}>{s.initial}</div>
-                      <div style={{position:"absolute",bottom:-4,left:"50%",transform:"translateX(-50%)",padding:"1px 6px",borderRadius:6,background:"rgba(12,8,26,0.9)",border:"1px solid rgba(93,229,168,0.25)",fontSize:12,fontWeight:700,color:"#5DE5A8",whiteSpace:"nowrap"}}>{s.compatibility}%</div>
+                      <div style={{position:"absolute",bottom:-4,left:"50%",transform:"translateX(-50%)",padding:"1px 6px",borderRadius:6,background:"rgba(12,8,26,0.9)",border:"1px solid rgba(93,229,168,0.25)",fontSize:12,fontWeight:700,color:"#5DE5A8",whiteSpace:"nowrap"}}>{s.compatibility||0}%</div>
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
@@ -303,7 +305,7 @@ export default function FindBuddyScreen(){
       {/* ═══ PROFILE DETAIL PANEL ═══ */}
       {selectedProfile&&(()=>{
         const s=selectedProfile;const isSent=sent[s.id];
-        const sRingR=44,sRingC=2*Math.PI*sRingR,sRingOff=sRingC*(1-s.compatibility/100);
+        const sRingR=44,sRingC=2*Math.PI*sRingR,sRingOff=sRingC*(1-(s.compatibility||0)/100);
         return(
           <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column"}}>
             <div onClick={()=>setSelectedProfile(null)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
@@ -335,15 +337,15 @@ export default function FindBuddyScreen(){
                   <Heart size={13} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2.5}/>
                   <span style={{fontSize:14,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{s.compatibility}% Match</span>
                 </div>
-                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:6}}>Joined {s.joined}{s.mutualFriends>0?` · ${s.mutualFriends} mutual friend${s.mutualFriends>1?"s":""}`:""}</div>
+                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:6}}>Joined {s.joined||"recently"}{(s.mutualFriends||0)>0?` · ${s.mutualFriends} mutual friend${s.mutualFriends>1?"s":""}`:""}</div>
               </div>
 
               {/* Stats */}
               <div style={{display:"flex",gap:8,padding:"0 20px",marginBottom:18}}>
                 {[
-                  {Icon:Star,val:s.level,label:"Level",color:"#FCD34D"},
-                  {Icon:Zap,val:s.xp>999?`${(s.xp/1000).toFixed(1)}k`:s.xp,label:"XP",color:"#5DE5A8"},
-                  {Icon:Flame,val:s.streak,label:"Streak",color:"#F69A9A"},
+                  {Icon:Star,val:s.level||1,label:"Level",color:"#FCD34D"},
+                  {Icon:Zap,val:(s.xp||0)>999?`${((s.xp||0)/1000).toFixed(1)}k`:(s.xp||0),label:"XP",color:"#5DE5A8"},
+                  {Icon:Flame,val:s.streak||0,label:"Streak",color:"#F69A9A"},
                 ].map(({Icon:I,val,label,color},i)=>{
                   const ic=color==="#FCD34D"?(isLight?"#B45309":"#FCD34D"):color==="#5DE5A8"?(isLight?"#059669":"#5DE5A8"):color==="#F69A9A"?(isLight?"#DC2626":"#F69A9A"):color;
                   return(

@@ -47,14 +47,15 @@ export default function BuddyChatScreen(){
 
   // ─── Fetch buddy info ──────────────────────────────────────────
   var buddyQuery=useQuery({
-    queryKey:["buddy",id],
-    queryFn:function(){return apiGet("/api/buddies/"+id+"/");},
+    queryKey:["buddy","current"],
+    queryFn:function(){return apiGet("/api/buddies/current/");},
   });
-  var buddy=buddyQuery.data||{};
-  var buddyName=buddy.displayName||buddy.username||"Buddy";
-  var buddyInitial=buddyName[0].toUpperCase();
-  var buddyOnline=!!buddy.isOnline;
-  var mutualDream=buddy.mutualDream||buddy.sharedDream||"";
+  var buddyData=buddyQuery.data||{};
+  var buddy=buddyData.buddy||buddyData||{};
+  var buddyName=buddy.displayName||buddy.display_name||buddy.username||"Buddy";
+  var buddyInitial=(buddyName[0]||"B").toUpperCase();
+  var buddyOnline=!!buddy.isOnline||!!buddy.is_online;
+  var mutualDream=buddy.mutualDream||buddy.mutual_dream||buddy.sharedDream||"";
 
   // ─── Fetch messages (paginated) ────────────────────────────────
   var BUDDY_PAGE_SIZE=50;

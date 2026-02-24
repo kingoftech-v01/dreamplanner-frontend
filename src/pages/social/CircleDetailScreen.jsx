@@ -83,6 +83,7 @@ export default function CircleDetailScreen() {
 
   // Normalize feed data into posts
   var feedData = feedInf.items.map(function (item, i) {
+    if (!item) return null;
     var authorName = (item.user && (item.user.displayName || item.user.username || item.user.name)) || "User";
     return {
       id: item.id,
@@ -99,10 +100,12 @@ export default function CircleDetailScreen() {
     };
   });
 
+  feedData = feedData.filter(Boolean);
   useEffect(function () { if (feedData.length > 0) setPosts(feedData); }, [feedInf.items]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Members from circle detail response
   var members = (circle.members || []).map(function (m, i) {
+    if (!m) return null;
     var name = m.displayName || m.username || m.name || "Member";
     return {
       id: m.id,
@@ -112,7 +115,7 @@ export default function CircleDetailScreen() {
       role: m.role || "Member",
       level: m.level || 1,
     };
-  });
+  }).filter(Boolean);
 
   var isAdmin = members.some(function (m) { return m.id === (user && user.id) && m.role === "Admin"; });
 
@@ -456,7 +459,9 @@ export default function CircleDetailScreen() {
         {/* ═══ POSTS TAB ═══ */}
         {activeTab === "posts" && (
           <div>
-            {posts.map((post, i) => (
+            {posts.map((post, i) => {
+              if (!post) return null;
+              return (
               <div
                 key={post.id}
                 style={{
@@ -590,7 +595,8 @@ export default function CircleDetailScreen() {
                   </div>
                 </div>
               </div>
-            ))}
+            );
+            })}
             <div ref={feedInf.sentinelRef} style={{height:1}} />
             {feedInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
           </div>
@@ -600,7 +606,8 @@ export default function CircleDetailScreen() {
         {activeTab === "members" && (
           <div>
             {members.map((member, i) => {
-              const roleConfig = ROLE_CONFIG[member.role];
+              if (!member) return null;
+              const roleConfig = ROLE_CONFIG[member.role] || ROLE_CONFIG.Member;
               const RoleIcon = roleConfig.icon;
               return (
                 <div
@@ -974,6 +981,7 @@ export default function CircleDetailScreen() {
               </div>
 
               {(activeChallenge.leaderboard || []).map(function (entry, i) {
+                if (!entry) return null;
                 const medals = ["#FCD34D", "#C0C0C0", "#CD7F32"];
                 const medalColor = medals[i] || "rgba(255,255,255,0.3)";
                 var entryName = entry.displayName || entry.username || entry.name || "User";

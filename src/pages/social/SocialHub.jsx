@@ -39,10 +39,10 @@ var LB_COLORS = ["#EC4899","#F59E0B","#8B5CF6","#14B8A6","#14B8A6","#3B82F6","#1
 var FRIEND_COLORS = ["#14B8A6","#EC4899","#F59E0B","#8B5CF6","#3B82F6","#10B981","#6366F1"];
 
 const FEED_CONFIG = {
-  level_up:    { Icon:ArrowUpCircle, color:"#C4B5FD", text:(d)=>`Reached level ${d.level}` },
-  task_completed:{ Icon:CheckCircle, color:"#5DE5A8", text:(d)=>d.task },
-  dream_created: { Icon:Sparkles,    color:"#FCD34D", text:(d)=>`Created dream "${d.dream}"` },
-  streak:      { Icon:Flame,         color:"#F69A9A", text:(d)=>`${d.days} day streak! 🔥` },
+  level_up:    { Icon:ArrowUpCircle, color:"#C4B5FD", text:(d)=>`Reached level ${(d&&d.level)||"?"}` },
+  task_completed:{ Icon:CheckCircle, color:"#5DE5A8", text:(d)=>(d&&d.task)||"Completed a task" },
+  dream_created: { Icon:Sparkles,    color:"#FCD34D", text:(d)=>`Created dream "${(d&&d.dream)||"a dream"}"` },
+  streak:      { Icon:Flame,         color:"#F69A9A", text:(d)=>`${(d&&d.days)||0} day streak! 🔥` },
 };
 
 
@@ -59,6 +59,8 @@ export default function SocialHubScreen(){
   const[lbTab,setLbTab]=useState("weekly");
   const[showSearch,setShowSearch]=useState(false);
   const[searchQ,setSearchQ]=useState("");
+  const[searchResults,setSearchResults]=useState([]);
+  const[searchLoading,setSearchLoading]=useState(false);
   const[expandedComments,setExpandedComments]=useState(null);
   const[commentInput,setCommentInput]=useState("");
 
@@ -101,9 +103,22 @@ export default function SocialHubScreen(){
   var loading = feedInf.isLoading;
 
   useEffect(() => {
-    var t;
-    return () => clearTimeout(t);
-  }, []);
+    if (!searchQ || searchQ.length < 2) { setSearchResults([]); return; }
+    setSearchLoading(true);
+    var cancelled = false;
+    var timer = setTimeout(function () {
+      apiGet("/api/social/users/search?q=" + encodeURIComponent(searchQ)).then(function (data) {
+        if (cancelled) return;
+        var results = (data && data.results) || data || [];
+        setSearchResults(results.map(function (u, i) {
+          var displayName = u.username || u.displayName || u.display_name || "User";
+          return { id: u.id, name: displayName, title: u.title || "", initial: (displayName[0] || "U").toUpperCase(), level: u.currentLevel || u.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], isFriend: u.isFriend || false, isFollowing: u.isFollowing || false, friendshipStatus: u.isFriend ? "accepted" : null };
+        }));
+        setSearchLoading(false);
+      }).catch(function () { if (!cancelled) { setSearchResults([]); setSearchLoading(false); } });
+    }, 300);
+    return function () { cancelled = true; clearTimeout(timer); };
+  }, [searchQ]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
   const toggleFeedLike=function(id){
@@ -269,15 +284,16 @@ export default function SocialHubScreen(){
             </div>
 
             {/* Podium */}
-            <div className="dp-g" style={{padding:20,marginBottom:12}}>
+            {LEADERBOARD.length>=3&&(<div className="dp-g" style={{padding:20,marginBottom:12}}>
               <div style={{display:"flex",justifyContent:"center",alignItems:"flex-end",gap:12,marginBottom:16}}>
                 {[1,0,2].map(idx=>{
                   const p=LEADERBOARD[idx];const rs=RANK_STYLES[idx];const isFirst=idx===0;
+                  if(!p)return null;
                   return(
-                    <div key={p.id} onClick={()=>!p.isMe&&navigate("/user/"+p.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,cursor:p.isMe?"default":"pointer"}}>
-                      <div style={{width:rs.size,height:rs.size,borderRadius:Math.round(rs.size*0.3),background:rs.bg,border:`2px solid ${rs.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(rs.size*0.38),fontWeight:700,color:"#fff",boxShadow:`0 4px 16px ${rs.shadow}`,marginBottom:8}}>{p.initial}</div>
-                      <div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:2}}>{p.name}</div>
-                      <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{p.xp.toLocaleString()} XP</div>
+                    <div key={p.id||idx} onClick={()=>!p.isMe&&navigate("/user/"+p.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,cursor:p.isMe?"default":"pointer"}}>
+                      <div style={{width:rs.size,height:rs.size,borderRadius:Math.round(rs.size*0.3),background:rs.bg,border:`2px solid ${rs.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(rs.size*0.38),fontWeight:700,color:"#fff",boxShadow:`0 4px 16px ${rs.shadow}`,marginBottom:8}}>{p.initial||"?"}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:2}}>{p.name||"—"}</div>
+                      <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{(p.xp||0).toLocaleString()} XP</div>
                       <div style={{marginTop:6,padding:"3px 10px",borderRadius:10,background:`${rs.border}20`,fontSize:12,fontWeight:700,color:isFirst?(isLight?"#B45309":"#FCD34D"):idx===1?"#D1D5DB":"#D4A574"}}>
                         #{idx+1}
                       </div>
@@ -287,7 +303,7 @@ export default function SocialHubScreen(){
               </div>
 
               {/* Rest of leaderboard */}
-              {LEADERBOARD.slice(3).map((entry,i)=>{
+              {LEADERBOARD.slice(3).map((entry,i)=>{if(!entry)return null;
                 const rank=i+4;
                 return(
                   <div key={entry.id} onClick={()=>!entry.isMe&&navigate("/user/"+entry.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i===0?(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"):"none",cursor:entry.isMe?"default":"pointer"}}>
@@ -303,7 +319,7 @@ export default function SocialHubScreen(){
                   </div>
                 );
               })}
-            </div>
+            </div>)}
           </div>
 
           {/* ── Activity Feed ── */}
@@ -423,22 +439,28 @@ export default function SocialHubScreen(){
                 <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search people, dreams..." autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:15,fontFamily:"inherit"}}/>
                 <button onClick={()=>{setShowSearch(false);setSearchQ("");}} aria-label="Close search" style={{background:"none",border:"none",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",cursor:"pointer"}}><X size={18}/></button>
               </div>
-              {searchQ&&(()=>{
-                const ALL_SEARCH=[...ONLINE_FRIENDS,...LEADERBOARD.filter(l=>!l.isMe&&!ONLINE_FRIENDS.some(f=>f.id===l.id))];
-                const results=ALL_SEARCH.filter(f=>f.name.toLowerCase().includes(searchQ.toLowerCase()));
-                return(
+              {searchQ&&searchQ.length>=2&&(
                 <div style={{padding:12,maxHeight:300,overflowY:"auto"}}>
-                  {results.map(f=>(
+                  {searchLoading&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>Searching...</div>}
+                  {!searchLoading&&searchResults.map(f=>(
                     <div key={f.id} onClick={()=>{setShowSearch(false);setSearchQ("");navigate("/user/"+f.id);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 8px",borderRadius:10,cursor:"pointer",transition:"background 0.15s"}}
                       onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)"}
                       onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                       <div style={{width:32,height:32,borderRadius:10,background:`${f.color||"#8B5CF6"}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:f.color||"#8B5CF6"}}>{f.initial}</div>
-                      <div><div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{f.name}</div><div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>Level {f.level}</div></div>
+                      <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{f.name}</div><div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{f.title} · Level {f.level}{f.isFriend?" · Friend":""}</div></div>
+                      {!f.isFriend&&f.friendshipStatus!=="pending"&&(
+                        <button onClick={function(e){e.stopPropagation();apiPost("/api/social/friends/request/",{targetUserId:f.id}).then(function(){showToast("Friend request sent!","success");setSearchResults(function(prev){return prev.map(function(s){return s.id===f.id?Object.assign({},s,{friendshipStatus:"pending"}):s;});});}).catch(function(err){showToast(err.message||"Failed to send request","error");});}} style={{padding:"6px 12px",borderRadius:10,border:"none",background:"rgba(139,92,246,0.15)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
+                          <UserPlus size={14} style={{verticalAlign:"middle",marginRight:4}} strokeWidth={2.5}/>Add
+                        </button>
+                      )}
+                      {f.friendshipStatus==="pending"&&(
+                        <span style={{padding:"6px 12px",borderRadius:10,background:"rgba(93,229,168,0.1)",color:isLight?"#059669":"#5DE5A8",fontSize:12,fontWeight:500,flexShrink:0}}>Pending</span>
+                      )}
                     </div>
                   ))}
-                  {results.length===0&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>No results</div>}
-                </div>);
-              })()}
+                  {!searchLoading&&searchResults.length===0&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>No results found</div>}
+                </div>
+              )}
             </div>
           </div>
         </div>

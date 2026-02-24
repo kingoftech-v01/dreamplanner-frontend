@@ -380,8 +380,10 @@ export default function DreamPlannerHome() {
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       {/* Sparkline */}
                       {(function () {
-                        var data = dream.progressHistory || [0, Math.round(dream.progress * 0.5), dream.progress];
-                        if (data.length < 2) data = [0, dream.progress];
+                        var prog = Number(dream.progress) || 0;
+                        var data = dream.progressHistory || [0, Math.round(prog * 0.5), prog];
+                        data = data.map(function (v) { var n = Number(v); return isNaN(n) ? 0 : n; });
+                        if (data.length < 2) data = [0, prog];
                         var max = Math.max.apply(null, data);
                         var min = Math.min.apply(null, data);
                         var range = max - min || 1;

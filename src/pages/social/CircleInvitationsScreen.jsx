@@ -27,6 +27,7 @@ var glass = {
 };
 
 function getAvatarColor(name) {
+  if (!name) return AVATAR_COLORS[0];
   var hash = 0;
   for (var i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
@@ -64,6 +65,7 @@ export default function CircleInvitationsScreen() {
   });
 
   var invitations = ((invitationsQuery.data && invitationsQuery.data.results) || invitationsQuery.data || []).map(function (inv, i) {
+    if (!inv) return null;
     var name = inv.displayName || inv.username || inv.name || inv.email || "User";
     return {
       id: inv.id || i,
@@ -73,7 +75,7 @@ export default function CircleInvitationsScreen() {
       status: inv.status || "pending",
       time: inv.createdAt || inv.time || "",
     };
-  });
+  }).filter(Boolean);
 
   var pendingCount = invitations.filter(function (inv) { return inv.status === "pending"; }).length;
 
@@ -485,6 +487,7 @@ export default function CircleInvitationsScreen() {
             )}
 
             {!invitationsQuery.isLoading && invitations.map(function (inv, i) {
+              if (!inv) return null;
               var statusColor = inv.status === "accepted" ? "#10B981"
                 : inv.status === "declined" ? "#EF4444"
                 : isLight ? "#6D28D9" : "#C4B5FD";

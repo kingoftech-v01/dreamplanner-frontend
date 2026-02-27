@@ -12,7 +12,7 @@ import { sanitizeText, validateRequired } from "../../utils/sanitize";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, Clock,
   Target, CheckCircle, Circle, X, Check, Calendar,
-  Zap, MoreVertical, Edit3, Trash2
+  Zap, MoreVertical, Edit3, Trash2, LayoutGrid, Link
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -248,6 +248,18 @@ export default function CalendarScreen(){
 
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{width:"100%"}}>
+
+          {/* ── Quick Access ── */}
+          <div style={{display:"flex",gap:8,marginBottom:14}}>
+            <button onClick={function(){navigate("/calendar/timeblocks");}} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
+              <LayoutGrid size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+              <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Time Blocks</span>
+            </button>
+            <button onClick={function(){navigate("/calendar-connect");}} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
+              <Link size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+              <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Google Sync</span>
+            </button>
+          </div>
 
           {/* ── Month Nav ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>

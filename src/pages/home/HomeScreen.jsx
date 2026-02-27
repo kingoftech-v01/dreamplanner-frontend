@@ -63,8 +63,8 @@ var DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 const ACTIONS = [
   { Icon: Bot,            label:"AI Coach",       color:"#8B5CF6", path:"/chat" },
-  { Icon: MessageCircle,  label:"Conversations",  color:"#14B8A6", path:"/conversations" },
-  { Icon: Trophy,         label:"Leaderboard",    color:"#FCD34D", path:"/leaderboard" },
+  { Icon: Target,         label:"Vision Board",   color:"#14B8A6", path:"/vision-board" },
+  { Icon: Sparkles,       label:"Dream Feed",     color:"#FCD34D", path:"/social/feed" },
   { Icon: ShoppingBag,    label:"Store",          color:"#10B981", path:"/store" },
 ];
 
@@ -328,6 +328,20 @@ export default function DreamPlannerHome() {
                 onMouseLeave={e=>{e.currentTarget.style.background="rgba(139,92,246,0.1)";e.currentTarget.style.borderColor="rgba(139,92,246,0.25)";}}
               >
                 <Plus size={15} strokeWidth={2.5} /> New Dream
+              </button>
+            </div>
+          </div>
+
+          {/* ── Dream Quick Links ── */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"550ms"}}>
+            <div style={{display:"flex",gap:8,marginBottom:16}}>
+              <button onClick={()=>navigate("/dream/templates")} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
+                <Sparkles size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+                <span style={{fontSize:12,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Templates</span>
+              </button>
+              <button onClick={()=>navigate("/dreams/shared")} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
+                <Share2 size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+                <span style={{fontSize:12,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Shared Dreams</span>
               </button>
             </div>
           </div>

@@ -13,7 +13,8 @@ import { FeedItemSkeleton, SkeletonCard } from "../../components/shared/Skeleton
 import {
   ArrowLeft, Users, UserPlus, Search, Trophy, Flame, Star,
   Zap, Heart, MessageCircle, ChevronRight, CheckCircle,
-  Sparkles, ArrowUpCircle, Target, Crown, Medal, X, UserCheck
+  Sparkles, ArrowUpCircle, Target, Crown, Medal, X, UserCheck,
+  CircleDot, Calendar, Handshake
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -234,6 +235,30 @@ export default function SocialHubScreen(){
                   </div>
                 );})}
               </div>
+            </div>
+          </div>
+
+          {/* ── Quick Access Grid ── */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"50ms"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
+              {[
+                {Icon:CircleDot,label:"Circles",color:"#8B5CF6",path:"/circles"},
+                {Icon:Trophy,label:"Leaderboard",color:"#FCD34D",path:"/leaderboard"},
+                {Icon:Calendar,label:"Seasons",color:"#14B8A6",path:"/seasons"},
+                {Icon:Sparkles,label:"Dream Feed",color:"#EC4899",path:"/social/feed"},
+                {Icon:Handshake,label:"Buddy Requests",color:"#F59E0B",path:"/buddy-requests"},
+                {Icon:Target,label:"Find Buddy",color:"#10B981",path:"/find-buddy"},
+              ].map(function(item,i){
+                var iconColor = item.color === "#FCD34D" ? (isLight?"#B45309":"#FCD34D") : item.color;
+                return(
+                <button key={i} onClick={function(){navigate(item.path);}} className="dp-g dp-gh" style={{
+                  padding:"14px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:8,
+                  cursor:"pointer",border:"none",textAlign:"center",
+                }}>
+                  <item.Icon size={20} color={iconColor} strokeWidth={2} style={{filter:"drop-shadow(0 0 6px "+item.color+"40)"}}/>
+                  <span style={{fontSize:11,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>{item.label}</span>
+                </button>
+              );})}
             </div>
           </div>
 

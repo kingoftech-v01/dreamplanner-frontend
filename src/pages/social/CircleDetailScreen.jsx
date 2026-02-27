@@ -12,6 +12,7 @@ import {
   MoreVertical, ArrowUp, ArrowDown, UserMinus
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
 
 // ═══════════════════════════════════════════════════════════════
@@ -218,6 +219,17 @@ export default function CircleDetailScreen() {
           <Loader size={28} color="var(--dp-accent)" strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
           <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>
+      </PageLayout>
+    );
+  }
+
+  if (circleQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={(circleQuery.error && circleQuery.error.message) || "Failed to load circle details"}
+          onRetry={function () { circleQuery.refetch(); }}
+        />
       </PageLayout>
     );
   }

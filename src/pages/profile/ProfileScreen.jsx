@@ -6,6 +6,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import {
   ArrowLeft, Settings, Star, Zap, Flame, ChevronRight,
@@ -61,7 +62,7 @@ const MENU = [
   { icon: Crown, label: "Subscription", color: "#FCD34D", path: "/subscription" },
   { icon: ShoppingBag, label: "Store", color: "#5EEAD4", path: "/store" },
   { icon: Trophy, label: "Leaderboard", color: "#F69A9A", path: "/leaderboard" },
-  { icon: Bell, label: "Notifications", color: "#C4B5FD", badge: 3, path: "/notifications" },
+  { icon: Bell, label: "Notifications", color: "#C4B5FD", badge: null, path: "/notifications" },
   { icon: Eye, label: "Vision Board", color: "#5DE5A8", path: "/vision-board" },
   { icon: Calendar, label: "Calendar Sync", color: "#93C5FD", path: "/calendar" },
 ];
@@ -96,6 +97,13 @@ export default function ProfileScreen() {
     queryKey: ["user-stats"],
     queryFn: function () { return apiGet("/api/users/stats/"); },
   });
+
+  // ── Notification unread count ──
+  var unreadQuery = useQuery({
+    queryKey: ["notif-unread"],
+    queryFn: function () { return apiGet("/api/notifications/unread_count/"); },
+  });
+  var notifUnread = (unreadQuery.data && (unreadQuery.data.unreadCount || unreadQuery.data.count)) || 0;
 
   // ── Derive profile values from auth user + gamification data ──
   var displayName = (user && (user.displayName || user.firstName || user.username)) || "User";
@@ -141,6 +149,7 @@ export default function ProfileScreen() {
   });
 
   var isLoadingData = gamifQuery.isLoading || statsQuery.isLoading;
+  var isErrorData = gamifQuery.isError || statsQuery.isError;
 
   // ── Sign out handler ──
   var handleSignOut = function () {
@@ -164,6 +173,20 @@ export default function ProfileScreen() {
     transform: mounted ? "translateY(0) scale(1)" : "translateY(16px) scale(0.97)",
     transition: `all 0.5s cubic-bezier(0.16,1,0.3,1) ${i * 60}ms`,
   });
+
+  if (isErrorData) {
+    return (
+      <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ErrorState
+            message={(gamifQuery.error && gamifQuery.error.message) || (statsQuery.error && statsQuery.error.message) || "Failed to load profile"}
+            onRetry={function () { gamifQuery.refetch(); statsQuery.refetch(); }}
+          />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
@@ -482,12 +505,12 @@ export default function ProfileScreen() {
                     <item.icon size={16} color={mc} strokeWidth={2} />
                   </div>
                   <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: isLight ? "#1a1535" : "#fff" }}>{item.label}</span>
-                  {item.badge && (
+                  {item.label === "Notifications" && notifUnread > 0 && (
                     <span style={{
                       padding: "2px 8px", borderRadius: 8,
                       background: "rgba(246,154,154,0.12)",
                       fontSize: 12, fontWeight: 600, color: isLight ? "#DC2626" : "#F69A9A",
-                    }}>{item.badge}</span>
+                    }}>{notifUnread}</span>
                   )}
                   <ChevronRight size={16} color={isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.25)"} strokeWidth={2} />
                 </div>

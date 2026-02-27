@@ -8,6 +8,7 @@ import {
   Lock,
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 
@@ -65,6 +66,12 @@ export default function AchievementsScreen() {
     },
   });
 
+  var gamifQuery = useQuery({
+    queryKey: ["gamification"],
+    queryFn: function () { return apiGet("/api/users/gamification/"); },
+  });
+  var streak = (gamifQuery.data && (gamifQuery.data.currentStreak || gamifQuery.data.streak)) || 0;
+
   var rawData = achievementsQuery.data;
   var achievements = Array.isArray(rawData)
     ? rawData.map(normalizeAchievement)
@@ -82,6 +89,17 @@ export default function AchievementsScreen() {
     transform: mounted ? "translateY(0)" : "translateY(16px)",
     transition: `all 0.5s cubic-bezier(0.4,0,0.2,1) ${i * 60}ms`,
   });
+
+  if (achievementsQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={(achievementsQuery.error && achievementsQuery.error.message) || "Failed to load achievements"}
+          onRetry={function () { achievementsQuery.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>
@@ -106,7 +124,7 @@ export default function AchievementsScreen() {
           {[
             { icon: Award, val: unlockedCount, label: "Unlocked", color: "#FCD34D" },
             { icon: Zap, val: totalXP, label: "XP Earned", color: "#5DE5A8" },
-            { icon: Flame, val: "8 days", label: "Streak", color: "#F69A9A" },
+            { icon: Flame, val: streak + "d", label: "Streak", color: "#F69A9A" },
           ].map(({ icon: I, val, label, color }, i) => (
             <div key={i} style={{
               flex: 1, padding: "14px 8px", textAlign: "center", borderRadius: 16,

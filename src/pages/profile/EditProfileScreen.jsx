@@ -61,7 +61,7 @@ export default function EditProfileScreen(){
   var avatarMutation = useMutation({
     mutationFn: function(file) {
       var formData = new FormData();
-      formData.append("file", file);
+      formData.append("avatar", file);
       return apiPost("/api/users/upload_avatar/", formData);
     },
     onSuccess: function(data) {
@@ -109,7 +109,7 @@ export default function EditProfileScreen(){
       avatarMutation.mutate(avatarFile);
     }
     profileMutation.mutate({
-      name: name.trim(),
+      displayName: name.trim(),
       bio: bio.trim(),
       timezone: timezone,
     });

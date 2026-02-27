@@ -8,6 +8,7 @@ import {
   Search, ChevronRight, UserPlus, Check
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 
@@ -90,6 +91,17 @@ export default function CirclesScreen() {
   ];
 
   const currentList = activeTab === "my" ? myCircles : discoverCircles;
+
+  if (myCirclesInf.isError || discoverInf.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={((myCirclesInf.error && myCirclesInf.error.message) || (discoverInf.error && discoverInf.error.message)) || "Failed to load circles"}
+          onRetry={function () { myCirclesInf.refetch(); discoverInf.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>

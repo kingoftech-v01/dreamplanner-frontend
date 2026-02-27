@@ -152,6 +152,62 @@ export function createDefaultNotificationChannel() {
   });
 }
 
+// ── Buddy Call Channel (incoming voice/video calls) ─────────
+
+/**
+ * Create a high-priority notification channel for incoming buddy calls.
+ * Similar to task-calls but for real voice/video calls.
+ */
+export function createBuddyCallChannel() {
+  if (!isNative) return Promise.resolve();
+
+  return import("@capacitor/local-notifications").then(function (mod) {
+    return mod.LocalNotifications.createChannel({
+      id: "buddy-calls",
+      name: "Buddy Calls",
+      description: "Incoming voice and video calls from your buddies",
+      importance: 5,
+      visibility: 1,
+      vibration: true,
+      sound: "ringtone",
+      lights: true,
+      lightColor: "#8B5CF6",
+    });
+  }).catch(function (err) {
+    console.warn("Failed to create buddy-call channel:", err);
+  });
+}
+
+/**
+ * Show a local notification with sound/vibration when a push arrives
+ * while the app is in the foreground (Capacitor suppresses push UI).
+ */
+export function showForegroundNotification(notification) {
+  if (!isNative) return Promise.resolve();
+
+  var data = notification.data || {};
+  var isCall = data.type === "incoming_call";
+  var channelId = isCall ? "buddy-calls" : "dreamplanner_default";
+
+  return import("@capacitor/local-notifications").then(function (mod) {
+    var id = Date.now() % 2147483647; // Int32 range for Android
+    return mod.LocalNotifications.schedule({
+      notifications: [{
+        id: id,
+        title: notification.title || "DreamPlanner",
+        body: notification.body || "",
+        channelId: channelId,
+        sound: isCall ? "ringtone" : "default",
+        extra: data,
+        smallIcon: "ic_notification",
+        schedule: { at: new Date(Date.now() + 100) },
+      }],
+    });
+  }).catch(function (err) {
+    console.warn("Failed to show foreground notification:", err);
+  });
+}
+
 // ── Local Notifications — Task Call Full-Screen Intent ───────
 
 /**

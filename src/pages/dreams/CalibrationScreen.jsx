@@ -82,6 +82,7 @@ export default function CalibrationScreen() {
   var [questions, setQuestions] = useState([]);
   var [loadingQuestions, setLoadingQuestions] = useState(true);
   const [generatingPlan, setGeneratingPlan] = useState(false);
+  const [planResult, setPlanResult] = useState(null);
 
   useEffect(() => {
     setTimeout(() => setMounted(true), 100);
@@ -94,12 +95,29 @@ export default function CalibrationScreen() {
       try {
         var data = await apiPost("/api/dreams/dreams/" + id + "/start_calibration/");
         if (!cancelled && data && Array.isArray(data.questions) && data.questions.length > 0) {
-          setQuestions(data.questions);
+          // Map backend questions to expected format
+          var mapped = data.questions.map(function (q, i) {
+            return {
+              id: q.id || i + 1,
+              text: q.question || q.text || "Question " + (i + 1),
+              type: "text",
+              placeholder: "Type your answer...",
+              category: q.category || "",
+            };
+          });
+          setQuestions(mapped);
         } else if (!cancelled) {
           setQuestions(FALLBACK_QUESTIONS);
         }
       } catch (err) {
         if (!cancelled) {
+          // If calibration already completed or other error, use fallbacks
+          var msg = (err && err.message) || "";
+          if (msg.toLowerCase().includes("already completed")) {
+            // Calibration done — go straight to plan generation
+            handleCalibrationComplete();
+            return;
+          }
           showToast("Could not load calibration questions. Using defaults.", "error");
           setQuestions(FALLBACK_QUESTIONS);
         }
@@ -171,10 +189,11 @@ export default function CalibrationScreen() {
     setCompleted(true);
     setGeneratingPlan(true);
     try {
-      await apiPost("/api/dreams/dreams/" + id + "/generate_plan/");
+      var result = await apiPost("/api/dreams/dreams/" + id + "/generate_plan/");
+      setPlanResult(result);
       showToast("Your personalized plan is ready!", "success");
     } catch (err) {
-      showToast("Plan generation started. It may take a moment.", "info");
+      showToast("Plan generation failed. You can retry from the dream page.", "error");
     } finally {
       setGeneratingPlan(false);
     }
@@ -377,9 +396,9 @@ export default function CalibrationScreen() {
               }}
             >
               {[
-                { icon: Target, label: "Goals Set", value: "8", color: "#8B5CF6" },
-                { icon: Zap, label: "XP Ready", value: "+150", color: isLight ? "#B45309" : "#FCD34D" },
-                { icon: Star, label: "Confidence", value: "High", color: "#10B981" },
+                { icon: Target, label: "Goals", value: planResult && planResult.goals ? String(planResult.goals.length) : "--", color: "#8B5CF6" },
+                { icon: Zap, label: "Tasks", value: planResult && planResult.goals ? String(planResult.goals.reduce(function (s, g) { return s + (g.tasks ? g.tasks.length : 0); }, 0)) : "--", color: isLight ? "#B45309" : "#FCD34D" },
+                { icon: Star, label: "Questions", value: String(Object.keys(answers).length) + "/" + String(questions.length), color: "#10B981" },
               ].map(({ icon: Icon, label, value, color }, i) => (
                 <div
                   key={i}

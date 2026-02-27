@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
 import { ArrowLeft, Check, X, Clock, UserX, Users, Inbox } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useToast } from "../../context/ToastContext";
 
@@ -38,20 +39,26 @@ export default function FriendRequestsScreen() {
   });
 
   var RECEIVED_REQUESTS = ((receivedQuery.data && receivedQuery.data.results) || receivedQuery.data || []).map(function (r) {
+    var s = r.sender || {};
+    var sName = s.displayName || s.username || r.name || r.displayName || r.username || "User";
     return Object.assign({}, r, {
-      name: r.name || r.displayName || r.username || "User",
-      initial: r.initial || (r.name || r.displayName || r.username || "U")[0].toUpperCase(),
-      level: r.level || 1,
+      name: sName,
+      initial: sName[0].toUpperCase(),
+      level: s.level || r.level || 1,
+      avatarUrl: s.avatarUrl || r.avatarUrl || "",
       mutualFriends: r.mutualFriends || 0,
       time: r.time || r.createdAt || "",
     });
   });
 
   var SENT_REQUESTS = ((sentQuery.data && sentQuery.data.results) || sentQuery.data || []).map(function (r) {
+    var recv = r.receiver || r.sender || {};
+    var rName = recv.displayName || recv.username || r.name || r.displayName || r.username || "User";
     return Object.assign({}, r, {
-      name: r.name || r.displayName || r.username || "User",
-      initial: r.initial || (r.name || r.displayName || r.username || "U")[0].toUpperCase(),
-      level: r.level || 1,
+      name: rName,
+      initial: rName[0].toUpperCase(),
+      level: recv.level || r.level || 1,
+      avatarUrl: recv.avatarUrl || r.avatarUrl || "",
       time: r.time || r.createdAt || "",
     });
   });
@@ -106,6 +113,17 @@ export default function FriendRequestsScreen() {
   ).length;
 
   const activeSentRequests = SENT_REQUESTS.filter((r) => !cancelledSent.has(r.id));
+
+  if (receivedQuery.isError || sentQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={((receivedQuery.error && receivedQuery.error.message) || (sentQuery.error && sentQuery.error.message)) || "Failed to load friend requests"}
+          onRetry={function () { receivedQuery.refetch(); sentQuery.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>

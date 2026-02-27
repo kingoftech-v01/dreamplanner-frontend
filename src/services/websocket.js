@@ -41,8 +41,7 @@ export function createWebSocket(path, options) {
       var proto = location.protocol === "https:" ? "wss:" : "ws:";
       base = proto + "//" + location.host;
     }
-    var sep = path.includes("?") ? "&" : "?";
-    return base + path + sep + "token=" + token;
+    return base + path;
   }
 
   function connect() {
@@ -57,6 +56,11 @@ export function createWebSocket(path, options) {
 
     ws.onopen = function () {
       reconnectAttempts = 0;
+      // Authenticate via first message instead of URL query param
+      // (tokens in URLs leak into server logs, browser history, and proxies)
+      if (token) {
+        ws.send(JSON.stringify({ type: "authenticate", token: token }));
+      }
       startHeartbeat();
       onOpen();
     };

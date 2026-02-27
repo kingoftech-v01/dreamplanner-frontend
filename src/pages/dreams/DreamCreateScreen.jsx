@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   X, ArrowLeft, ArrowRight, Sparkles, Briefcase, Heart, DollarSign,
   Palette, TrendingUp, Users, Calendar, Clock, Check, ChevronLeft, ChevronRight,
-  ChevronDown, Globe, Lock,
+  Globe, Lock,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
@@ -55,7 +55,7 @@ const TIMEFRAMES = [
   { id: "1y", label: "1 year" },
 ];
 
-const STEPS = ["Details", "Category", "Timeframe", "AI Analysis"];
+const STEPS = ["Details", "Category", "Timeframe"];
 
 export default function DreamCreateScreen() {
   const navigate = useNavigate();
@@ -76,32 +76,20 @@ export default function DreamCreateScreen() {
   const [touched, setTouched] = useState({ 0: false, 1: false, 2: false, 3: false });
   const [visibility, setVisibility] = useState("private");
 
-  // Step 4 states
-  const [analyzing, setAnalyzing] = useState(true);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [pulseOpacity, setPulseOpacity] = useState(0.5);
-  const [collapsedGoals, setCollapsedGoals] = useState(new Set([1, 2, 3, 4])); // collapse all except first (index 0)
   const [submitting, setSubmitting] = useState(false);
-  const [createdDream, setCreatedDream] = useState(null);
   const [serverError, setServerError] = useState("");
-  var createCalledRef = useRef(false);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
     return () => clearTimeout(timer);
   }, []);
 
-  // Create dream via API when reaching step 3, then generate AI plan
-  useEffect(function () {
-    if (step !== 3) return;
-    if (createCalledRef.current) return;
-    createCalledRef.current = true;
-    setAnalyzing(true);
+  // Create dream and navigate to calibration
+  function handleCreateDream() {
+    if (submitting) return;
     setSubmitting(true);
-    setAnalysisProgress(0);
     setServerError("");
 
-    // Compute target date
     var targetDate = null;
     if (customDate) {
       targetDate = customDate.year + "-" + String(customDate.month + 1).padStart(2, "0") + "-" + String(customDate.day).padStart(2, "0");
@@ -112,56 +100,21 @@ export default function DreamCreateScreen() {
       targetDate = now.toISOString().split("T")[0];
     }
 
-    // Progress animation while API works
-    var progressInterval = setInterval(function () {
-      setAnalysisProgress(function (prev) { return Math.min(prev + Math.random() * 8 + 2, 90); });
-    }, 300);
-
     apiPost("/api/dreams/dreams/", {
       title: title.trim(),
       description: description.trim(),
       category: category,
-      targetDate: targetDate,
-      isPublic: visibility === "public",
+      target_date: targetDate,
     }).then(function (dream) {
-      // Dream created — now generate AI plan
-      return apiPost("/api/dreams/dreams/" + dream.id + "/generate_plan/").then(function (plan) {
-        return Object.assign({}, dream, plan);
-      });
-    }).then(function (result) {
-      clearInterval(progressInterval);
-      setAnalysisProgress(100);
-      setCreatedDream(result);
       setSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
-      setTimeout(function () { setAnalyzing(false); }, 400);
+      navigate("/dream/" + dream.id + "/calibration");
     }).catch(function (err) {
-      clearInterval(progressInterval);
-      setAnalysisProgress(0);
       setSubmitting(false);
       setServerError(err.message || "Failed to create dream. Please try again.");
-      showToast(err.message || "Failed to create dream. Please try again.", "error");
-      setAnalyzing(false);
-      // Reset so user can retry by going back to step 2
-      createCalledRef.current = false;
+      showToast(err.message || "Failed to create dream", "error");
     });
-
-    return function () { clearInterval(progressInterval); };
-  }, [step]);
-
-  // Pulse animation for sparkle
-  useEffect(() => {
-    if (step !== 3 || !analyzing) return;
-    let frame;
-    let start = Date.now();
-    const pulse = () => {
-      const elapsed = (Date.now() - start) / 1000;
-      setPulseOpacity(0.4 + Math.sin(elapsed * 3) * 0.35);
-      frame = requestAnimationFrame(pulse);
-    };
-    frame = requestAnimationFrame(pulse);
-    return () => cancelAnimationFrame(frame);
-  }, [step, analyzing]);
+  }
 
   const stagger = (index) => ({
     opacity: mounted ? 1 : 0,
@@ -191,7 +144,12 @@ export default function DreamCreateScreen() {
       return;
     }
     setTouched((prev) => ({ ...prev, [step]: false }));
-    setStep(step + 1);
+    if (step === 2) {
+      // Last step — create dream and go to calibration
+      handleCreateDream();
+    } else {
+      setStep(step + 1);
+    }
   };
 
   const selectedCat = CATEGORIES.find((c) => c.id === category);
@@ -265,7 +223,6 @@ export default function DreamCreateScreen() {
             {step === 0 && "What's your dream?"}
             {step === 1 && "Choose a category"}
             {step === 2 && "Set a timeframe"}
-            {step === 3 && (analyzing ? "AI Analyzing..." : "AI Analysis Complete")}
           </h1>
           <p style={{
             fontSize: 14, color: "var(--dp-text-tertiary)",
@@ -274,7 +231,6 @@ export default function DreamCreateScreen() {
             {step === 0 && "Describe the dream you want to achieve"}
             {step === 1 && "Pick the category that best fits your dream"}
             {step === 2 && "How long do you want to work on this?"}
-            {step === 3 && (analyzing ? "Our AI is creating your personalized plan" : "Here's your personalized dream plan")}
           </p>
         </div>
 
@@ -648,255 +604,14 @@ export default function DreamCreateScreen() {
             </div>
           )}
 
-          {/* STEP 3: AI Analysis */}
-          {step === 3 && (
-            <div style={stagger(3)}>
-              {serverError && (
-                <div style={{
-                  background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
-                  borderRadius: 12, padding: "12px 16px", marginBottom: 16,
-                  fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
-                }}>
-                  {serverError}
-                  <button
-                    onClick={function () { setStep(2); setServerError(""); }}
-                    style={{
-                      display: "block", marginTop: 10, padding: "8px 16px",
-                      borderRadius: 10, border: "1px solid rgba(239,68,68,0.3)",
-                      background: "rgba(239,68,68,0.15)", color: "#FCA5A5",
-                      fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                      cursor: "pointer", transition: "background 0.2s ease",
-                    }}
-                  >
-                    Go back and retry
-                  </button>
-                </div>
-              )}
-              {analyzing ? (
-                <div style={{
-                  display: "flex", flexDirection: "column",
-                  alignItems: "center", paddingTop: 40, gap: 24,
-                }}>
-                  {/* Pulsing Sparkle */}
-                  <div style={{
-                    width: 80, height: 80, borderRadius: "50%",
-                    background: `rgba(139,92,246,${pulseOpacity * 0.3})`,
-                    border: `1px solid rgba(139,92,246,${pulseOpacity * 0.5})`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    boxShadow: `0 0 ${40 + pulseOpacity * 30}px rgba(139,92,246,${pulseOpacity * 0.3})`,
-                    transition: "box-shadow 0.1s ease",
-                  }}>
-                    <Sparkles size={32} color={isLight ? "#6D28D9" : "#C4B5FD"} style={{
-                      opacity: 0.5 + pulseOpacity * 0.5,
-                    }} />
-                  </div>
-
-                  <div style={{ textAlign: "center" }}>
-                    <p style={{
-                      fontSize: 16, fontWeight: 600, color: "var(--dp-text)",
-                      fontFamily: "Inter, sans-serif", margin: 0,
-                    }}>
-                      Analyzing your dream...
-                    </p>
-                    <p style={{
-                      fontSize: 13, color: "var(--dp-text-muted)",
-                      fontFamily: "Inter, sans-serif", marginTop: 6,
-                    }}>
-                      Creating a personalized roadmap just for you
-                    </p>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div style={{
-                    width: "100%", maxWidth: 280,
-                    height: 6, borderRadius: 3,
-                    background: "var(--dp-glass-border)",
-                    overflow: "hidden",
-                  }}>
-                    <div style={{
-                      height: "100%", borderRadius: 3,
-                      background: "linear-gradient(90deg, #8B5CF6, #C4B5FD)",
-                      width: `${Math.min(analysisProgress, 100)}%`,
-                      transition: "width 0.3s ease",
-                      boxShadow: "0 0 10px rgba(139,92,246,0.4)",
-                    }} />
-                  </div>
-                  <span style={{
-                    fontSize: 12, color: "var(--dp-text-muted)",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
-                    {Math.min(Math.round(analysisProgress), 100)}%
-                  </span>
-                </div>
-              ) : (
-                <div style={{
-                  ...glass,
-                  padding: 24,
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
-                }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", gap: 10,
-                    marginBottom: 18,
-                  }}>
-                    <Sparkles size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} />
-                    <span style={{
-                      fontSize: 16, fontWeight: 700, color: "var(--dp-text)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
-                      AI Dream Analysis
-                    </span>
-                  </div>
-
-                  <div style={{
-                    padding: "14px 16px",
-                    borderRadius: 14,
-                    background: "rgba(139,92,246,0.06)",
-                    border: "1px solid rgba(139,92,246,0.12)",
-                    marginBottom: 16,
-                  }}>
-                    <p style={{
-                      fontSize: 14, color: "var(--dp-text-secondary)",
-                      fontFamily: "Inter, sans-serif", margin: 0, lineHeight: 1.7,
-                    }}>
-                      Based on your dream "<strong style={{ color: "var(--dp-text)" }}>{title || "your dream"}</strong>",
-                      I've created a structured plan with{" "}
-                      <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>{createdDream && createdDream.goals ? createdDream.goals.length : 5} goals</strong> and{" "}
-                      <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>{createdDream && createdDream.goals ? createdDream.goals.reduce(function (s, g) { return s + (g.tasks ? g.tasks.length : 0); }, 0) : 18} actionable tasks</strong> spread over your selected timeframe.
-                    </p>
-                  </div>
-
-                  {/* Suggested goals */}
-                  <p style={{
-                    fontSize: 12, fontWeight: 600, color: "var(--dp-text-tertiary)",
-                    fontFamily: "Inter, sans-serif", marginBottom: 10,
-                    textTransform: "uppercase", letterSpacing: "0.5px",
-                  }}>
-                    Suggested Goals
-                  </p>
-
-                  {(createdDream && createdDream.goals && createdDream.goals.length > 0
-                    ? createdDream.goals.map(function (g) { return { title: g.title, weeks: "", tasks: (g.tasks || []).map(function (t) { return t.title; }) }; })
-                    : [
-                    { title: "Foundation & Research", weeks: "1-3", tasks: [
-                      "Research industry trends and competitors",
-                      "Define clear objectives and milestones",
-                      "Gather resources and tools needed",
-                      "Create a vision board or roadmap",
-                    ]},
-                    { title: "Skill Building", weeks: "2-6", tasks: [
-                      "Identify key skills to develop",
-                      "Enroll in relevant course or training",
-                      "Practice daily for 30 minutes",
-                      "Find a mentor or accountability partner",
-                    ]},
-                    { title: "Implementation", weeks: "4-10", tasks: [
-                      "Start building your first prototype",
-                      "Test and iterate on feedback",
-                      "Document progress and lessons learned",
-                      "Set up tracking and measurement",
-                      "Reach first mini-milestone",
-                    ]},
-                    { title: "Refinement", weeks: "8-12", tasks: [
-                      "Review progress against goals",
-                      "Optimize and improve processes",
-                      "Seek feedback from peers",
-                    ]},
-                    { title: "Launch & Review", weeks: "11-13", tasks: [
-                      "Final review and polish",
-                      "Launch or present your achievement",
-                    ]},
-                  ]).map((goal, idx) => {
-                    const isCollapsed = collapsedGoals.has(idx);
-                    const toggleGoal = () => {
-                      setCollapsedGoals((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(idx)) next.delete(idx);
-                        else next.add(idx);
-                        return next;
-                      });
-                    };
-                    return (
-                      <div key={idx} style={{
-                        borderBottom: idx < 4 ? "1px solid var(--dp-surface)" : "none",
-                      }}>
-                        {/* Goal Header — clickable to toggle */}
-                        <div
-                          onClick={toggleGoal}
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between",
-                            padding: "10px 0",
-                            cursor: "pointer",
-                            userSelect: "none",
-                          }}
-                        >
-                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                            <ChevronDown
-                              size={16}
-                              color="var(--dp-text-muted)"
-                              style={{
-                                transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                                transition: "transform 0.25s cubic-bezier(0.4,0,0.2,1)",
-                                flexShrink: 0,
-                              }}
-                            />
-                            <div style={{
-                              width: 6, height: 6, borderRadius: "50%",
-                              background: selectedCat ? selectedCat.color : "#8B5CF6",
-                              flexShrink: 0,
-                            }} />
-                            <span style={{
-                              fontSize: 14, color: "var(--dp-text)", fontWeight: 500,
-                              fontFamily: "Inter, sans-serif",
-                            }}>
-                              {goal.title}
-                            </span>
-                          </div>
-                          <span style={{
-                            fontSize: 12, color: "var(--dp-text-muted)",
-                            fontFamily: "Inter, sans-serif",
-                            flexShrink: 0,
-                          }}>
-                            {goal.tasks.length} tasks &middot; Week {goal.weeks}
-                          </span>
-                        </div>
-
-                        {/* Collapsible Tasks List */}
-                        <div style={{
-                          overflow: "hidden",
-                          maxHeight: isCollapsed ? 0 : goal.tasks.length * 44 + 12,
-                          opacity: isCollapsed ? 0 : 1,
-                          transition: "max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.25s ease",
-                        }}>
-                          <div style={{ paddingLeft: 32, paddingBottom: 10 }}>
-                            {goal.tasks.map((task, tIdx) => (
-                              <div key={tIdx} style={{
-                                display: "flex", alignItems: "center", gap: 8,
-                                padding: "6px 10px",
-                                borderRadius: 8,
-                                marginBottom: 2,
-                                background: "rgba(139,92,246,0.04)",
-                              }}>
-                                <div style={{
-                                  width: 16, height: 16, borderRadius: 4,
-                                  border: "1.5px solid var(--dp-input-border)",
-                                  flexShrink: 0,
-                                }} />
-                                <span style={{
-                                  fontSize: 13, color: "var(--dp-text-secondary)",
-                                  fontFamily: "Inter, sans-serif",
-                                  lineHeight: 1.4,
-                                }}>
-                                  {task}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+          {/* Server error on step 2 (dream creation failed) */}
+          {serverError && step === 2 && (
+            <div style={{
+              background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+              borderRadius: 12, padding: "12px 16px", marginTop: 16,
+              fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+            }}>
+              {serverError}
             </div>
           )}
         </div>
@@ -933,76 +648,51 @@ export default function DreamCreateScreen() {
           ...stagger(8),
           display: "flex", gap: 12, marginTop: 24,
         }}>
-          {step > 0 && step < 3 && (
+          {step > 0 && (
             <button
               onClick={() => setStep(step - 1)}
+              disabled={submitting}
               style={{
                 flex: 1, height: 50, borderRadius: 14,
                 background: "var(--dp-glass-bg)",
                 border: "1px solid var(--dp-input-border)",
-                cursor: "pointer",
+                cursor: submitting ? "not-allowed" : "pointer",
                 color: "var(--dp-text-secondary)", fontSize: 15, fontWeight: 600,
                 fontFamily: "Inter, sans-serif",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 transition: "background 0.25s ease",
+                opacity: submitting ? 0.5 : 1,
               }}
-              onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-surface-hover)"}
+              onMouseEnter={(e) => { if (!submitting) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
               onMouseLeave={(e) => e.currentTarget.style.background = "var(--dp-glass-bg)"}
             >
               <ArrowLeft size={18} />
               Back
             </button>
           )}
-          {step < 3 && (
-            <button
-              onClick={handleNext}
-              style={{
-                flex: step === 0 ? "unset" : 1,
-                width: step === 0 ? "100%" : "auto",
-                height: 50, borderRadius: 14,
-                background: canNext()
-                  ? "linear-gradient(135deg, #8B5CF6, #7C3AED)"
-                  : "rgba(139,92,246,0.45)",
-                border: "none", cursor: canNext() ? "pointer" : "not-allowed",
-                color: "#fff", fontSize: 15, fontWeight: 700,
-                fontFamily: "Inter, sans-serif",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: canNext() ? "0 4px 20px rgba(139,92,246,0.4)" : "none",
-                opacity: canNext() ? 1 : 0.8,
-                transition: "all 0.25s ease",
-              }}
-            >
-              Next
-              <ArrowRight size={18} />
-            </button>
-          )}
-          {step === 3 && !analyzing && (
-            <button
-              onClick={() => navigate(createdDream ? "/dream/" + createdDream.id : "/")}
-              style={{
-                width: "100%",
-                height: 50, borderRadius: 14,
-                background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                border: "none", cursor: "pointer",
-                color: "#fff", fontSize: 15, fontWeight: 700,
-                fontFamily: "Inter, sans-serif",
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                transition: "transform 0.2s ease, box-shadow 0.2s ease",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.transform = "translateY(-1px)";
-                e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.transform = "translateY(0)";
-                e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
-              }}
-            >
-              <Sparkles size={18} />
-              {createdDream ? "View Dream" : "Create Dream"}
-            </button>
-          )}
+          <button
+            onClick={handleNext}
+            disabled={submitting}
+            style={{
+              flex: step === 0 ? "unset" : 1,
+              width: step === 0 ? "100%" : "auto",
+              height: 50, borderRadius: 14,
+              background: canNext()
+                ? "linear-gradient(135deg, #8B5CF6, #7C3AED)"
+                : "rgba(139,92,246,0.45)",
+              border: "none", cursor: (canNext() && !submitting) ? "pointer" : "not-allowed",
+              color: "#fff", fontSize: 15, fontWeight: 700,
+              fontFamily: "Inter, sans-serif",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              boxShadow: canNext() ? "0 4px 20px rgba(139,92,246,0.4)" : "none",
+              opacity: (canNext() && !submitting) ? 1 : 0.6,
+              transition: "all 0.25s ease",
+            }}
+          >
+            {submitting ? "Creating..." : step === 2 ? "Create Dream" : "Next"}
+            {!submitting && step < 2 && <ArrowRight size={18} />}
+            {!submitting && step === 2 && <Sparkles size={18} />}
+          </button>
         </div>
       </div>
     </PageLayout>

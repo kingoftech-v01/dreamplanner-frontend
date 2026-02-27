@@ -99,12 +99,25 @@ async function request(url, options) {
   // Build full URL
   var fullUrl = url.startsWith("http") ? url : API_BASE + url;
 
-  var response = await fetch(fullUrl, {
-    credentials: API_BASE ? "include" : "same-origin",
-    ...options,
-    method: method,
-    headers: headers,
-  });
+  var response;
+  try {
+    response = await fetch(fullUrl, {
+      credentials: API_BASE ? "include" : "same-origin",
+      ...options,
+      method: method,
+      headers: headers,
+    });
+  } catch (fetchError) {
+    // Network error — enqueue mutation if it's a write operation
+    if (method !== "GET" && method !== "HEAD") {
+      enqueueOfflineMutation(url, { method: method, body: options.body ? options.body : null });
+      var offlineError = new Error("You're offline. Your change has been saved and will sync when you reconnect.");
+      offlineError.status = 0;
+      offlineError.offline = true;
+      throw offlineError;
+    }
+    throw fetchError;
+  }
 
   // ─── Handle blob responses (PDF, file downloads) ────────────
   if (options.responseType === "blob" && response.ok) {
@@ -188,4 +201,66 @@ export function apiUpload(url, formData, options) {
     body: formData,
     // No Content-Type header — browser sets multipart/form-data with boundary
   });
+}
+
+// ── Offline Mutation Queue ──────────────────────────────────────
+var QUEUE_KEY = "dp-offline-queue";
+
+function getQueue() {
+  try {
+    var raw = localStorage.getItem(QUEUE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) { return []; }
+}
+
+function saveQueue(queue) {
+  localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+}
+
+export function getOfflineQueueCount() {
+  return getQueue().length;
+}
+
+export function enqueueOfflineMutation(url, options) {
+  var queue = getQueue();
+  queue.push({
+    url: url,
+    method: options.method || "POST",
+    body: options.body || null,
+    timestamp: Date.now(),
+  });
+  saveQueue(queue);
+  window.dispatchEvent(new CustomEvent("dp-offline-queue-change", { detail: { count: queue.length } }));
+}
+
+export async function flushOfflineQueue() {
+  var queue = getQueue();
+  if (queue.length === 0) return 0;
+
+  var flushed = 0;
+  var failed = [];
+
+  for (var i = 0; i < queue.length; i++) {
+    var item = queue[i];
+    try {
+      await request(item.url, {
+        method: item.method,
+        body: item.body ? JSON.parse(item.body) : undefined,
+      });
+      flushed++;
+    } catch (e) {
+      if (!navigator.onLine) {
+        failed.push(item);
+        // Still offline, keep remaining items
+        failed = failed.concat(queue.slice(i + 1));
+        break;
+      }
+      // Online but request failed (server error), skip this item
+      flushed++;
+    }
+  }
+
+  saveQueue(failed);
+  window.dispatchEvent(new CustomEvent("dp-offline-queue-change", { detail: { count: failed.length } }));
+  return flushed;
 }

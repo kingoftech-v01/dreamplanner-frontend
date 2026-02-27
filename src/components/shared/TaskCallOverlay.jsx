@@ -38,17 +38,12 @@ var CATEGORY_ICONS = {
 };
 
 var DEFAULT_TASK = {
-  id: "t1",
-  title: "Work on SaaS Dashboard",
-  dream: "Launch my SaaS Platform",
-  category: "career",
-  description: "Implement the analytics dashboard with charts and KPIs. Focus on the revenue tracking module.",
-  scheduledTime: "3:00 PM",
-  duration: "45 min",
-  progress: 62,
-  goalIndex: "5 of 8",
-  streak: 3,
-  priority: "urgent",
+  id: "",
+  title: "New Task",
+  dream: "",
+  category: "personal",
+  description: "",
+  priority: "medium",
 };
 
 export default function TaskCallOverlay() {
@@ -171,11 +166,11 @@ export default function TaskCallOverlay() {
               {/* Meta chips */}
               <div style={{ display: "flex", justifyContent: "center", gap: 6, flexWrap: "wrap", marginBottom: 22 }}>
                 {[
-                  { icon: Clock, label: task.scheduledTime, color: "#F59E0B" },
-                  { icon: Timer, label: task.duration, color: "#22C55E" },
-                  { icon: Flame, label: task.streak + "d streak", color: "#EF4444" },
-                  { icon: Target, label: task.progress + "%", color: pc.accent },
-                ].map(function (chip, i) {
+                  task.scheduledTime ? { icon: Clock, label: task.scheduledTime, color: "#F59E0B" } : null,
+                  task.duration ? { icon: Timer, label: task.duration, color: "#22C55E" } : null,
+                  task.streak ? { icon: Flame, label: task.streak + "d streak", color: "#EF4444" } : null,
+                  task.progress != null ? { icon: Target, label: task.progress + "%", color: pc.accent } : null,
+                ].filter(Boolean).map(function (chip, i) {
                   return (
                     <div key={i} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
                       <chip.icon size={12} color={chip.color} strokeWidth={2.5} />
@@ -266,13 +261,13 @@ export default function TaskCallOverlay() {
                 <div style={{ fontSize: 17, fontWeight: 700, color: "#fff", marginBottom: 6, textShadow: "0 1px 6px rgba(0,0,0,0.2)" }}>{task.title}</div>
                 <div style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", lineHeight: 1.5, marginBottom: 16 }}>{task.description}</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
-                  {[{ l: "Goal", v: task.goalIndex, c: "#A78BFA" }, { l: "Progress", v: task.progress + "%", c: "#22C55E" }, { l: "Streak", v: task.streak + "d", c: "#F59E0B" }, { l: "Priority", v: pc.label, c: pc.accent }].map(function (m, i) {
+                  {[task.goalIndex ? { l: "Goal", v: task.goalIndex, c: "#A78BFA" } : null, task.progress != null ? { l: "Progress", v: task.progress + "%", c: "#22C55E" } : null, task.streak ? { l: "Streak", v: task.streak + "d", c: "#F59E0B" } : null, { l: "Priority", v: pc.label, c: pc.accent }].filter(Boolean).map(function (m, i) {
                     return <div key={i} style={{ padding: "5px 10px", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)", display: "flex", alignItems: "center", gap: 5, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }}><span style={{ fontSize: 10, color: "rgba(255,255,255,0.45)" }}>{m.l}</span><span style={{ fontSize: 11, fontWeight: 600, color: m.c }}>{m.v}</span></div>;
                   })}
                 </div>
-                <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", borderRadius: 3, width: task.progress + "%", background: "linear-gradient(90deg," + pc.accent + "," + pc.light + ")", boxShadow: "0 0 10px rgba(" + pc.rgb + ",0.3)" }} />
-                </div>
+                {task.progress != null && <div style={{ height: 5, borderRadius: 3, background: "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 3, width: (task.progress || 0) + "%", background: "linear-gradient(90deg," + pc.accent + "," + pc.light + ")", boxShadow: "0 0 10px rgba(" + pc.rgb + ",0.3)" }} />
+                </div>}
               </div>
             </div>
           </div>
@@ -323,7 +318,7 @@ export default function TaskCallOverlay() {
               <div style={{ fontSize: 14, color: "rgba(255,255,255,0.55)", marginBottom: 4 }}>You worked for {formatTime(elapsed)}</div>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginTop: 10 }}>
                 <Sparkles size={14} color="#F59E0B" strokeWidth={2} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#F59E0B" }}>+50 XP earned</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#F59E0B" }}>Task completed!</span>
               </div>
             </div>
           </div>

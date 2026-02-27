@@ -7,6 +7,7 @@ import { clipboardWrite } from "../../services/native";
 import { apiGet } from "../../services/api";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import BottomNav from "../../components/shared/BottomNav";
+import ErrorState from "../../components/shared/ErrorState";
 import { DreamCardSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
 import GlobalSearch from "../../components/shared/GlobalSearch";
 import { useTaskCall } from "../../context/TaskCallContext";
@@ -148,6 +149,18 @@ export default function DreamPlannerHome() {
         </div>
       </div>
   );
+
+  if (dreamsInf.isError || dashboardQuery.isError) {
+    return (
+      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+        <ErrorState
+          message={(dreamsInf.error && dreamsInf.error.message) || (dashboardQuery.error && dashboardQuery.error.message) || "Failed to load home screen"}
+          onRetry={function () { dreamsInf.refetch(); dashboardQuery.refetch(); }}
+        />
+        <BottomNav />
+      </div>
+    );
+  }
 
   return (
     <div style={{ position:"fixed", inset:0, overflow:"hidden", fontFamily:"'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
@@ -358,20 +371,20 @@ export default function DreamPlannerHome() {
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                     <div style={{flex:1,height:5,borderRadius:3,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",overflow:"hidden"}}>
                       <div style={{
-                        height:"100%",borderRadius:3,width:`${dream.progress}%`,
-                        background:dream.progress>=80?`linear-gradient(90deg,#10B981,#34D399)`:`linear-gradient(90deg,${cat.color},${cat.color}bb)`,
+                        height:"100%",borderRadius:3,width:`${dream.progressPercentage || 0}%`,
+                        background:(dream.progressPercentage || 0)>=80?`linear-gradient(90deg,#10B981,#34D399)`:`linear-gradient(90deg,${cat.color},${cat.color}bb)`,
                         transition:"width 1.2s cubic-bezier(0.16,1,0.3,1)",
-                        boxShadow:`0 0 8px ${dream.progress>=80?"rgba(16,185,129,0.3)":`${cat.color}30`}`,
+                        boxShadow:`0 0 8px ${(dream.progressPercentage || 0)>=80?"rgba(16,185,129,0.3)":`${cat.color}30`}`,
                       }}/>
                     </div>
-                    <span style={{fontSize:13,fontWeight:700,color:dream.progress>=80?(isLight?"#059669":"#5DE5A8"):isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",minWidth:36,textAlign:"right"}}>{dream.progress}%</span>
+                    <span style={{fontSize:13,fontWeight:700,color:(dream.progressPercentage || 0)>=80?(isLight?"#059669":"#5DE5A8"):isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",minWidth:36,textAlign:"right"}}>{dream.progressPercentage || 0}%</span>
                   </div>
 
                   {/* Meta row */}
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                     <div style={{display:"flex",alignItems:"center",gap:14,fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>
                       <span style={{display:"flex",alignItems:"center",gap:4}}>
-                        <Target size={12} strokeWidth={2.5} /> {dream.completedGoalCount}/{dream.goalCount} goals
+                        <Target size={12} strokeWidth={2.5} /> {dream.completedGoalsCount || 0}/{dream.goalsCount || 0} goals
                       </span>
                       <span style={{display:"flex",alignItems:"center",gap:4}}>
                         <Clock size={12} strokeWidth={2.5} /> {daysLeft != null ? daysLeft + "d left" : ""}
@@ -380,7 +393,7 @@ export default function DreamPlannerHome() {
                     <div style={{display:"flex",alignItems:"center",gap:8}}>
                       {/* Sparkline */}
                       {(function () {
-                        var prog = Number(dream.progress) || 0;
+                        var prog = Number(dream.progressPercentage) || 0;
                         var data = dream.progressHistory || [0, Math.round(prog * 0.5), prog];
                         data = data.map(function (v) { var n = Number(v); return isNaN(n) ? 0 : n; });
                         if (data.length < 2) data = [0, prog];
@@ -414,7 +427,7 @@ export default function DreamPlannerHome() {
                     transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",pointerEvents:isHovered?"auto":"none",
                   }}>
                     {[
-                      {I:Bot,t:"Coach",action:()=>navigate("/chat/dream-"+dream.id)},
+                      {I:Bot,t:"Coach",action:()=>navigate("/chat?dream="+dream.id)},
                       {I:Pencil,t:"Edit",action:()=>navigate("/dream/"+dream.id+"/edit")},
                       {I:Share2,t:"Share",action:()=>{clipboardWrite("Check out my dream on DreamPlanner: "+dream.title);showToast("Copied!","success");}},
                     ].map(({I,t,action},j)=>(

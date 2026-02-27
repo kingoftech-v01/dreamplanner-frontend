@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { setupKeyboard } from './services/native';
 import { initToken } from './services/api';
-import { setupPushListeners, createTaskCallChannel, createDefaultNotificationChannel, registerTaskCallActions, requestLocalNotificationPermission } from './services/nativeNotifications';
+import { setupPushListeners, createTaskCallChannel, createDefaultNotificationChannel, createBuddyCallChannel, registerTaskCallActions, requestLocalNotificationPermission, showForegroundNotification } from './services/nativeNotifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
@@ -93,9 +93,12 @@ if (Capacitor.isNativePlatform()) {
             callType: n.data.call_type,
           },
         }));
+        // Also show local notification with ringtone sound + vibration
+        showForegroundNotification(n);
         return;
       }
-      console.log("Push received:", n.title);
+      // Show local notification with sound for all other push types in foreground
+      showForegroundNotification(n);
     },
     onAction: function (a) {
       // Handle incoming call notification tap (app was in background)
@@ -114,6 +117,7 @@ if (Capacitor.isNativePlatform()) {
   // Setup notification channels + actions (local notifications)
   requestLocalNotificationPermission().then(function () {
     createDefaultNotificationChannel();
+    createBuddyCallChannel();
     createTaskCallChannel();
     registerTaskCallActions();
   });

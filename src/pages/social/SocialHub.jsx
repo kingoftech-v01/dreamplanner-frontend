@@ -7,6 +7,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import ErrorState from "../../components/shared/ErrorState";
 import { FeedItemSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
 import {
   ArrowLeft, Users, UserPlus, Search, Trophy, Flame, Star,
@@ -68,7 +69,7 @@ export default function SocialHubScreen(){
     displayName: user?.displayName || user?.username || "You",
     initial: (user?.displayName || user?.username || "U")[0].toUpperCase(),
     rank: user?.rank || 0, xp: user?.xp || 0, level: user?.level || 1,
-    friends: user?.friendsCount || 0, streak: user?.streak || 0,
+    friends: user?.friendsCount || 0, streak: user?.streakDays || 0,
   };
 
   var feedInf = useInfiniteList({ queryKey: ["feed"], url: "/api/social/feed/friends", limit: 20 });
@@ -86,18 +87,30 @@ export default function SocialHubScreen(){
 
   var requestsQuery = useQuery({ queryKey: ["friend-requests"], queryFn: function () { return apiGet("/api/social/friends/requests/pending/"); } });
   var requests = (requestsQuery.data && requestsQuery.data.results) || requestsQuery.data || [];
+  if (!Array.isArray(requests)) requests = [];
   requests = requests.map(function (r) {
-    return Object.assign({}, r, { initial: (r.name || r.displayName || "?")[0].toUpperCase() });
+    var s = r.sender || {};
+    var senderName = s.displayName || s.username || r.name || r.displayName || "User";
+    return Object.assign({}, r, { name: senderName, initial: senderName[0].toUpperCase(), level: s.level || r.level || 1 });
   });
 
   var onlineQuery = useQuery({ queryKey: ["friends-online"], queryFn: function () { return apiGet("/api/social/friends/online/"); } });
-  var ONLINE_FRIENDS = ((onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || []).map(function (f, i) {
-    return { id: f.id, name: f.displayName || f.username || "Friend", initial: (f.displayName || f.username || "F")[0].toUpperCase(), level: f.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], dream: f.currentDream || "" };
+  var rawOnline = (onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || [];
+  if (!Array.isArray(rawOnline)) rawOnline = [];
+  var ONLINE_FRIENDS = rawOnline.map(function (f, i) {
+    var fName = f.displayName || f.username || "Friend";
+    return { id: f.id, name: fName, initial: fName[0].toUpperCase(), level: f.currentLevel || f.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], dream: f.currentDream || "", streak: f.currentStreak || 0 };
   });
 
   var lbQuery = useQuery({ queryKey: ["leaderboard", lbTab], queryFn: function () { return apiGet("/api/leagues/leaderboard/friends/?period=" + lbTab); } });
   var LEADERBOARD = ((lbQuery.data && lbQuery.data.results) || lbQuery.data || []).map(function (entry, i) {
-    return Object.assign({}, entry, { color: LB_COLORS[i % LB_COLORS.length], isMe: String(entry.id) === String(user?.id) });
+    return Object.assign({}, entry, {
+      name: entry.userDisplayName || entry.name || "User",
+      initial: (entry.userDisplayName || entry.name || "U")[0].toUpperCase(),
+      level: entry.userLevel || entry.level || 1,
+      color: LB_COLORS[i % LB_COLORS.length],
+      isMe: entry.isCurrentUser || String(entry.userId || entry.id) === String(user?.id),
+    });
   });
 
   var loading = feedInf.isLoading;
@@ -159,6 +172,20 @@ export default function SocialHubScreen(){
         </div>
       </div>
   );
+
+  if (feedInf.isError) {
+    return (
+      <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ErrorState
+            message={(feedInf.error && feedInf.error.message) || "Failed to load social feed"}
+            onRetry={function () { feedInf.refetch(); }}
+          />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return(
     <div style={{width:"100%",height:"100dvh",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>

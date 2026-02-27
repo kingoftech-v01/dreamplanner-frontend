@@ -9,17 +9,24 @@ import { createWebSocket } from "../services/websocket";
  *
  * Scalability: debounces query invalidation to prevent storms when
  * multiple notifications arrive in quick succession.
+ *
+ * @param {string} token - Auth token
+ * @param {Object} [opts] - Options
+ * @param {Function} [opts.onToast] - Called with (title, body, data) for toast display
  */
-export default function useNotificationSocket(token) {
+export default function useNotificationSocket(token, opts) {
   var wsRef = useRef(null);
   var debounceRef = useRef(null);
   var queryClient = useQueryClient();
 
-  // Stable callback that won't cause useEffect re-runs
+  // Stable refs that won't cause useEffect re-runs
   var qcRef = useRef(queryClient);
   qcRef.current = queryClient;
+  var onToastRef = useRef((opts && opts.onToast) || null);
+  onToastRef.current = (opts && opts.onToast) || null;
 
   var handleMessage = useCallback(function (data) {
+    // ── Notification events → invalidate queries + show toast ──
     if (
       data.type === "notification" ||
       data.type === "new_notification" ||
@@ -35,18 +42,43 @@ export default function useNotificationSocket(token) {
         debounceRef.current = null;
       }, 300);
 
-      // Incoming call dispatch — surface calls from push notifications
-      if (data.type === "incoming_call" || (data.data && data.data.type === "incoming_call")) {
-        var callData = data.data || data;
-        window.dispatchEvent(new CustomEvent("dp-incoming-call", {
-          detail: {
-            callId: callData.callId || callData.call_id,
-            callerName: callData.callerName || callData.caller_name || "Unknown",
-            callType: callData.callType || callData.call_type || "voice",
-            callerId: callData.callerId || callData.caller_id,
-          },
-        }));
+      // Show toast for new notification
+      if (data.type === "notification" && data.notification && onToastRef.current) {
+        var n = data.notification;
+        onToastRef.current(n.title || "New notification", n.body || n.message || "", n.data || {});
       }
+    }
+
+    // ── notification_message events (call rejected, etc.) ──
+    if (data.type === "notification_message" && data.data) {
+      var d = data.data;
+      if (d.type === "call_rejected" && onToastRef.current) {
+        onToastRef.current(
+          (d.callee_name || d.calleeName || "Your buddy") + " declined your call",
+          "",
+          d
+        );
+      }
+      if (d.type === "missed_call" && onToastRef.current) {
+        onToastRef.current("Missed call", d.caller_name || d.callerName || "", d);
+      }
+      // Refresh notifications + conversations
+      qcRef.current.invalidateQueries({ queryKey: ["notifications"] });
+      qcRef.current.invalidateQueries({ queryKey: ["conversations"] });
+      qcRef.current.invalidateQueries({ queryKey: ["call-history"] });
+    }
+
+    // ── Incoming call dispatch ──
+    if (data.type === "incoming_call" || (data.data && data.data.type === "incoming_call")) {
+      var callData = data.data || data;
+      window.dispatchEvent(new CustomEvent("dp-incoming-call", {
+        detail: {
+          callId: callData.callId || callData.call_id,
+          callerName: callData.callerName || callData.caller_name || "Unknown",
+          callType: callData.callType || callData.call_type || "voice",
+          callerId: callData.callerId || callData.caller_id,
+        },
+      }));
     }
   }, []);
 

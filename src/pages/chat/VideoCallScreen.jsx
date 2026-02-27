@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PhoneOff, Mic, MicOff, Camera, CameraOff } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
-import { apiPost } from "../../services/api";
-import { createCallSession } from "../../services/webrtc";
+import { apiGet, apiPost } from "../../services/api";
+import { createAgoraCallSession } from "../../services/agora";
 
 function formatTime(s) {
   var m = Math.floor(s / 60);
@@ -16,7 +16,6 @@ export default function VideoCallScreen() {
   var { id: callId } = useParams();
   var [searchParams] = useSearchParams();
   var { resolved } = useTheme();
-  var isLight = resolved === "light";
 
   var answering = searchParams.get("answering") === "true";
   var callerName = searchParams.get("callerName") || "Unknown";
@@ -24,59 +23,93 @@ export default function VideoCallScreen() {
   var buddyInitial = buddyName.charAt(0).toUpperCase();
   var buddyColor = searchParams.get("color") || "#8B5CF6";
 
-  var [status, setStatus] = useState("connecting");
+  var [callStatus, setCallStatus] = useState(answering ? "connecting" : "ringing");
   var [seconds, setSeconds] = useState(0);
   var [muted, setMuted] = useState(false);
   var [cameraOff, setCameraOff] = useState(false);
+  var [error, setError] = useState(null);
+  var [hasRemoteStream, setHasRemoteStream] = useState(false);
   var timerRef = useRef(null);
   var sessionRef = useRef(null);
+  var pollRef = useRef(null);
   var remoteVideoRef = useRef(null);
   var localVideoRef = useRef(null);
-  var [hasRemoteStream, setHasRemoteStream] = useState(false);
 
   var handleCallEnd = useCallback(function () {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (pollRef.current) clearInterval(pollRef.current);
     navigate(-1);
   }, [navigate]);
 
-  // Initialize WebRTC session
-  useEffect(function () {
-    var session = createCallSession(callId, {
+  // Join the Agora RTC channel (called only when both sides are ready)
+  var joinRTC = useCallback(function () {
+    if (sessionRef.current) return; // already joined
+    var session = createAgoraCallSession(callId, {
       video: true,
-      onRemoteStream: function (stream) {
+      onRemoteStream: function (remote) {
         setHasRemoteStream(true);
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = stream;
+        if (remote.videoTrack && remoteVideoRef.current) {
+          remote.videoTrack.play(remoteVideoRef.current);
         }
+      },
+      onRemoteLeft: function () {
+        setHasRemoteStream(false);
+        handleCallEnd();
       },
       onConnectionStateChange: function (state) {
-        if (state === "connected") {
-          setStatus("connected");
+        if (state.curState === "CONNECTED") {
+          setCallStatus("connected");
         }
       },
-      onCallEnd: handleCallEnd,
     });
     sessionRef.current = session;
-
-    var isCaller = !answering;
-    session.start(isCaller).then(function () {
-      // Attach local stream to PiP video
-      var localStream = session.getLocalStream();
-      if (localStream && localVideoRef.current) {
-        localVideoRef.current.srcObject = localStream;
+    session.join().then(function () {
+      var tracks = session.getLocalTracks();
+      if (tracks.videoTrack && localVideoRef.current) {
+        tracks.videoTrack.play(localVideoRef.current);
       }
     }).catch(function (err) {
-      console.error("WebRTC start failed:", err);
+      setError(err.message || "Could not access camera and microphone");
     });
+  }, [callId, handleCallEnd]);
 
-    return function () {
-      session.cleanup();
-    };
-  }, [callId, answering, handleCallEnd]);
+  // ─── CALLER flow: poll call status until accepted ─────────────
+  useEffect(function () {
+    if (answering) return;
+    function checkStatus() {
+      apiGet("/api/conversations/calls/" + callId + "/status/").then(function (data) {
+        var s = data.status;
+        if (s === "accepted") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setCallStatus("connecting");
+          joinRTC();
+        } else if (s === "rejected" || s === "cancelled" || s === "missed" || s === "completed") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setCallStatus("ended");
+          setError(s === "rejected" ? "Call declined" : s === "missed" ? "No answer" : "Call ended");
+          setTimeout(function () { navigate(-1); }, 1500);
+        }
+      }).catch(function () {});
+    }
+    checkStatus();
+    pollRef.current = setInterval(checkStatus, 2000);
+    return function () { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [callId, answering, joinRTC, navigate]);
+
+  // ─── CALLEE flow: accept then join RTC ────────────────────────
+  useEffect(function () {
+    if (!answering) return;
+    apiPost("/api/conversations/calls/" + callId + "/accept/").then(function () {
+      setCallStatus("connecting");
+      joinRTC();
+    }).catch(function (err) {
+      setError(err.message || "Failed to accept call");
+    });
+  }, [callId, answering, joinRTC]);
 
   // Timer when connected
   useEffect(function () {
-    if (status === "connected") {
+    if (callStatus === "connected") {
       timerRef.current = setInterval(function () {
         setSeconds(function (s) { return s + 1; });
       }, 1000);
@@ -84,13 +117,29 @@ export default function VideoCallScreen() {
     return function () {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [status]);
+  }, [callStatus]);
+
+  // Auto-timeout: cancel call after 30s of ringing
+  useEffect(function () {
+    if (callStatus !== "ringing") return;
+    var timeout = setTimeout(function () {
+      apiPost("/api/conversations/calls/" + callId + "/cancel/").catch(function () {});
+      setError("No answer");
+      setTimeout(function () { navigate(-1); }, 1500);
+    }, 30000);
+    return function () { clearTimeout(timeout); };
+  }, [callStatus, callId, navigate]);
 
   var endCall = function () {
     if (sessionRef.current) {
-      sessionRef.current.endCall();
+      sessionRef.current.leave();
     }
     apiPost("/api/conversations/calls/" + callId + "/end/").catch(function () {});
+    navigate(-1);
+  };
+
+  var cancelCall = function () {
+    apiPost("/api/conversations/calls/" + callId + "/cancel/").catch(function () {});
     navigate(-1);
   };
 
@@ -128,6 +177,13 @@ export default function VideoCallScreen() {
     );
   };
 
+  var statusText = error ? error
+    : callStatus === "ringing" ? "Calling..."
+    : callStatus === "connecting" ? "Connecting..."
+    : callStatus === "connected" ? formatTime(seconds)
+    : callStatus === "ended" ? "Call ended"
+    : "...";
+
   return (
     <div style={{
       position: "fixed", inset: 0, overflow: "hidden",
@@ -146,13 +202,11 @@ export default function VideoCallScreen() {
         animation: "vidFadeIn 0.5s ease-out",
       }}>
         {hasRemoteStream ? (
-          <video
+          <div
             ref={remoteVideoRef}
-            autoPlay
-            playsInline
             style={{
               position: "absolute", inset: 0,
-              width: "100%", height: "100%", objectFit: "cover",
+              width: "100%", height: "100%",
             }}
           />
         ) : (
@@ -161,7 +215,7 @@ export default function VideoCallScreen() {
             background: "linear-gradient(135deg, " + buddyColor + ", " + buddyColor + "66)",
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 56, fontWeight: 700, color: "#fff",
-            opacity: status === "connecting" ? 0.5 : 0.8,
+            opacity: callStatus === "connecting" || callStatus === "ringing" ? 0.5 : 0.8,
             transition: "opacity 0.5s",
             boxShadow: "0 0 60px " + buddyColor + "30",
           }}>
@@ -170,7 +224,7 @@ export default function VideoCallScreen() {
         )}
       </div>
 
-      {/* Top overlay — name + timer */}
+      {/* Top overlay — name + status */}
       <div style={{
         position: "absolute", top: 0, left: 0, right: 0,
         padding: "50px 20px 20px", zIndex: 10,
@@ -185,43 +239,41 @@ export default function VideoCallScreen() {
             {buddyName}
           </h2>
           <p style={{
-            fontSize: 14, color: "rgba(255,255,255,0.7)",
+            fontSize: 14, color: error ? "#F69A9A" : "rgba(255,255,255,0.7)",
             margin: 0, fontWeight: 500,
           }}>
-            {status === "connecting" ? "Connecting..." : formatTime(seconds)}
+            {statusText}
           </p>
         </div>
       </div>
 
       {/* Self PiP view */}
-      <div style={{
-        position: "absolute", top: 100, right: 16, zIndex: 20,
-        width: 100, height: 140, borderRadius: 16,
-        background: cameraOff
-          ? "rgba(30,20,50,0.9)"
-          : "linear-gradient(135deg, #1a1535, #2d1b69)",
-        border: "2px solid rgba(255,255,255,0.15)",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
-        overflow: "hidden",
-        animation: "vidSlideUp 0.5s ease-out 0.3s both",
-      }}>
-        {cameraOff ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
-            <CameraOff size={24} color="rgba(255,255,255,0.4)" />
-          </div>
-        ) : (
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            muted
-            style={{
-              width: "100%", height: "100%", objectFit: "cover",
-              transform: "scaleX(-1)",
-            }}
-          />
-        )}
-      </div>
+      {callStatus === "connected" && (
+        <div style={{
+          position: "absolute", top: 100, right: 16, zIndex: 20,
+          width: 100, height: 140, borderRadius: 16,
+          background: cameraOff
+            ? "rgba(30,20,50,0.9)"
+            : "linear-gradient(135deg, #1a1535, #2d1b69)",
+          border: "2px solid rgba(255,255,255,0.15)",
+          boxShadow: "0 4px 20px rgba(0,0,0,0.4)",
+          overflow: "hidden",
+          animation: "vidSlideUp 0.5s ease-out 0.3s both",
+        }}>
+          {cameraOff ? (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "100%", height: "100%" }}>
+              <CameraOff size={24} color="rgba(255,255,255,0.4)" />
+            </div>
+          ) : (
+            <div
+              ref={localVideoRef}
+              style={{
+                width: "100%", height: "100%",
+              }}
+            />
+          )}
+        </div>
+      )}
 
       {/* Bottom action bar */}
       <div style={{
@@ -232,12 +284,12 @@ export default function VideoCallScreen() {
         animation: "vidSlideUp 0.5s ease-out 0.2s both",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          {actionBtn(muted ? MicOff : Mic, muted, handleToggleMute)}
-          {actionBtn(cameraOff ? CameraOff : Camera, cameraOff, handleToggleCamera)}
+          {callStatus === "connected" && actionBtn(muted ? MicOff : Mic, muted, handleToggleMute)}
+          {callStatus === "connected" && actionBtn(cameraOff ? CameraOff : Camera, cameraOff, handleToggleCamera)}
 
-          {/* End call */}
+          {/* End/Cancel call */}
           <button
-            onClick={endCall}
+            onClick={callStatus === "ringing" ? cancelCall : endCall}
             style={{
               width: 60, height: 60, borderRadius: 20,
               background: "linear-gradient(135deg, #EF4444, #DC2626)",

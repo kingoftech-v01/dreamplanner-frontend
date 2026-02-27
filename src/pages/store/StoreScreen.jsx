@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Zap, Heart, Check, X, Star, ShoppingBag, Package, RotateCcw, Clock } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
@@ -224,6 +225,17 @@ export default function StoreScreen() {
       </button>
     );
   };
+
+  if (itemsInf.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={(itemsInf.error && itemsInf.error.message) || "Failed to load store items"}
+          onRetry={function () { itemsInf.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
-import { createWebSocket } from "../../services/websocket";
+import { joinRTMChannel } from "../../services/agora";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
@@ -45,23 +45,63 @@ export default function BuddyChatScreen(){
   var queryClient=useQueryClient();
   var userInitial=(user?.displayName||user?.username||"?")[0].toUpperCase();
 
-  // ─── Fetch buddy info ──────────────────────────────────────────
-  var buddyQuery=useQuery({
-    queryKey:["buddy","current"],
-    queryFn:function(){return apiGet("/api/buddies/current/");},
-  });
-  var buddyData=buddyQuery.data||{};
-  var buddy=buddyData.buddy||buddyData||{};
-  var buddyName=buddy.displayName||buddy.display_name||buddy.username||"Buddy";
-  var buddyInitial=(buddyName[0]||"B").toUpperCase();
-  var buddyOnline=!!buddy.isOnline||!!buddy.is_online;
-  var mutualDream=buddy.mutualDream||buddy.mutual_dream||buddy.sharedDream||"";
+  // ─── Resolve buddy info + conversation ID ─────────────────────
+  var [convId, setConvId] = useState(null);
+  var [buddyInfo, setBuddyInfo] = useState(null);
+  var [initLoading, setInitLoading] = useState(true);
+  var [initError, setInitError] = useState(null);
+
+  useEffect(function () {
+    if (!id || id === "undefined") {
+      setInitError("No buddy selected");
+      setInitLoading(false);
+      return;
+    }
+    var cancelled = false;
+    setInitLoading(true);
+    setInitError(null);
+    // Call POST /api/buddies/chat/ with the id as userId to get/create conversation
+    apiPost("/api/buddies/chat/", { userId: id }).then(function (data) {
+      if (cancelled) return;
+      setConvId(data.conversationId);
+      setBuddyInfo(data.buddy || {});
+      setInitLoading(false);
+    }).catch(function () {
+      if (cancelled) return;
+      // id might already be a conversation ID, try fetching messages directly
+      setConvId(id);
+      // Try to get buddy info from /api/buddies/current/
+      apiGet("/api/buddies/current/").then(function (d) {
+        if (cancelled) return;
+        var b = d && d.buddy;
+        var p = b && b.partner;
+        if (p) {
+          setBuddyInfo({ id: p.id, displayName: p.username || p.displayName || "Buddy", isOnline: false, level: p.currentLevel, streak: p.currentStreak });
+        }
+      }).catch(function () {});
+      // Also try to fetch the user profile
+      apiGet("/api/users/" + id + "/").then(function (u) {
+        if (cancelled) return;
+        if (u && u.displayName) {
+          setBuddyInfo(function (prev) { return prev || { id: u.id, displayName: u.displayName || u.name || "Buddy", isOnline: u.isOnline || false }; });
+        }
+      }).catch(function () {});
+      setInitLoading(false);
+    });
+    return function () { cancelled = true; };
+  }, [id]);
+
+  var buddyName = (buddyInfo && buddyInfo.displayName) || "Buddy";
+  var buddyInitial = (buddyName[0] || "B").toUpperCase();
+  var buddyOnline = !!(buddyInfo && buddyInfo.isOnline);
+  var mutualDream = (buddyInfo && buddyInfo.mutualDream) || "";
 
   // ─── Fetch messages (paginated) ────────────────────────────────
   var BUDDY_PAGE_SIZE=50;
   var messagesQuery=useQuery({
-    queryKey:["buddy-messages",id],
-    queryFn:function(){return apiGet("/api/conversations/"+id+"/messages/?limit="+BUDDY_PAGE_SIZE);},
+    queryKey:["buddy-messages",convId],
+    queryFn:function(){return apiGet("/api/conversations/"+convId+"/messages/?limit="+BUDDY_PAGE_SIZE);},
+    enabled: !!convId,
   });
 
   // Local ME/BUDDY so the rest of the UI code works with minimal changes
@@ -86,16 +126,17 @@ export default function BuddyChatScreen(){
   var endRef=useRef(null);var scrollRef=useRef(null);var inputRef=useRef(null);
   var longPressRef=useRef(null);
   var autoDismissRef=useRef(null);
-  var wsRef=useRef(null);
+  var rtmChannelRef=useRef(null);
 
   function mapBuddyMsg(m){
+    var sid=m.senderId||(m.metadata&&m.metadata.senderId)||(m.metadata&&m.metadata.sender_id)||"";
     return{
       id:String(m.id),
       content:m.content||m.text||"",
-      isUser:m.isUser||m.sender==="user"||String(m.senderId)===String(user?.id),
-      time:new Date(m.createdAt||m.time),
-      pinned:!!m.pinned,
-      liked:!!m.liked,
+      isUser:m.isUser===true||String(sid)===String(user?.id),
+      time:new Date(m.createdAt||m.created_at||m.time),
+      pinned:!!(m.pinned||m.isPinned),
+      liked:!!(m.liked||m.isLiked),
       read:m.read!==false,
       reactions:m.reactions||[],
     };
@@ -113,9 +154,9 @@ export default function BuddyChatScreen(){
   },[messagesQuery.data]);
 
   function loadOlderBuddyMessages(){
-    if(loadingMore||!hasMore)return;
+    if(loadingMore||!hasMore||!convId)return;
     setLoadingMore(true);
-    apiGet("/api/conversations/"+id+"/messages/?limit="+BUDDY_PAGE_SIZE+"&offset="+nextOffset)
+    apiGet("/api/conversations/"+convId+"/messages/?limit="+BUDDY_PAGE_SIZE+"&offset="+nextOffset)
       .then(function(raw){
         var list=raw.results||raw||[];
         if(list.length>0){
@@ -128,42 +169,97 @@ export default function BuddyChatScreen(){
       .finally(function(){setLoadingMore(false);});
   }
 
-  // ─── WebSocket for real-time P2P ───────────────────────────────
-  var typingTimerRef=useRef(null);
+  // ─── Mark conversation as read (debounced) ─────────────────────
+  var markReadTimerRef=useRef(null);
+  function markAsRead(){
+    if(!convId)return;
+    if(markReadTimerRef.current)clearTimeout(markReadTimerRef.current);
+    markReadTimerRef.current=setTimeout(function(){
+      apiPost("/api/conversations/"+convId+"/mark-read/").then(function(){
+        queryClient.invalidateQueries({queryKey:["conversations"]});
+      }).catch(function(){});
+    },500);
+  }
+
+  // Mark read when the screen opens with a valid convId
   useEffect(function(){
-    if(!id)return;
+    if(convId){markAsRead();}
+    return function(){if(markReadTimerRef.current)clearTimeout(markReadTimerRef.current);};
+  },[convId]);
+
+  // ─── Agora RTM for real-time P2P ───────────────────────────────
+  var typingTimerRef=useRef(null);
+  var [rtmConnected, setRtmConnected] = useState(false);
+  useEffect(function(){
+    if(!convId)return;
     var cancelled=false;
-    var ws=createWebSocket("/ws/buddy-chat/"+id+"/",{
-      onMessage:function(data){
+    var rtmHandle=null;
+
+    joinRTMChannel(convId,{
+      onMessage:function(parsed,memberId){
         if(cancelled)return;
-        if(data.type==="message"||data.type==="new_message"||data.type==="chat_message"){
-          queryClient.invalidateQueries({queryKey:["buddy-messages",id]});
-          setBuddyTyping(false);
-          if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
-        }
-        if(data.type==="typing"){
-          setBuddyTyping(true);
-          if(typingTimerRef.current)clearTimeout(typingTimerRef.current);
+        // Add message directly to state for instant display
+        setMessages(function(prev){
+          // Deduplicate by checking if content+timestamp already exists
+          var isDupe=prev.some(function(m){return !m.isUser && m.content===parsed.content && Math.abs((m.time?m.time.getTime():0)-(parsed.ts||0))<2000;});
+          if(isDupe)return prev;
+          return[...prev,{id:Date.now()+"r",content:parsed.content,isUser:false,time:new Date(parsed.ts||Date.now()),pinned:false,liked:false,read:true,reactions:[]}];
+        });
+        // Also refresh from DB to get server IDs
+        queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
+        setBuddyTyping(false);
+        if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
+        // Mark as read since user is viewing the chat
+        markAsRead();
+      },
+      onTyping:function(memberId,isTyping){
+        if(cancelled)return;
+        setBuddyTyping(isTyping);
+        if(typingTimerRef.current)clearTimeout(typingTimerRef.current);
+        if(isTyping){
           typingTimerRef.current=setTimeout(function(){setBuddyTyping(false);},3000);
         }
-        if(data.type==="read_receipt"){
-          setMessages(function(prev){return prev.map(function(m){return m.isUser?{...m,read:true}:m;});});
-        }
-        if(data.type==="error"){
-          showToast(data.error||"Chat error","error");
-        }
-        if(data.type==="moderation"){
-          showToast(data.message||"Message was not appropriate","error");
-        }
       },
+    }).then(function(handle){
+      if(cancelled){handle.leave();return;}
+      rtmHandle=handle;
+      rtmChannelRef.current=handle;
+      setRtmConnected(true);
+    }).catch(function(err){
+      console.error("RTM channel join failed:",err);
+      setRtmConnected(false);
     });
-    wsRef.current=ws;
+
     return function(){
       cancelled=true;
-      ws.close();
+      if(rtmHandle){rtmHandle.leave();}
+      rtmChannelRef.current=null;
+      setRtmConnected(false);
       if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
     };
-  },[id]);
+  },[convId]);
+
+  // ─── Polling fallback when RTM is not connected ────────────────
+  useEffect(function(){
+    if(!convId || rtmConnected)return;
+    var pollInterval=setInterval(function(){
+      apiGet("/api/conversations/"+convId+"/messages/?limit="+BUDDY_PAGE_SIZE)
+        .then(function(raw){
+          var list=raw.results||raw||[];
+          if(list.length>0){
+            setMessages(function(prev){
+              var mapped=list.map(mapBuddyMsg);
+              // Merge: keep optimistic local msgs, add new server msgs
+              var serverIds=new Set(mapped.map(function(m){return m.id;}));
+              var localOnly=prev.filter(function(m){return !serverIds.has(m.id)&&(m.id+"").match(/^\d+[ur]$/);});
+              return mapped.concat(localOnly);
+            });
+          }
+        })
+        .catch(function(){});
+    },3000);
+    return function(){clearInterval(pollInterval);};
+  },[convId,rtmConnected]);
 
   // Long-press handlers
   const handlePointerDown=(msgId)=>{
@@ -196,32 +292,31 @@ export default function BuddyChatScreen(){
   const handleScroll=()=>{if(!scrollRef.current)return;const{scrollTop,scrollHeight,clientHeight}=scrollRef.current;setShowScroll(scrollHeight-scrollTop-clientHeight>100);};
 
   var handleSend=function(){
-    var text=input.trim();if(!text)return;
+    var text=input.trim();if(!text||!convId)return;
     setMessages(function(prev){return[...prev,{id:Date.now()+"u",content:text,isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[]}];});
     setInput("");if(inputRef.current)inputRef.current.style.height="auto";
-    // Send via WebSocket if connected, otherwise fall back to API
-    if(wsRef.current&&wsRef.current.getState()===WebSocket.OPEN){
-      wsRef.current.send({type:"message",content:text});
-    }else{
-      apiPost("/api/conversations/"+id+"/send_message/",{content:text})
-        .catch(function(err){showToast(err.message||"Failed to send","error");});
+    // Dual-write: send via Agora RTM for real-time delivery + REST for DB persistence
+    if(rtmChannelRef.current){
+      rtmChannelRef.current.sendMessage(text).catch(function(){});
     }
+    apiPost("/api/buddies/send-message/",{conversationId:convId,content:text})
+      .catch(function(err){showToast(err.message||"Failed to send","error");});
   };
 
   // ─── Pin / Like mutations ─────────────────────────────────────
   var pinMsgMut=useMutation({
-    mutationFn:function(msgId){return apiPost("/api/conversations/"+id+"/pin-message/"+msgId+"/");},
-    onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",id]});},
+    mutationFn:function(msgId){return apiPost("/api/conversations/"+convId+"/pin-message/"+msgId+"/");},
+    onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});},
   });
   var likeMsgMut=useMutation({
-    mutationFn:function(msgId){return apiPost("/api/conversations/"+id+"/like-message/"+msgId+"/");},
-    onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",id]});},
+    mutationFn:function(msgId){return apiPost("/api/conversations/"+convId+"/like-message/"+msgId+"/");},
+    onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});},
   });
 
   var togglePin=function(msgId){setMessages(function(p){return p.map(function(m){return m.id===msgId?{...m,pinned:!m.pinned}:m;});});pinMsgMut.mutate(msgId);};
   var toggleLike=function(msgId){setMessages(function(p){return p.map(function(m){return m.id===msgId?{...m,liked:!m.liked}:m;});});likeMsgMut.mutate(msgId);};
   var handleCopy=function(msgId,c){clipboardWrite(c);setCopiedId(msgId);setTimeout(function(){setCopiedId(null);},2000);};
-  var handleInput=function(e){setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";};
+  var handleInput=function(e){setInput(e.target.value);e.target.style.height="auto";e.target.style.height=Math.min(e.target.scrollHeight,120)+"px";if(rtmChannelRef.current&&e.target.value){rtmChannelRef.current.sendTyping(true);}};
   const handleReaction=(msgId,emoji)=>{
     setMessages(prev=>prev.map(m=>{
       if(m.id!==msgId)return m;
@@ -239,17 +334,17 @@ export default function BuddyChatScreen(){
   // ES-backed search: query backend when searchQ changes
   var[searchedMsgs,setSearchedMsgs]=useState([]);
   useEffect(function(){
-    if(!searchQ||searchQ.length<2||!id){setSearchedMsgs([]);return;}
+    if(!searchQ||searchQ.length<2||!convId){setSearchedMsgs([]);return;}
     var t=setTimeout(function(){
-      apiGet("/api/conversations/"+id+"/search/?q="+encodeURIComponent(searchQ))
+      apiGet("/api/conversations/"+convId+"/search/?q="+encodeURIComponent(searchQ))
         .then(function(r){setSearchedMsgs(Array.isArray(r)?r:r.results||[]);})
         .catch(function(){setSearchedMsgs([]);});
     },300);
     return function(){clearTimeout(t);};
-  },[searchQ,id]);
+  },[searchQ,convId]);
 
   // ─── Loading / Error states ────────────────────────────────────
-  if(messagesQuery.isLoading||buddyQuery.isLoading){
+  if(initLoading||messagesQuery.isLoading){
     return(
       <div style={{width:"100%",height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif"}}>
         <Loader size={28} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2} style={{animation:"spin 1s linear infinite"}}/>
@@ -257,8 +352,8 @@ export default function BuddyChatScreen(){
       </div>
     );
   }
-  if(buddyQuery.isError){
-    return <ErrorState message="Failed to load buddy chat" onRetry={buddyQuery.refetch}/>;
+  if(initError){
+    return <ErrorState message={initError} onRetry={function(){window.location.reload();}}/>;
   }
 
   return(
@@ -283,13 +378,13 @@ export default function BuddyChatScreen(){
           </div>
           <div style={{display:"flex",gap:6}}>
             <button className="dp-ib" aria-label="Call" onClick={function(){
-              apiPost("/api/conversations/calls/initiate/",{calleeId:buddy.userId||buddy.id,callType:"voice"}).then(function(data){
-                navigate("/voice-call/"+data.id+"?buddyName="+encodeURIComponent(buddyName));
+              apiPost("/api/conversations/calls/initiate/",{calleeId:buddyInfo&&buddyInfo.id||id,callType:"voice"}).then(function(data){
+                navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
               }).catch(function(err){showToast(err.message||"Failed to start call","error");});
             }}><Phone size={17} strokeWidth={2}/></button>
             <button className="dp-ib" aria-label="Video call" onClick={function(){
-              apiPost("/api/conversations/calls/initiate/",{calleeId:buddy.userId||buddy.id,callType:"video"}).then(function(data){
-                navigate("/video-call/"+data.id+"?buddyName="+encodeURIComponent(buddyName));
+              apiPost("/api/conversations/calls/initiate/",{calleeId:buddyInfo&&buddyInfo.id||id,callType:"video"}).then(function(data){
+                navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
               }).catch(function(err){showToast(err.message||"Failed to start call","error");});
             }}><Video size={17} strokeWidth={2}/></button>
             <div style={{position:"relative"}}>
@@ -314,6 +409,7 @@ export default function BuddyChatScreen(){
           </div>
         </div>
         {/* Shared dream banner */}
+        {BUDDY.mutualDream ? (
         <div style={{padding:"0 16px 10px",display:"flex",alignItems:"center",gap:8}}>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"6px 12px",borderRadius:10,background:"rgba(20,184,166,0.06)",border:"1px solid rgba(20,184,166,0.1)"}}>
             <Target size={13} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2.5}/>
@@ -321,6 +417,7 @@ export default function BuddyChatScreen(){
             <span style={{fontSize:12,fontWeight:600,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.mutualDream}</span>
           </div>
         </div>
+        ) : null}
       </header>
 
       {/* ═══ MESSAGES ═══ */}
@@ -332,7 +429,7 @@ export default function BuddyChatScreen(){
                 <Users size={36} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={1.5}/>
               </div>
               <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>Start chatting with {BUDDY.displayName}!</div>
-              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>You're both working towards "{BUDDY.mutualDream}"</div>
+              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>{BUDDY.mutualDream ? "You're both working towards \"" + BUDDY.mutualDream + "\"" : "Encourage each other on your journey!"}</div>
             </div>
           ):(
             <>

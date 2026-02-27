@@ -6,6 +6,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
+import ErrorState from "../../components/shared/ErrorState";
 import SubscriptionGate from "../../components/shared/SubscriptionGate";
 import {
   ArrowLeft, Target, Heart, MessageCircle, Users, Star,
@@ -66,20 +67,29 @@ export default function FindBuddyScreen(){
   var ME = {
     name: user?.displayName || user?.username || "You",
     initial: (user?.displayName || user?.username || "U")[0].toUpperCase(),
-    level: user?.level || 1, xp: user?.xp || 0, streak: user?.streak || 0,
+    level: user?.level || 1, xp: user?.xp || 0, streak: user?.streakDays || 0,
     dreams: user?.dreams || [],
   };
 
   var buddyQuery = useQuery({ queryKey: ["buddy-current"], queryFn: function () { return apiGet("/api/buddies/current/"); } });
-  var suggestionsQuery = useQuery({ queryKey: ["buddy-suggestions"], queryFn: function () { return apiGet("/api/buddies/find-match/"); } });
+  var suggestionsQuery = useQuery({ queryKey: ["buddy-suggestions"], queryFn: function () { return apiPost("/api/buddies/find-match/", {}); } });
 
-  var CURRENT_BUDDY = buddyQuery.data || null;
-  var SUGGESTIONS = ((suggestionsQuery.data && suggestionsQuery.data.results) || suggestionsQuery.data || []).map(function (s, i) {
+  var CURRENT_BUDDY = (buddyQuery.data && buddyQuery.data.buddy) || null;
+  var rawSuggestions = suggestionsQuery.data;
+  // Backend returns {match: {...}} for a single match — normalize to array
+  var suggestionsList = [];
+  if (rawSuggestions) {
+    if (Array.isArray(rawSuggestions.results)) suggestionsList = rawSuggestions.results;
+    else if (Array.isArray(rawSuggestions)) suggestionsList = rawSuggestions;
+    else if (rawSuggestions.match) suggestionsList = [rawSuggestions.match];
+  }
+  var SUGGESTIONS = suggestionsList.map(function (s, i) {
     if (!s) return null;
     return Object.assign({}, s, {
-      initial: (s.name || s.displayName || "?")[0].toUpperCase(),
+      name: s.name || s.displayName || s.username || "User",
+      initial: (s.name || s.displayName || s.username || "?")[0].toUpperCase(),
       color: s.color || SUGGESTION_COLORS[i % SUGGESTION_COLORS.length],
-      sharedDreams: s.sharedDreams || [],
+      sharedDreams: s.sharedDreams || s.sharedInterests || [],
       sharedCategories: s.sharedCategories || [],
       dreams: s.dreams || [],
       achievements: s.achievements || [],
@@ -90,7 +100,7 @@ export default function FindBuddyScreen(){
 
   var sendRequest=function(id){
     setSent(function(p){return Object.assign({},p,{[id]:true});});
-    apiPost("/api/buddies/pair/",{buddyId:id}).then(function(){
+    apiPost("/api/buddies/pair/",{partnerId:id}).then(function(){
       showToast("Buddy request sent!","success");
       queryClient.invalidateQueries({queryKey:["buddy-current"]});
       queryClient.invalidateQueries({queryKey:["buddy-suggestions"]});
@@ -111,8 +121,35 @@ export default function FindBuddyScreen(){
     });
   };
 
-  var b=CURRENT_BUDDY || {};
+  var _partner = CURRENT_BUDDY && CURRENT_BUDDY.partner;
+  var b = {
+    name: (_partner && (_partner.username || _partner.displayName)) || "Buddy",
+    initial: ((_partner && (_partner.username || _partner.displayName)) || "B")[0].toUpperCase(),
+    level: (_partner && _partner.currentLevel) || 0,
+    xp: (_partner && _partner.influenceScore) || 0,
+    streak: (_partner && _partner.currentStreak) || 0,
+    color: "#14B8A6",
+    online: false,
+    compatibility: (CURRENT_BUDDY && CURRENT_BUDDY.compatibilityScore) || 0,
+    joinedDate: (CURRENT_BUDDY && CURRENT_BUDDY.createdAt) ? new Date(CURRENT_BUDDY.createdAt).toLocaleDateString() : "recently",
+    sharedDreams: [],
+    sharedCategories: [],
+  };
   const ringR=40,ringC=2*Math.PI*ringR,ringOff=ringC*(1-(b.compatibility||0)/100);
+
+  if (buddyQuery.isError || suggestionsQuery.isError) {
+    return (
+      <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ErrorState
+            message={(buddyQuery.error && buddyQuery.error.message) || (suggestionsQuery.error && suggestionsQuery.error.message) || "Failed to load buddy data"}
+            onRetry={function () { buddyQuery.refetch(); suggestionsQuery.refetch(); }}
+          />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   return(
     <div style={{width:"100%",height:"100dvh",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
@@ -202,7 +239,7 @@ export default function FindBuddyScreen(){
 
               {/* Action buttons */}
               <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>navigate("/buddy-chat/"+(CURRENT_BUDDY&&CURRENT_BUDDY.id||"buddy1"))} style={{flex:1,padding:"11px 0",borderRadius:14,border:"none",background:"linear-gradient(135deg,#14B8A6,#0D9488)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 16px rgba(20,184,166,0.25)",transition:"all 0.2s"}}
+                <button onClick={()=>{if(_partner&&_partner.id)navigate("/buddy-chat/"+_partner.id);}} style={{flex:1,padding:"11px 0",borderRadius:14,border:"none",background:"linear-gradient(135deg,#14B8A6,#0D9488)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 16px rgba(20,184,166,0.25)",transition:"all 0.2s"}}
                   onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
                   onMouseLeave={e=>e.currentTarget.style.transform="translateY(0)"}>
                   <MessageCircle size={16} strokeWidth={2}/>Chat

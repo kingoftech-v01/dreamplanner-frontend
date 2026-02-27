@@ -23,7 +23,7 @@ export default function BottomNav() {
     const path = location.pathname;
     if (path === "/") return 0;
     if (path.startsWith("/calendar")) return 1;
-    if (path.startsWith("/conversations") || path.startsWith("/buddy-chat")) return 2;
+    if (path.startsWith("/conversations") || path.startsWith("/buddy-chat") || path.startsWith("/calls")) return 2;
     if (path.startsWith("/social") || path.startsWith("/find-buddy") || path.startsWith("/leaderboard") || path.startsWith("/friend-requests") || path.startsWith("/search")) return 3;
     if (path.startsWith("/profile") || path.startsWith("/settings") || path.startsWith("/edit-profile")) return 4;
     return -1;

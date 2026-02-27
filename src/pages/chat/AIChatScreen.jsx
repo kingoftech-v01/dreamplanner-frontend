@@ -11,7 +11,7 @@ import DOMPurify from "dompurify";
 import {
   ArrowLeft, Bot, Sparkles, RotateCw, Copy, Check,
   Send, ChevronDown, MoreVertical, Pin, Heart, Search,
-  X, MessageCircle, Smile
+  X, Smile, Clock, MessageSquare
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -169,6 +169,13 @@ export default function AIChatScreen(){
           setIsStreaming(true);
         }
         if (data.type === "message" || data.type === "new_message") {
+          // Stop streaming if this is an assistant message from WS
+          var msg = data.message;
+          if (msg && msg.role === "assistant") {
+            setIsStreaming(false);
+            setStreamingContent("");
+          }
+          // Refresh from server — the REST .then() already added the message optimistically
           queryClient.invalidateQueries({ queryKey: ["messages", id] });
         }
         if (data.type === "error") {
@@ -199,13 +206,25 @@ export default function AIChatScreen(){
       if (msg) {
         setIsStreaming(true);
         apiPost("/api/conversations/" + id + "/send_message/", { content: msg })
-          .then(function () {
-            if (!wsRef.current || wsRef.current.getState() !== WebSocket.OPEN) {
-              setTimeout(function () {
-                setIsStreaming(false);
-                queryClient.invalidateQueries({ queryKey: ["messages", id] });
-              }, 3000);
+          .then(function (res) {
+            var aiMsg = res.assistantMessage || res.assistant_message;
+            if (aiMsg) {
+              setMessages(function (prev) {
+                // Only add AI response — user message already in state from init
+                var isDupe = prev.some(function (m) { return m.id === aiMsg.id || (!m.isUser && m.content === (aiMsg.content || "")); });
+                if (isDupe) return prev;
+                return [...prev, {
+                  id: aiMsg.id || Date.now() + "a",
+                  content: aiMsg.content || "",
+                  isUser: false,
+                  time: aiMsg.createdAt ? new Date(aiMsg.createdAt) : new Date(),
+                  pinned: !!aiMsg.isPinned, liked: !!aiMsg.isLiked, reactions: aiMsg.reactions || []
+                }];
+              });
             }
+            setIsStreaming(false);
+            setStreamingContent("");
+            queryClient.invalidateQueries({ queryKey: ["messages", id] });
           })
           .catch(function (err) {
             setIsStreaming(false);
@@ -235,7 +254,20 @@ export default function AIChatScreen(){
   const[activeMsg,setActiveMsg]=useState(null);
   const[showScroll,setShowScroll]=useState(false);
   const[menuOpen,setMenuOpen]=useState(false);
-  const[panel,setPanel]=useState(null); // 'pinned' | 'liked' | 'search' | null
+  const[panel,setPanel]=useState(null); // 'pinned' | 'liked' | 'search' | 'history' | null
+
+  // ─── AI Conversation History ──────────────────────────────────
+  var aiHistoryQuery = useQuery({
+    queryKey: ["ai-conversations"],
+    queryFn: function () {
+      return apiGet("/api/conversations/?ordering=-updated_at&limit=50").then(function (data) {
+        var list = (data && data.results) || data || [];
+        if (!Array.isArray(list)) list = [];
+        return list.filter(function (c) { return c.conversationType !== "buddy_chat"; });
+      });
+    },
+    enabled: panel === "history",
+  });
   const[searchQ,setSearchQ]=useState("");
   const[reactionPicker,setReactionPicker]=useState(null); // null or message id
   const[emojiOpen,setEmojiOpen]=useState(false);
@@ -277,6 +309,16 @@ export default function AIChatScreen(){
 
   const handleScroll=()=>{if(!scrollRef.current)return;const{scrollTop,scrollHeight,clientHeight}=scrollRef.current;setShowScroll(scrollHeight-scrollTop-clientHeight>100);};
 
+  // ─── Safety: auto-clear streaming indicator after 90s ──────────
+  useEffect(function () {
+    if (!isStreaming) return;
+    var timer = setTimeout(function () {
+      setIsStreaming(false);
+      setStreamingContent("");
+    }, 90000);
+    return function () { clearTimeout(timer); };
+  }, [isStreaming]);
+
   // ─── Send message via API ───────────────────────────────────────
   var handleSend = function () {
     var text = input.trim(); if (!text) return;
@@ -284,14 +326,27 @@ export default function AIChatScreen(){
     setInput(""); if (inputRef.current) inputRef.current.style.height = "auto";
     setIsStreaming(true);
     apiPost("/api/conversations/" + id + "/send_message/", { content: text })
-      .then(function () {
-        // AI response will come via WebSocket; fallback if no WS
-        if (!wsRef.current || wsRef.current.getState() !== WebSocket.OPEN) {
-          setTimeout(function () {
-            setIsStreaming(false);
-            queryClient.invalidateQueries({ queryKey: ["messages", id] });
-          }, 3000);
+      .then(function (res) {
+        // Use the REST response directly — it contains the AI reply
+        var aiMsg = res.assistantMessage || res.assistant_message;
+        if (aiMsg) {
+          setMessages(function (prev) {
+            var isDupe = prev.some(function (m) { return m.id === aiMsg.id || (!m.isUser && m.content === (aiMsg.content || "")); });
+            if (isDupe) return prev;
+            return [...prev, {
+              id: aiMsg.id || Date.now() + "a",
+              content: aiMsg.content || "",
+              isUser: false,
+              time: aiMsg.createdAt ? new Date(aiMsg.createdAt) : new Date(),
+              pinned: !!aiMsg.isPinned,
+              liked: !!aiMsg.isLiked,
+              reactions: aiMsg.reactions || []
+            }];
+          });
         }
+        setIsStreaming(false);
+        setStreamingContent("");
+        queryClient.invalidateQueries({ queryKey: ["messages", id] });
       })
       .catch(function (err) {
         setIsStreaming(false);
@@ -369,6 +424,7 @@ export default function AIChatScreen(){
             {menuOpen&&(
               <div style={{position:"absolute",top:44,right:0,zIndex:200,background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
                 {[
+                  {icon:Clock,label:"Conversation History",count:null,action:()=>{setPanel("history");setMenuOpen(false);}},
                   {icon:Pin,label:"Pinned Messages",count:pinnedMsgs.length,action:()=>{setPanel("pinned");setMenuOpen(false);}},
                   {icon:Heart,label:"Liked Messages",count:likedMsgs.length,action:()=>{setPanel("liked");setMenuOpen(false);}},
                   {icon:Search,label:"Search Messages",count:null,action:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
@@ -495,6 +551,7 @@ export default function AIChatScreen(){
             {/* Panel header */}
             <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {panel==="history"&&<><Clock size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Conversation History</span></>}
                 {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Pinned Messages</span></>}
                 {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Liked Messages</span></>}
                 {panel==="search"&&<><Search size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Search</span></>}
@@ -513,6 +570,44 @@ export default function AIChatScreen(){
             )}
             {/* Panel content */}
             <div style={{flex:1,overflowY:"auto",padding:16}}>
+              {panel==="history"&&(function(){
+                var convs = aiHistoryQuery.data || [];
+                if(!Array.isArray(convs)) convs = [];
+                if(aiHistoryQuery.isLoading) return <div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Loading...</div>;
+                if(convs.length===0) return <EmptyPanel icon={Clock} text="No conversations yet"/>;
+                return convs.map(function(c){
+                  var isCurrent = c.id === id;
+                  var lastMsg = c.lastMessage;
+                  var preview = typeof lastMsg === "object" && lastMsg !== null ? (lastMsg.content || "").slice(0,80) : (typeof lastMsg === "string" ? lastMsg.slice(0,80) : "");
+                  var ago = c.updatedAt ? (function(d){var s=Math.floor((Date.now()-new Date(d).getTime())/1000);if(s<60)return"now";if(s<3600)return Math.floor(s/60)+"m";if(s<86400)return Math.floor(s/3600)+"h";return Math.floor(s/86400)+"d";})(c.updatedAt) : "";
+                  return (
+                    <button key={c.id} onClick={function(){if(!isCurrent){setPanel(null);navigate("/chat/"+c.id);}}} style={{
+                      display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",marginBottom:8,
+                      borderRadius:14,border:isCurrent?(isLight?"1.5px solid rgba(139,92,246,0.3)":"1.5px solid rgba(139,92,246,0.4)"):"1px solid "+(isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"),
+                      background:isCurrent?(isLight?"rgba(139,92,246,0.08)":"rgba(139,92,246,0.1)"):(isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.03)"),
+                      cursor:isCurrent?"default":"pointer",fontFamily:"inherit",textAlign:"left",transition:"background 0.15s",
+                    }}
+                      onMouseEnter={function(e){if(!isCurrent)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.06)";}}
+                      onMouseLeave={function(e){if(!isCurrent)e.currentTarget.style.background=isCurrent?(isLight?"rgba(139,92,246,0.08)":"rgba(139,92,246,0.1)"):(isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.03)");}}
+                    >
+                      <div style={{width:36,height:36,borderRadius:12,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.15)"}}>
+                        <Bot size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                          <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{c.title || "AI Coach"}</span>
+                          <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.45)",flexShrink:0}}>{ago}</span>
+                        </div>
+                        {preview && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.5)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}</div>}
+                        <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                          <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.35)"}}>{c.totalMessages || 0} messages</span>
+                          {isCurrent && <span style={{fontSize:10,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD",background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.15)",padding:"1px 7px",borderRadius:6}}>Current</span>}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                });
+              })()}
               {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyPanel icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
               {panel==="liked"&&(likedMsgs.length===0?<EmptyPanel icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
               {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text="No results found"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search messages</div>)}

@@ -12,7 +12,7 @@ import { ConversationSkeleton } from "../../components/shared/Skeleton";
 import {
   ArrowLeft, Search, Bot, Sparkles, Flag, Heart, Brain,
   Users, MessageCircle, ChevronRight, Trash2, Plus, X,
-  Clock, MoreVertical, Pin, Archive
+  Clock, MoreVertical, Pin, Archive, Phone
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -39,7 +39,7 @@ import {
 
 // ─── CONVERSATION TYPE CONFIG ────────────────────────────────────
 const CONV_TYPES = {
-  dream_coaching:  { Icon: Bot,      color: "#C4B5FD", bg: "#8B5CF6", label: "AI Coach" },
+  general:         { Icon: Bot,      color: "#C4B5FD", bg: "#8B5CF6", label: "AI Coach" },
   dream_creation:  { Icon: Sparkles, color: "#FCD34D", bg: "#F59E0B", label: "Creation" },
   planning:        { Icon: Flag,     color: "#5DE5A8", bg: "#10B981", label: "Planning" },
   motivation:      { Icon: Heart,    color: "#F69A9A", bg: "#EF4444", label: "Motivation" },
@@ -47,11 +47,9 @@ const CONV_TYPES = {
   buddy_chat:      { Icon: Users,    color: "#5EEAD4", bg: "#14B8A6", label: "Buddy" },
 };
 
+// Only buddy / circle conversations — AI Coach is in its own screen
 const FILTER_TABS = [
   { key: "all", label: "All" },
-  { key: "dream_coaching", label: "AI Coach" },
-  { key: "planning", label: "Planning" },
-  { key: "check_in", label: "Check-in" },
   { key: "buddy_chat", label: "Buddy" },
 ];
 
@@ -83,14 +81,27 @@ export default function ConversationListScreen() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
 
+  // AI conversation types to exclude from this list (shown in AI Coach screen instead)
+  var AI_TYPES = ["general", "dream_creation", "planning", "motivation", "check_in", "adjustment", "rescue"];
+
   var convsUrl = (function () {
     var params = "";
-    if (activeFilter !== "all") params += "?type=" + activeFilter;
-    if (searchQuery) params += (params ? "&" : "?") + "search=" + searchQuery;
+    if (activeFilter !== "all") params += "?conversation_type=" + activeFilter;
+    else params += "?conversation_type=buddy_chat";
+    if (searchQuery) params += "&search=" + searchQuery;
     return "/api/conversations/" + params;
   })();
   var convsInf = useInfiniteList({ queryKey: ["conversations", activeFilter, searchQuery], url: convsUrl, limit: 30 });
   var conversations = convsInf.items;
+
+  // Missed calls count for badge
+  var callHistoryQuery = useQuery({
+    queryKey: ["call-history"],
+    queryFn: function () { return apiGet("/api/conversations/calls/history/"); },
+  });
+  var missedCallCount = ((callHistoryQuery.data) || []).filter(function (c) {
+    return c.status === "missed" && c.calleeId === (user && user.id);
+  }).length;
 
   var friendsQuery = useQuery({
     queryKey: ["buddy-contacts"],
@@ -150,11 +161,12 @@ export default function ConversationListScreen() {
   }).map(function (c) {
     return Object.assign({}, c, {
       updatedAt: c.updatedAt ? new Date(c.updatedAt) : new Date(),
+      unread: c.unreadCount || c.unread || 0,
     });
   });
-  const pinned = filtered.filter(c => c.pinned);
-  const unpinned = filtered.filter(c => !c.pinned);
-  const totalUnread = conversations.reduce(function (sum, c) { return sum + (c.unread || 0); }, 0);
+  const pinned = filtered.filter(c => c.isPinned);
+  const unpinned = filtered.filter(c => !c.isPinned);
+  const totalUnread = conversations.reduce(function (sum, c) { return sum + (c.unreadCount || 0); }, 0);
 
   if (loading) return (
       <div style={{ width: "100%", padding: "60px 16px 0" }}>
@@ -182,11 +194,22 @@ export default function ConversationListScreen() {
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <button className="dp-icon-btn" style={iconBtnStyle} onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2} /></button>
             <div>
-              <div style={{ fontSize:17, fontWeight:700, color:isLight?"#1a1535":"#fff", letterSpacing:"-0.3px" }}>Conversations</div>
+              <div style={{ fontSize:17, fontWeight:700, color:isLight?"#1a1535":"#fff", letterSpacing:"-0.3px" }}>Messages</div>
               {totalUnread > 0 && <div style={{ fontSize:12, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)" }}>{totalUnread} unread</div>}
             </div>
           </div>
           <div style={{ display:"flex", gap:8 }}>
+            <button className="dp-icon-btn" style={{...iconBtnStyle, position:"relative"}} onClick={()=>navigate("/calls/history")} aria-label="Call history">
+              <Phone size={18} strokeWidth={2} />
+              {missedCallCount > 0 && (
+                <div style={{
+                  position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8,
+                  background:"#EF4444", display:"flex", alignItems:"center", justifyContent:"center",
+                  fontSize:10, fontWeight:700, color:"#fff", padding:"0 4px",
+                  boxShadow:"0 0 6px rgba(239,68,68,0.5)",
+                }}>{missedCallCount > 9 ? "9+" : missedCallCount}</div>
+              )}
+            </button>
             <button className="dp-icon-btn" style={iconBtnStyle} onClick={()=>{setSearchOpen(!searchOpen);setSearchQuery("");}} aria-label={searchOpen ? "Close search" : "Search"}>
               {searchOpen ? <X size={18} strokeWidth={2}/> : <Search size={18} strokeWidth={2}/>}
             </button>
@@ -259,9 +282,9 @@ export default function ConversationListScreen() {
               }}>
                 <MessageCircle size={36} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} strokeWidth={1.5} />
               </div>
-              <div style={{ fontSize:17, fontWeight:600, color:isLight?"#1a1535":"#fff", marginBottom:8 }}>No conversations yet</div>
+              <div style={{ fontSize:17, fontWeight:600, color:isLight?"#1a1535":"#fff", marginBottom:8 }}>No messages yet</div>
               <div style={{ fontSize:14, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)", lineHeight:1.5, maxWidth:280, margin:"0 auto" }}>
-                Start a conversation from a dream's AI Coach or connect with a buddy
+                Connect with a buddy or join a circle to start chatting
               </div>
             </div>
           ) : (
@@ -276,7 +299,7 @@ export default function ConversationListScreen() {
                     </div>
                   </div>
                   {pinned.map((conv, i) => (
-                    <ConvCard key={conv.id} conv={conv} index={i} mounted={mounted} delay={80+i*70} isLight={isLight} onClick={()=>navigate(conv.type==="buddy_chat"?`/buddy-chat/${conv.id}`:`/chat/${conv.id}`)} onContext={(e)=>{e.preventDefault();setContextMenu({id:conv.id,x:e.clientX,y:e.clientY});}} />
+                    <ConvCard key={conv.id} conv={conv} index={i} mounted={mounted} delay={80+i*70} isLight={isLight} onClick={()=>navigate(conv.conversationType==="buddy_chat"?`/buddy-chat/${conv.id}`:`/chat/${conv.id}`)} onContext={(e)=>{e.preventDefault();setContextMenu({id:conv.id,x:e.clientX,y:e.clientY});}} />
                   ))}
                   <div style={{ height:16 }} />
                 </>
@@ -294,7 +317,7 @@ export default function ConversationListScreen() {
                     </div>
                   )}
                   {unpinned.map((conv, i) => (
-                    <ConvCard key={conv.id} conv={conv} index={i} mounted={mounted} delay={80+(pinned.length+i)*70+100} isLight={isLight} onClick={()=>navigate(conv.type==="buddy_chat"?`/buddy-chat/${conv.id}`:`/chat/${conv.id}`)} onContext={(e)=>{e.preventDefault();setContextMenu({id:conv.id,x:e.clientX,y:e.clientY});}} />
+                    <ConvCard key={conv.id} conv={conv} index={i} mounted={mounted} delay={80+(pinned.length+i)*70+100} isLight={isLight} onClick={()=>navigate(conv.conversationType==="buddy_chat"?`/buddy-chat/${conv.id}`:`/chat/${conv.id}`)} onContext={(e)=>{e.preventDefault();setContextMenu({id:conv.id,x:e.clientX,y:e.clientY});}} />
                   ))}
                 </>
               )}
@@ -501,7 +524,7 @@ export default function ConversationListScreen() {
 
 // ─── CONVERSATION CARD ───────────────────────────────────────────
 function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) {
-  const type = CONV_TYPES[conv.type] || CONV_TYPES.dream_coaching;
+  const type = CONV_TYPES[conv.conversationType] || CONV_TYPES.general;
   const TypeIcon = type.Icon;
 
   return (
@@ -551,7 +574,7 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
               marginBottom:6, lineHeight:1.4,
             }}>
-              {conv.lastMessage}
+              {typeof conv.lastMessage === "object" && conv.lastMessage !== null ? (conv.lastMessage.content || "") : (conv.lastMessage || "")}
             </div>
 
             {/* Meta row */}
@@ -578,7 +601,7 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
         </div>
 
         {/* Pin indicator */}
-        {conv.pinned && (
+        {conv.isPinned && (
           <div style={{ position:"absolute", top:6, right:6 }}>
             <Pin size={11} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} strokeWidth={2.5} style={{ transform:"rotate(45deg)" }} />
           </div>

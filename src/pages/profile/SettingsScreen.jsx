@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
 import { useT } from "../../context/I18nContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { apiPut, apiPost, apiDelete } from "../../services/api";
+import { apiGet, apiPut, apiPost, apiDelete } from "../../services/api";
 import {
   ArrowLeft, User, Mail, Lock, Sun, Moon, Monitor, Sparkles,
   Globe, Clock, Bell, Calendar, Crown, ShoppingBag,
@@ -60,18 +60,28 @@ export default function SettingsScreen(){
   const[mounted,setMounted]=useState(false);
   const{theme,setTheme,resolved,uiOpacity,forceMode,setForceMode,visualTheme}=useTheme();const isLight=resolved==="light";
   const{t,locale,setLocale}=useT();
-  const[notifs,setNotifs]=useState(function(){
-    if(user)return{push:!!user.pushEnabled,email:!!user.emailEnabled,buddy:!!user.buddyReminders,streak:!!user.streakReminders};
-    return{push:true,email:true,buddy:true,streak:true};
-  });
-  const[dndEnabled,setDndEnabled]=useState(function(){
-    return !!(user&&user.dndEnabled);
-  });
-  const[dndStart,setDndStart]=useState(function(){
-    return (user&&user.dndStart)||"22:00";
-  });
-  const[dndEnd,setDndEnd]=useState(function(){
-    return (user&&user.dndEnd)||"07:00";
+  const[notifs,setNotifs]=useState({push:true,email:true,buddy:true,streak:true});
+  const[dndEnabled,setDndEnabled]=useState(false);
+  const[dndStart,setDndStart]=useState("22:00");
+  const[dndEnd,setDndEnd]=useState("07:00");
+
+  // Fetch notification preferences from API
+  useQuery({
+    queryKey:["notification-preferences"],
+    queryFn:function(){return apiGet("/api/users/notification-preferences/");},
+    onSuccess:function(data){
+      if(data){
+        setNotifs({
+          push:data.pushEnabled!=null?!!data.pushEnabled:true,
+          email:data.emailEnabled!=null?!!data.emailEnabled:true,
+          buddy:data.buddyReminders!=null?!!data.buddyReminders:true,
+          streak:data.streakReminders!=null?!!data.streakReminders:true,
+        });
+        if(data.dndEnabled!=null)setDndEnabled(!!data.dndEnabled);
+        if(data.dndStart)setDndStart(data.dndStart);
+        if(data.dndEnd)setDndEnd(data.dndEnd);
+      }
+    },
   });
   const[tz,setTz]=useState(()=>{try{return localStorage.getItem("dp-timezone")||(user&&user.timezone)||"America/Toronto";}catch(e){return(user&&user.timezone)||"America/Toronto";}});
   const[showLang,setShowLang]=useState(false);

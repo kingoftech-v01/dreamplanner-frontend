@@ -85,7 +85,7 @@ export default function DreamEditScreen() {
       setDescription(dreamQuery.data.description || "");
       setCategory(dreamQuery.data.category || null);
       setTimeframe(dreamQuery.data.timeframe || "6m");
-      setVisibility(dreamQuery.data.isPublic ? "public" : "private");
+      setVisibility("private"); // isPublic not on backend model
       setInitialized(true);
     }
   }, [dreamQuery.data, initialized]);
@@ -108,8 +108,6 @@ export default function DreamEditScreen() {
       title: title.trim(),
       description: description.trim(),
       category: category,
-      timeframe: timeframe,
-      isPublic: visibility === "public",
     }).then(function () {
       queryClient.invalidateQueries({ queryKey: ["dream", id] });
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
@@ -393,7 +391,7 @@ export default function DreamEditScreen() {
                 fontSize: 14, fontWeight: 700, color: isLight ? "#6D28D9" : "#C4B5FD",
                 fontFamily: "Inter, sans-serif",
               }}>
-                {dream.progress}%
+                {dream.progressPercentage || 0}%
               </span>
             </div>
             <div style={{
@@ -404,7 +402,7 @@ export default function DreamEditScreen() {
               <div style={{
                 height: "100%", borderRadius: 3,
                 background: "linear-gradient(90deg, #8B5CF6, #C4B5FD)",
-                width: `${dream.progress}%`,
+                width: `${dream.progressPercentage || 0}%`,
                 transition: "width 0.5s ease",
               }} />
             </div>
@@ -416,13 +414,13 @@ export default function DreamEditScreen() {
                 fontSize: 12, color: "var(--dp-text-muted)",
                 fontFamily: "Inter, sans-serif",
               }}>
-                {dream.completedGoalCount} of {dream.goalCount} goals completed
+                {dream.completedGoalCount || 0} of {dream.goalsCount || 0} goals completed
               </span>
               <span style={{
                 fontSize: 12, color: "var(--dp-text-muted)",
                 fontFamily: "Inter, sans-serif",
               }}>
-                {dream.daysLeft} days left
+                {dream.daysLeft != null ? dream.daysLeft + " days left" : "No deadline"}
               </span>
             </div>
           </div>

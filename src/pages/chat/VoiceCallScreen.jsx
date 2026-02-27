@@ -3,8 +3,8 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PhoneOff, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
-import { apiPost } from "../../services/api";
-import { createCallSession } from "../../services/webrtc";
+import { apiGet, apiPost } from "../../services/api";
+import { createAgoraCallSession } from "../../services/agora";
 
 function formatTime(s) {
   var m = Math.floor(s / 60);
@@ -25,47 +25,83 @@ export default function VoiceCallScreen() {
   var buddyInitial = buddyName.charAt(0).toUpperCase();
   var buddyColor = searchParams.get("color") || "#8B5CF6";
 
-  var [status, setStatus] = useState(answering ? "connecting" : "calling");
+  var [callStatus, setCallStatus] = useState(answering ? "connecting" : "ringing");
   var [seconds, setSeconds] = useState(0);
   var [muted, setMuted] = useState(false);
   var [speaker, setSpeaker] = useState(false);
   var [error, setError] = useState(null);
   var timerRef = useRef(null);
   var sessionRef = useRef(null);
+  var pollRef = useRef(null);
 
   var handleCallEnd = useCallback(function () {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (pollRef.current) clearInterval(pollRef.current);
     navigate(-1);
   }, [navigate]);
 
-  // Initialize WebRTC session
-  useEffect(function () {
-    var session = createCallSession(callId, {
+  // Join the Agora RTC channel (called only when both sides are ready)
+  var joinRTC = useCallback(function () {
+    if (sessionRef.current) return; // already joined
+    var session = createAgoraCallSession(callId, {
       video: false,
       onRemoteStream: function () {},
+      onRemoteLeft: function () {
+        handleCallEnd();
+      },
       onConnectionStateChange: function (state) {
-        if (state === "connected") {
-          setStatus("connected");
+        if (state.curState === "CONNECTED") {
+          setCallStatus("connected");
         }
       },
-      onCallEnd: handleCallEnd,
     });
     sessionRef.current = session;
-
-    var isCaller = !answering;
-    session.start(isCaller).catch(function (err) {
-      setError("Could not access microphone");
-      console.error("WebRTC start failed:", err);
+    session.join().catch(function (err) {
+      setError(err.message || "Could not access microphone");
     });
+  }, [callId, handleCallEnd]);
 
-    return function () {
-      session.cleanup();
-    };
-  }, [callId, answering, handleCallEnd]);
+  // ─── CALLER flow: poll call status until accepted ─────────────
+  useEffect(function () {
+    if (answering) return; // callee flow handled below
+    // Start polling call status
+    function checkStatus() {
+      apiGet("/api/conversations/calls/" + callId + "/status/").then(function (data) {
+        var s = data.status;
+        if (s === "accepted") {
+          // Callee accepted — join RTC
+          if (pollRef.current) clearInterval(pollRef.current);
+          setCallStatus("connecting");
+          joinRTC();
+        } else if (s === "rejected" || s === "cancelled" || s === "missed" || s === "completed") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          setCallStatus("ended");
+          setError(s === "rejected" ? "Call declined" : s === "missed" ? "No answer" : "Call ended");
+          setTimeout(function () { navigate(-1); }, 1500);
+        }
+        // else still "ringing" — keep polling
+      }).catch(function () {});
+    }
+    checkStatus();
+    pollRef.current = setInterval(checkStatus, 2000);
+    return function () { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [callId, answering, joinRTC, navigate]);
+
+  // ─── CALLEE flow: accept then join RTC ────────────────────────
+  useEffect(function () {
+    if (!answering) return;
+    // Accept the call via API, then join RTC
+    apiPost("/api/conversations/calls/" + callId + "/accept/").then(function () {
+      setCallStatus("connecting");
+      joinRTC();
+    }).catch(function (err) {
+      setError(err.message || "Failed to accept call");
+    });
+  }, [callId, answering, joinRTC]);
 
   // Timer when connected
   useEffect(function () {
-    if (status === "connected") {
+    if (callStatus === "connected") {
       timerRef.current = setInterval(function () {
         setSeconds(function (s) { return s + 1; });
       }, 1000);
@@ -73,13 +109,29 @@ export default function VoiceCallScreen() {
     return function () {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [status]);
+  }, [callStatus]);
+
+  // Auto-timeout: cancel call after 30s of ringing
+  useEffect(function () {
+    if (callStatus !== "ringing") return;
+    var timeout = setTimeout(function () {
+      apiPost("/api/conversations/calls/" + callId + "/cancel/").catch(function () {});
+      setError("No answer");
+      setTimeout(function () { navigate(-1); }, 1500);
+    }, 30000);
+    return function () { clearTimeout(timeout); };
+  }, [callStatus, callId, navigate]);
 
   var endCall = function () {
     if (sessionRef.current) {
-      sessionRef.current.endCall();
+      sessionRef.current.leave();
     }
     apiPost("/api/conversations/calls/" + callId + "/end/").catch(function () {});
+    navigate(-1);
+  };
+
+  var cancelCall = function () {
+    apiPost("/api/conversations/calls/" + callId + "/cancel/").catch(function () {});
     navigate(-1);
   };
 
@@ -111,6 +163,13 @@ export default function VoiceCallScreen() {
     );
   };
 
+  var statusText = error ? error
+    : callStatus === "ringing" ? "Calling..."
+    : callStatus === "connecting" ? "Connecting..."
+    : callStatus === "connected" ? "Connected"
+    : callStatus === "ended" ? "Call ended"
+    : "...";
+
   return (
     <PageLayout showNav={false}>
       <style>{"\
@@ -127,7 +186,7 @@ export default function VoiceCallScreen() {
       }}>
         {/* Avatar with pulse rings */}
         <div style={{ position: "relative", marginBottom: 32 }}>
-          {status !== "connected" && (
+          {callStatus !== "connected" && (
             <>
               <div style={{
                 position: "absolute", inset: -20,
@@ -146,7 +205,7 @@ export default function VoiceCallScreen() {
             background: "linear-gradient(135deg, " + buddyColor + ", " + buddyColor + "88)",
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 44, fontWeight: 700, color: "#fff",
-            border: status === "connected"
+            border: callStatus === "connected"
               ? "3px solid " + buddyColor
               : "3px solid rgba(255,255,255,0.15)",
             boxShadow: "0 0 40px " + buddyColor + "30",
@@ -166,17 +225,18 @@ export default function VoiceCallScreen() {
 
         {/* Status */}
         <p style={{
-          fontSize: 15, color: status === "connected"
+          fontSize: 15, color: callStatus === "connected"
             ? (isLight ? "#059669" : "#5DE5A8")
+            : error ? (isLight ? "#DC2626" : "#F69A9A")
             : "var(--dp-text-tertiary)",
           margin: "0 0 8px", fontWeight: 500,
           transition: "color 0.3s",
         }}>
-          {error ? error : status === "calling" ? "Calling..." : status === "connecting" ? "Connecting..." : "Connected"}
+          {statusText}
         </p>
 
         {/* Timer */}
-        {status === "connected" && (
+        {callStatus === "connected" && (
           <p style={{
             fontSize: 32, fontWeight: 300, color: "var(--dp-text-secondary)",
             margin: 0, fontVariantNumeric: "tabular-nums", letterSpacing: "2px",
@@ -193,11 +253,11 @@ export default function VoiceCallScreen() {
           display: "flex", alignItems: "center", gap: 20,
           marginBottom: 40,
         }}>
-          {actionBtn(muted ? MicOff : Mic, muted, handleToggleMute)}
+          {callStatus === "connected" && actionBtn(muted ? MicOff : Mic, muted, handleToggleMute)}
 
-          {/* End call */}
+          {/* End/Cancel call */}
           <button
-            onClick={endCall}
+            onClick={callStatus === "ringing" ? cancelCall : endCall}
             style={{
               width: 72, height: 72, borderRadius: 24,
               background: "linear-gradient(135deg, #EF4444, #DC2626)",
@@ -212,7 +272,7 @@ export default function VoiceCallScreen() {
             <PhoneOff size={28} color="#fff" />
           </button>
 
-          {actionBtn(speaker ? VolumeX : Volume2, speaker, function () { setSpeaker(!speaker); })}
+          {callStatus === "connected" && actionBtn(speaker ? VolumeX : Volume2, speaker, function () { setSpeaker(!speaker); })}
         </div>
       </div>
     </PageLayout>

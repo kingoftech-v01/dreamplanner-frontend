@@ -1,20 +1,32 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Phone, PhoneOff, Video } from "lucide-react";
-import { apiPost } from "../../services/api";
+import { useAuth } from "../../context/AuthContext";
+import { apiGet, apiPost } from "../../services/api";
 
 /**
  * Full-screen overlay for incoming calls.
- * Listens for the custom event "dp-incoming-call" dispatched
- * when an FCM notification with type=incoming_call arrives.
+ *
+ * Detection mechanisms (both active simultaneously):
+ * 1. Custom event "dp-incoming-call" — dispatched by NativePushBridge when FCM push arrives
+ * 2. Polling GET /api/conversations/calls/incoming/ every 3 seconds — fallback when FCM is unavailable
  */
 export default function IncomingCallOverlay() {
   var navigate = useNavigate();
+  var location = useLocation();
+  var { isAuthenticated } = useAuth();
   var [call, setCall] = useState(null);
+  var seenCallIds = useRef({});
 
+  // ─── FCM push listener (original mechanism) ───────────────
   useEffect(function () {
     function handleIncomingCall(e) {
       var data = e.detail || {};
+      if (!data.callId) return;
+      // Don't show if already on a call screen
+      if (window.location.hash.indexOf("/voice-call/") !== -1 ||
+          window.location.hash.indexOf("/video-call/") !== -1) return;
+      seenCallIds.current[data.callId] = true;
       setCall({
         callId: data.callId,
         callerName: data.callerName || "Unknown",
@@ -29,6 +41,49 @@ export default function IncomingCallOverlay() {
     };
   }, []);
 
+  // ─── Polling fallback — check for incoming ringing calls ──
+  useEffect(function () {
+    if (!isAuthenticated) return;
+
+    var interval = setInterval(function () {
+      // Don't poll if we're already showing a call or on a call screen
+      if (call) return;
+      var hash = window.location.hash || "";
+      if (hash.indexOf("/voice-call/") !== -1 || hash.indexOf("/video-call/") !== -1) return;
+
+      apiGet("/api/conversations/calls/incoming/").then(function (data) {
+        var list = data || [];
+        if (list.length === 0) return;
+        // Take the most recent ringing call we haven't dismissed
+        var incoming = null;
+        for (var i = 0; i < list.length; i++) {
+          if (!seenCallIds.current[list[i].callId]) {
+            incoming = list[i];
+            break;
+          }
+        }
+        if (!incoming) return;
+        seenCallIds.current[incoming.callId] = true;
+        setCall({
+          callId: incoming.callId,
+          callerName: incoming.callerName || "Unknown",
+          callType: incoming.callType || "voice",
+          callerId: incoming.callerId,
+        });
+      }).catch(function () {});
+    }, 3000);
+
+    return function () { clearInterval(interval); };
+  }, [isAuthenticated, call]);
+
+  // Clear stale seen IDs periodically (avoid memory leak)
+  useEffect(function () {
+    var cleanup = setInterval(function () {
+      seenCallIds.current = {};
+    }, 120000); // every 2 minutes
+    return function () { clearInterval(cleanup); };
+  }, []);
+
   if (!call) return null;
 
   var accept = function () {
@@ -37,10 +92,7 @@ export default function IncomingCallOverlay() {
     var callerName = call.callerName;
     setCall(null);
 
-    // Accept on backend
-    apiPost("/api/conversations/calls/" + callId + "/accept/").catch(function () {});
-
-    // Navigate to call screen
+    // Navigate to call screen — VoiceCallScreen/VideoCallScreen handles the accept API call
     var route = callType === "video"
       ? "/video-call/" + callId + "?answering=true&buddyName=" + encodeURIComponent(callerName)
       : "/voice-call/" + callId + "?answering=true&buddyName=" + encodeURIComponent(callerName);

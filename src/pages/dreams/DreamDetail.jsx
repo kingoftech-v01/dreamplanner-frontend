@@ -33,7 +33,7 @@ export default function DreamDetailScreen(){
 
   var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/"); } });
   var DREAM = dreamQuery.data || {};
-  var MILESTONES = (DREAM.milestones || []).map(function (m) { return { label: m.title, date: m.date, done: m.completed, active: m.active || false }; });
+  var MILESTONES = [];
 
   // ── Mutations ──
   var taskCompleteMut = useMutation({
@@ -120,7 +120,7 @@ export default function DreamDetailScreen(){
   const [shareModal, setShareModal] = useState(false);
   const [shareImage, setShareImage] = useState(null);
   const [shareLoading, setShareLoading] = useState(false);
-  const [isPublic, setIsPublic] = useState(DREAM.isPublic || false);
+  const [isPublic, setIsPublic] = useState(false);
 
   // ── Obstacles state ──
   var [showAddObstacle, setShowAddObstacle] = useState(false);
@@ -141,7 +141,7 @@ export default function DreamDetailScreen(){
       setGoals(initGoals);
       var first = initGoals.find(function (g) { return !g.completed; });
       setExpanded(first ? { [first.id]: true } : {});
-      setIsPublic(dreamQuery.data.isPublic || false);
+      // isPublic not on backend model — keep private for now
       setGoalsInitialized(true);
     }
   }, [dreamQuery.data, goalsInitialized]);
@@ -184,9 +184,9 @@ export default function DreamDetailScreen(){
       const blob = await exportDreamCard({
         title: DREAM.title,
         category: DREAM.category,
-        progress: DREAM.progress,
-        goalCount: DREAM.goals?.length || DREAM.totalTasks || 0,
-        completedGoals: DREAM.completedTasks || 0,
+        progress: DREAM.progressPercentage || progress,
+        goalCount: DREAM.goals?.length || DREAM.goalsCount || 0,
+        completedGoals: DREAM.completedGoalCount || doneTasks,
         daysLeft: DREAM.daysLeft || 0,
         status: DREAM.status || "active",
       });
@@ -299,9 +299,9 @@ export default function DreamDetailScreen(){
                   <span style={{padding:"3px 9px",borderRadius:8,background:`${STATUS_COLORS[DREAM.status]}15`,fontSize:12,fontWeight:700,color:isLight?(STATUS_COLORS[DREAM.status]==="#5DE5A8"?"#059669":STATUS_COLORS[DREAM.status]==="#FCD34D"?"#B45309":STATUS_COLORS[DREAM.status]==="#C4B5FD"?"#6D28D9":STATUS_COLORS[DREAM.status]):STATUS_COLORS[DREAM.status],textTransform:"uppercase"}}>{DREAM.status}</span>
                   <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:8,lineHeight:1.5}}>{DREAM.description}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
-                    <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:isLight?"#7C3AED":"#C4B5FD"}}>{DREAM.categoryLabel}</span>
-                    <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}><Clock size={11} strokeWidth={2}/>{DREAM.timeframe}</span>
-                    <button onClick={()=>{var newVal=!isPublic;setIsPublic(newVal);apiPatch("/api/dreams/dreams/"+id+"/",{isPublic:newVal}).catch(function(){setIsPublic(!newVal);});}} style={{
+                    <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:isLight?"#7C3AED":"#C4B5FD"}}>{DREAM.category}</span>
+                    {DREAM.targetDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}><Clock size={11} strokeWidth={2}/>{DREAM.daysLeft != null ? DREAM.daysLeft + " days left" : new Date(DREAM.targetDate).toLocaleDateString()}</span>}
+                    <button onClick={()=>{setIsPublic(!isPublic);}} style={{
                       display:"flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",
                       background:isPublic?(isLight?"rgba(16,185,129,0.1)":"rgba(93,229,168,0.1)"):(isLight?"rgba(26,21,53,0.06)":"rgba(255,255,255,0.06)"),
                       transition:"all 0.25s ease",
@@ -351,7 +351,7 @@ export default function DreamDetailScreen(){
               {[
                 {Icon:Target,val:totalTasks,label:"Tasks",color:isLight?"#7C3AED":"#C4B5FD"},
                 {Icon:CheckCircle,val:doneTasks,label:"Done",color:isLight?"#059669":"#5DE5A8"},
-                {Icon:Zap,val:DREAM.xpEarned,label:"XP",color:isLight?"#B45309":"#FCD34D"},
+                {Icon:Zap,val:0,label:"XP",color:isLight?"#B45309":"#FCD34D"},
               ].map(({Icon:I,val,label,color},i)=>(
                 <div key={i} className="dp-g" style={{flex:1,padding:"12px 8px",textAlign:"center"}}>
                   <I size={16} color={color} strokeWidth={2} style={{marginBottom:4}}/>

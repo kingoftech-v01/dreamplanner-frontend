@@ -7,6 +7,7 @@ import { ArrowLeft, Flame, Trophy, Globe, Users, Shield, MapPin } from "lucide-r
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 
 const TIME_FILTERS = [
   { id: "weekly", label: "Weekly" },
@@ -62,15 +63,15 @@ export default function LeaderboardScreen() {
   var rawData = lbInf.items;
   var EXTENDED_LEADERBOARD = rawData.map(function (entry, i) {
     if (!entry) return null;
-    var entryName = entry.name || entry.displayName || "User";
+    var entryName = entry.userDisplayName || entry.name || entry.displayName || "User";
     return Object.assign({}, entry, {
       initial: entry.initial || entryName[0].toUpperCase(),
       name: entryName,
       rank: entry.rank || i + 1,
       xp: entry.xp || 0,
-      level: entry.level || 1,
+      level: entry.userLevel || entry.level || 1,
       streak: entry.streak || 0,
-      isUser: String(entry.id) === String(user?.id),
+      isUser: entry.isCurrentUser || String(entry.userId || entry.id) === String(user?.id),
     });
   }).filter(Boolean);
 
@@ -92,6 +93,17 @@ export default function LeaderboardScreen() {
 
   // Podium order: #2 left, #1 center, #3 right
   const podiumOrder = [top3[1], top3[0], top3[2]];
+
+  if (lbInf.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={(lbInf.error && lbInf.error.message) || "Failed to load leaderboard"}
+          onRetry={function () { lbInf.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>

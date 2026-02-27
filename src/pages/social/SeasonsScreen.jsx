@@ -9,6 +9,7 @@ import {
   Check, Loader, Sparkles
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Seasons & Rewards Screen
@@ -115,6 +116,17 @@ export default function SeasonsScreen() {
           <Loader size={28} color="var(--dp-accent)" strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
           <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
         </div>
+      </PageLayout>
+    );
+  }
+
+  if (seasonQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={(seasonQuery.error && seasonQuery.error.message) || "Failed to load season data"}
+          onRetry={function () { seasonQuery.refetch(); }}
+        />
       </PageLayout>
     );
   }

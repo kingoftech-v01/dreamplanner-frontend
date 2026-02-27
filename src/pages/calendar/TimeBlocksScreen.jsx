@@ -5,6 +5,7 @@ import {
   ArrowLeft, Plus, Clock, Target, Edit3, Trash2, X, Check, Palette
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
@@ -175,6 +176,17 @@ export default function TimeBlocksScreen() {
     var ampm = h >= 12 ? "PM" : "AM";
     var hour12 = h % 12 || 12;
     return hour12 + ":" + m + " " + ampm;
+  }
+
+  if (blocksQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={(blocksQuery.error && blocksQuery.error.message) || "Failed to load time blocks"}
+          onRetry={function () { blocksQuery.refetch(); }}
+        />
+      </PageLayout>
+    );
   }
 
   return (

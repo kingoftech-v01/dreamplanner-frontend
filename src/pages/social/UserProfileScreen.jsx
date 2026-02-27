@@ -40,6 +40,7 @@ export default function UserProfileScreen() {
   var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [requestSent, setRequestSent] = useState(false);
+  const [isFriend, setIsFriend] = useState(false);
   const [isFollowing, setIsFollowing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isBlocked, setIsBlocked] = useState(false);
@@ -59,6 +60,12 @@ export default function UserProfileScreen() {
   });
 
   useEffect(() => { setTimeout(() => setMounted(true), 50); }, []);
+  useEffect(function () {
+    if (profileQuery.data) {
+      if (profileQuery.data.isFriend) { setIsFriend(true); setRequestSent(true); }
+      if (profileQuery.data.isFollowing) setIsFollowing(true);
+    }
+  }, [profileQuery.data]);
 
   var rawUser = profileQuery.data || null;
   var counts = countsQuery.data || {};
@@ -77,7 +84,7 @@ export default function UserProfileScreen() {
 
   var handleSendRequest = function () {
     setRequestSent(true);
-    apiPost("/api/social/friends/request/", { userId: id }).then(function () {
+    apiPost("/api/social/friends/request/", { targetUserId: id }).then(function () {
       showToast("Friend request sent!", "success");
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
     }).catch(function (err) {
@@ -92,7 +99,7 @@ export default function UserProfileScreen() {
       apiDelete("/api/social/unfollow/" + id + "/").catch(function () { setIsFollowing(true); });
     } else {
       setIsFollowing(true);
-      apiPost("/api/social/follow/", { userId: id }).catch(function () { setIsFollowing(false); });
+      apiPost("/api/social/follow/", { targetUserId: id }).catch(function () { setIsFollowing(false); });
     }
   };
 
@@ -104,7 +111,7 @@ export default function UserProfileScreen() {
         showToast("User unblocked", "info");
       }).catch(function (err) { showToast(err.message || "Failed to unblock", "error"); });
     } else {
-      apiPost("/api/social/block/", { userId: id }).then(function () {
+      apiPost("/api/social/block/", { targetUserId: id }).then(function () {
         setIsBlocked(true);
         showToast("User blocked", "info");
       }).catch(function (err) { showToast(err.message || "Failed to block", "error"); });
@@ -118,7 +125,7 @@ export default function UserProfileScreen() {
 
   var submitReport = function () {
     if (!reportReason.trim()) return;
-    apiPost("/api/social/report/", { userId: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
+    apiPost("/api/social/report/", { targetUserId: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
       showToast("Report submitted", "success");
       setShowReportModal(false);
       setReportReason("");
@@ -219,19 +226,19 @@ export default function UserProfileScreen() {
         {/* Action Buttons */}
         <div style={{ display: "flex", gap: 10, marginBottom: 12, ...stagger(2) }}>
           <button
-            onClick={function () { if (!requestSent) handleSendRequest(); }}
-            disabled={requestSent}
+            onClick={function () { if (!requestSent && !isFriend) handleSendRequest(); }}
+            disabled={requestSent || isFriend}
             style={{
-              flex: 1, height: 46, borderRadius: 14, border: "none", cursor: requestSent ? "default" : "pointer",
+              flex: 1, height: 46, borderRadius: 14, border: "none", cursor: (requestSent || isFriend) ? "default" : "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               fontSize: 14, fontWeight: 600, transition: "all 0.3s",
-              background: requestSent ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-              color: requestSent ? (isLight ? "#059669" : "#5DE5A8") : "#fff",
-              border: requestSent ? "1px solid rgba(93,229,168,0.3)" : "none",
+              background: (isFriend || requestSent) ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+              color: (isFriend || requestSent) ? (isLight ? "#059669" : "#5DE5A8") : "#fff",
+              border: (isFriend || requestSent) ? "1px solid rgba(93,229,168,0.3)" : "none",
             }}
           >
-            {requestSent ? <Check size={18} /> : <UserPlus size={18} />}
-            {requestSent ? "Request Sent" : "Add Friend"}
+            {isFriend ? <UserCheck size={18} /> : requestSent ? <Check size={18} /> : <UserPlus size={18} />}
+            {isFriend ? "Friends" : requestSent ? "Request Sent" : "Add Friend"}
           </button>
           <button onClick={() => navigate("/buddy-chat/" + id)} style={{
             flex: 1, height: 46, borderRadius: 14, background: "var(--dp-glass-bg)",

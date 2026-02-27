@@ -63,7 +63,7 @@ export function subscribeToPush() {
 
         // Send subscription to backend
         var token = null;
-        try { token = localStorage.getItem("dp-auth-token"); } catch (e) {}
+        try { token = localStorage.getItem("dp-token"); } catch (e) {}
 
         return fetch(
           (import.meta.env.VITE_API_BASE || "") + "/api/notifications/push-subscriptions/",
@@ -111,7 +111,7 @@ export function unsubscribeFromPush() {
 
       return subscription.unsubscribe().then(function () {
         var token = null;
-        try { token = localStorage.getItem("dp-auth-token"); } catch (e) {}
+        try { token = localStorage.getItem("dp-token"); } catch (e) {}
 
         return fetch(
           (import.meta.env.VITE_API_BASE || "") + "/api/notifications/push-subscriptions/",

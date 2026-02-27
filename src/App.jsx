@@ -9,6 +9,7 @@ import TaskCallOverlay from "./components/shared/TaskCallOverlay";
 import IncomingCallOverlay from "./components/shared/IncomingCallOverlay";
 import ProtectedRoute from "./components/shared/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
+import { useToast } from "./context/ToastContext";
 import useNotificationSocket from "./hooks/useNotificationSocket";
 
 // Always loaded — core screen
@@ -27,6 +28,7 @@ var BuddyChatScreen = lazy(function () { return import("./pages/chat/BuddyChatSc
 var NewChatScreen = lazy(function () { return import("./pages/chat/NewChatScreen"); });
 var VoiceCallScreen = lazy(function () { return import("./pages/chat/VoiceCallScreen"); });
 var VideoCallScreen = lazy(function () { return import("./pages/chat/VideoCallScreen"); });
+var CallHistoryScreen = lazy(function () { return import("./pages/chat/CallHistoryScreen"); });
 
 // Lazy — Dreams
 var DreamCreateScreen = lazy(function () { return import("./pages/dreams/DreamCreateScreen"); });
@@ -97,10 +99,45 @@ function P({ children }) {
   return <ProtectedRoute>{children}</ProtectedRoute>;
 }
 
-// Global notification WebSocket — keeps real-time notification count updated
+// Global notification WebSocket — keeps real-time notification count updated + toasts
 function NotificationSocketBridge() {
   var { token } = useAuth();
-  useNotificationSocket(token);
+  var { showToast } = useToast();
+
+  useNotificationSocket(token, {
+    onToast: function (title, body, data) {
+      var msg = body ? title + " — " + body : title;
+      // Use "info" for generic, "warning" for calls
+      var type = (data && (data.type === "call_rejected" || data.type === "missed_call")) ? "warning" : "info";
+      showToast(msg, type, 4000);
+    },
+  });
+  return null;
+}
+
+// Agora RTM bridge — login on auth, cleanup on logout
+function AgoraRTMBridge() {
+  var { isAuthenticated } = useAuth();
+
+  useEffect(function () {
+    if (!isAuthenticated) return;
+    var cancelled = false;
+
+    import("./services/agora").then(function (mod) {
+      if (cancelled) return;
+      mod.initRTM().catch(function (err) {
+        console.error("Agora RTM init failed:", err);
+      });
+    });
+
+    return function () {
+      cancelled = true;
+      import("./services/agora").then(function (mod) {
+        mod.cleanupRTM();
+      }).catch(function () {});
+    };
+  }, [isAuthenticated]);
+
   return null;
 }
 
@@ -175,6 +212,7 @@ export default function App() {
     <ThemeBackground />
     <OfflineBanner />
     <NotificationSocketBridge />
+    <AgoraRTMBridge />
     <NativePushBridge />
     <ErrorBoundary>
     <Suspense fallback={<LoadingFallback />}>
@@ -199,6 +237,7 @@ export default function App() {
         <Route path="/buddy-chat/:id" element={<P><BuddyChatScreen /></P>} />
         <Route path="/voice-call/:id" element={<P><VoiceCallScreen /></P>} />
         <Route path="/video-call/:id" element={<P><VideoCallScreen /></P>} />
+        <Route path="/calls/history" element={<P><CallHistoryScreen /></P>} />
 
         {/* Dreams */}
         <Route path="/dream/create" element={<P><DreamCreateScreen /></P>} />

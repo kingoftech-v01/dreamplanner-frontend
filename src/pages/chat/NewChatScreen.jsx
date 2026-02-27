@@ -60,7 +60,7 @@ export default function NewChatScreen() {
     if (!msg || creating) return;
     setCreating(true);
     try {
-      var conv = await apiPost("/api/conversations/", { type: "dream_coaching", title: msg.slice(0, 60) });
+      var conv = await apiPost("/api/conversations/", { conversation_type: "general", title: msg.slice(0, 60) });
       navigate("/chat/" + conv.id, { state: { initialMessage: msg } });
     } catch (err) {
       showToast(err.message || "Failed to start conversation", "error");

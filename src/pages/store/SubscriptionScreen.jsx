@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, X, Crown, Star, Zap, CreditCard, XCircle, Receipt, Tag, Loader } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -138,6 +139,17 @@ export default function SubscriptionScreen() {
 
   // ─── Loading state ────────────────────────────────────────────────
   var isLoading = plansQuery.isLoading || subQuery.isLoading;
+
+  if (plansQuery.isError || subQuery.isError) {
+    return (
+      <PageLayout>
+        <ErrorState
+          message={((plansQuery.error && plansQuery.error.message) || (subQuery.error && subQuery.error.message)) || "Failed to load subscription data"}
+          onRetry={function () { plansQuery.refetch(); subQuery.refetch(); }}
+        />
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout>

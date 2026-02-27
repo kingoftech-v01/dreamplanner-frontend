@@ -5,6 +5,7 @@ import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { SkeletonCard } from "../../components/shared/Skeleton";
+import ErrorState from "../../components/shared/ErrorState";
 import BottomNav from "../../components/shared/BottomNav";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, Clock,
@@ -160,6 +161,20 @@ export default function CalendarScreen(){
   };
 
   var isLoading = eventsQuery.isLoading || todayQuery.isLoading;
+
+  if (eventsQuery.isError && todayQuery.isError) {
+    return (
+      <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <ErrorState
+            message={(eventsQuery.error && eventsQuery.error.message) || (todayQuery.error && todayQuery.error.message) || "Failed to load calendar"}
+            onRetry={function () { eventsQuery.refetch(); todayQuery.refetch(); }}
+          />
+        </div>
+        <BottomNav />
+      </div>
+    );
+  }
 
   const daysInMonth=getDaysInMonth(viewY,viewM);
 

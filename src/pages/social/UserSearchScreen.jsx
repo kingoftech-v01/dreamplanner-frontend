@@ -84,7 +84,7 @@ export default function UserSearchScreen() {
 
   var handleAddFriend = function (userId) {
     setSentRequests(function (prev) { return new Set([...prev, userId]); });
-    apiPost("/api/social/friends/request/", { userId: userId }).then(function () {
+    apiPost("/api/social/friends/request/", { targetUserId: userId }).then(function () {
       showToast("Friend request sent!", "success");
     }).catch(function (err) {
       showToast(err.message || "Failed to send request", "error");

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { apiGet, apiPost, apiPut, apiDelete } from "../../services/api";
+import { CIRCLES } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -14,6 +15,7 @@ import {
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
+import { sanitizeText } from "../../utils/sanitize";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Circle Detail Screen
@@ -66,20 +68,23 @@ export default function CircleDetailScreen() {
   const [composerText, setComposerText] = useState("");
   const [challengeJoined, setChallengeJoined] = useState(false);
   var [memberMenu, setMemberMenu] = useState(null);
+  var [postMenu, setPostMenu] = useState(null);
+  var [editingPost, setEditingPost] = useState(null);
+  var [editText, setEditText] = useState("");
 
   // ─── API Queries ──────────────────────────────────────────────
   var circleQuery = useQuery({
     queryKey: ["circle", id],
-    queryFn: function () { return apiGet("/api/circles/" + id + "/"); },
+    queryFn: function () { return apiGet(CIRCLES.DETAIL(id)); },
   });
   var circle = circleQuery.data || {};
   const categoryColor = CATEGORY_COLORS[circle.category] || "#C4B5FD";
 
-  var feedInf = useInfiniteList({ queryKey: ["circle-feed", id], url: "/api/circles/" + id + "/feed/", limit: 20 });
+  var feedInf = useInfiniteList({ queryKey: ["circle-feed", id], url: CIRCLES.FEED(id), limit: 20 });
 
   var challengesQuery = useQuery({
     queryKey: ["circle-challenges", id],
-    queryFn: function () { return apiGet("/api/circles/" + id + "/challenges/"); },
+    queryFn: function () { return apiGet(CIRCLES.CHALLENGES(id)); },
   });
 
   // Normalize feed data into posts
@@ -88,6 +93,7 @@ export default function CircleDetailScreen() {
     var authorName = (item.user && (item.user.displayName || item.user.username || item.user.name)) || "User";
     return {
       id: item.id,
+      userId: item.user && item.user.id,
       user: {
         name: authorName,
         initial: authorName[0].toUpperCase(),
@@ -143,17 +149,19 @@ export default function CircleDetailScreen() {
           : p;
       });
     });
-    apiPost("/api/circles/" + id + "/posts/" + postId + "/react/", { emoji: "heart" }).catch(function () {});
+    apiPost(CIRCLES.POST_REACT(id, postId), { emoji: "heart" }).catch(function () {});
   };
 
   // ─── Create Post (optimistic + API) ──────────────────────────
   const handlePost = function () {
     if (!composerText.trim()) return;
+    var cleanContent = sanitizeText(composerText, 2000);
+    if (!cleanContent) return;
     var displayName = (user && (user.displayName || user.username)) || "You";
     var newPost = {
       id: "p" + Date.now(),
       user: { name: displayName, initial: displayName[0].toUpperCase(), color: "#8B5CF6" },
-      content: composerText.trim(),
+      content: cleanContent,
       timeAgo: "just now",
       likes: 0,
       comments: 0,
@@ -161,7 +169,7 @@ export default function CircleDetailScreen() {
     };
     setPosts(function (prev) { return [newPost].concat(prev); });
     setComposerText("");
-    apiPost("/api/circles/" + id + "/posts/", { content: composerText.trim() })
+    apiPost(CIRCLES.POSTS(id), { content: cleanContent })
       .then(function () {
         queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
       })
@@ -170,9 +178,46 @@ export default function CircleDetailScreen() {
       });
   };
 
+  // ─── Delete Post ────────────────────────────────────────────
+  var handleDeletePost = function (postId) {
+    setPostMenu(null);
+    if (!confirm("Delete this post?")) return;
+    setPosts(function (prev) { return prev.filter(function (p) { return p.id !== postId; }); });
+    apiDelete(CIRCLES.POST_DELETE(id, postId))
+      .then(function () {
+        showToast("Post deleted", "success");
+        queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
+      })
+      .catch(function (err) {
+        showToast(err.message || "Failed to delete post", "error");
+        queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
+      });
+  };
+
+  // ─── Edit Post ─────────────────────────────────────────────
+  var handleEditPost = function (postId) {
+    var cleanContent = sanitizeText(editText, 2000);
+    if (!cleanContent) return;
+    setEditingPost(null);
+    setPosts(function (prev) {
+      return prev.map(function (p) {
+        return p.id === postId ? Object.assign({}, p, { content: cleanContent }) : p;
+      });
+    });
+    apiPut(CIRCLES.POST_EDIT(id, postId), { content: cleanContent })
+      .then(function () {
+        showToast("Post updated", "success");
+        queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
+      })
+      .catch(function (err) {
+        showToast(err.message || "Failed to update post", "error");
+        queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
+      });
+  };
+
   var handlePromote = function (memberId) {
     setMemberMenu(null);
-    apiPost("/api/circles/" + id + "/members/" + memberId + "/promote/")
+    apiPost(CIRCLES.MEMBER_PROMOTE(id, memberId))
       .then(function () {
         showToast("Member promoted", "success");
         queryClient.invalidateQueries({ queryKey: ["circle", id] });
@@ -182,7 +227,7 @@ export default function CircleDetailScreen() {
 
   var handleDemote = function (memberId) {
     setMemberMenu(null);
-    apiPost("/api/circles/" + id + "/members/" + memberId + "/demote/")
+    apiPost(CIRCLES.MEMBER_DEMOTE(id, memberId))
       .then(function () {
         showToast("Member demoted", "success");
         queryClient.invalidateQueries({ queryKey: ["circle", id] });
@@ -192,7 +237,7 @@ export default function CircleDetailScreen() {
 
   var handleRemoveMember = function (memberId) {
     setMemberMenu(null);
-    apiPost("/api/circles/" + id + "/members/" + memberId + "/remove/")
+    apiPost(CIRCLES.MEMBER_REMOVE(id, memberId))
       .then(function () {
         showToast("Member removed", "success");
         queryClient.invalidateQueries({ queryKey: ["circle", id] });
@@ -536,9 +581,38 @@ export default function CircleDetailScreen() {
                         {post.timeAgo}
                       </div>
                     </div>
+                    {/* Owner menu */}
+                    {user && post.userId && String(post.userId) === String(user.id) && (
+                      <div style={{ position: "relative" }}>
+                        <button onClick={function () { setPostMenu(postMenu === post.id ? null : post.id); }}
+                          style={{ background: "transparent", border: "none", color: "var(--dp-text-tertiary)", cursor: "pointer", padding: 4 }}>
+                          <MoreVertical size={16} strokeWidth={2} />
+                        </button>
+                        {postMenu === post.id && (
+                          <div style={{ position: "absolute", right: 0, top: 28, zIndex: 20, background: "var(--dp-body-bg)", border: "1px solid var(--dp-input-border)", borderRadius: 12, padding: 4, minWidth: 120, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
+                            <button onClick={function () { setEditingPost(post.id); setEditText(post.content); setPostMenu(null); }}
+                              style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", color: "var(--dp-text)", fontSize: 13, fontWeight: 500, textAlign: "left", cursor: "pointer", borderRadius: 8 }}>Edit</button>
+                            <button onClick={function () { handleDeletePost(post.id); }}
+                              style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", color: "#EF4444", fontSize: 13, fontWeight: 500, textAlign: "left", cursor: "pointer", borderRadius: 8 }}>Delete</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Post content */}
+                  {editingPost === post.id ? (
+                    <div style={{ marginBottom: 14 }}>
+                      <textarea value={editText} onChange={function (e) { setEditText(e.target.value); }} rows={3}
+                        style={{ width: "100%", padding: "10px 12px", borderRadius: 12, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 13, lineHeight: 1.6, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
+                      <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
+                        <button onClick={function () { setEditingPost(null); }}
+                          style={{ padding: "6px 14px", borderRadius: 10, border: "1px solid var(--dp-input-border)", background: "transparent", color: "var(--dp-text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                        <button onClick={function () { handleEditPost(post.id); }}
+                          style={{ padding: "6px 14px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#8B5CF6,#6D28D9)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Save</button>
+                      </div>
+                    </div>
+                  ) : (
                   <p
                     style={{
                       fontSize: 13,
@@ -549,6 +623,7 @@ export default function CircleDetailScreen() {
                   >
                     {post.content}
                   </p>
+                  )}
 
                   {/* Action buttons */}
                   <div
@@ -917,7 +992,7 @@ export default function CircleDetailScreen() {
                 <button
                   onClick={function () {
                     setChallengeJoined(true);
-                    apiPost("/api/circles/challenges/" + activeChallenge.id + "/join/")
+                    apiPost(CIRCLES.CHALLENGE_JOIN(activeChallenge.id))
                       .then(function () {
                         showToast("Challenge joined!", "success");
                         queryClient.invalidateQueries({ queryKey: ["circle-challenges", id] });

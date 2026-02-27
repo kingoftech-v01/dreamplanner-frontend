@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { STORE, SOCIAL } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -44,7 +45,7 @@ export default function GiftingScreen() {
   // ── Gifts query ──
   var giftsQuery = useQuery({
     queryKey: ["gifts"],
-    queryFn: function () { return apiGet("/api/store/gifts/"); },
+    queryFn: function () { return apiGet(STORE.GIFTS); },
   });
 
   var rawGifts = (giftsQuery.data && giftsQuery.data.results) || giftsQuery.data || [];
@@ -56,7 +57,7 @@ export default function GiftingScreen() {
   // ── Store items query (for send gift modal) ──
   var itemsQuery = useQuery({
     queryKey: ["store-items-for-gifts"],
-    queryFn: function () { return apiGet("/api/store/items/"); },
+    queryFn: function () { return apiGet(STORE.ITEMS); },
     enabled: showSendModal,
   });
   var storeItems = (itemsQuery.data && itemsQuery.data.results) || itemsQuery.data || [];
@@ -64,7 +65,7 @@ export default function GiftingScreen() {
   // ── Friends query (for send gift modal) ──
   var friendsQuery = useQuery({
     queryKey: ["friends-for-gifts"],
-    queryFn: function () { return apiGet("/api/social/friends/"); },
+    queryFn: function () { return apiGet(SOCIAL.FRIENDS.LIST); },
     enabled: showSendModal,
   });
   var friends = (friendsQuery.data && friendsQuery.data.results) || friendsQuery.data || [];
@@ -83,7 +84,7 @@ export default function GiftingScreen() {
   // ── Mutations ──
   var sendGiftMut = useMutation({
     mutationFn: function (body) {
-      return apiPost("/api/store/gifts/send/", body);
+      return apiPost(STORE.GIFT_SEND, body);
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["gifts"] });
@@ -97,7 +98,7 @@ export default function GiftingScreen() {
 
   var claimGiftMut = useMutation({
     mutationFn: function (giftId) {
-      return apiPost("/api/store/gifts/" + giftId + "/claim/");
+      return apiPost(STORE.GIFT_CLAIM(giftId));
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["gifts"] });

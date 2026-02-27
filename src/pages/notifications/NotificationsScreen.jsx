@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../services/api";
+import { NOTIFICATIONS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Bell, CheckCheck, Star, Users, Target, Clock, Zap, MessageCircle, Shield } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
@@ -81,7 +82,7 @@ export default function NotificationsScreen() {
   const [dismissed, setDismissed] = useState(new Set());
   const [swipeState, setSwipeState] = useState({});
 
-  var notifsInf = useInfiniteList({ queryKey: ["notifications"], url: "/api/notifications/", limit: 30 });
+  var notifsInf = useInfiniteList({ queryKey: ["notifications"], url: NOTIFICATIONS.LIST, limit: 30 });
   var notifications = (notifsInf.items || []).map(function (n) {
     return {
       id: n.id,
@@ -109,7 +110,7 @@ export default function NotificationsScreen() {
   }, [notifsInf.isError]);
 
   var markAllReadMutation = useMutation({
-    mutationFn: function () { return apiPost("/api/notifications/mark_all_read/"); },
+    mutationFn: function () { return apiPost(NOTIFICATIONS.MARK_ALL_READ); },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["unread"] });
@@ -122,7 +123,7 @@ export default function NotificationsScreen() {
   };
 
   var markReadMutation = useMutation({
-    mutationFn: function (id) { return apiPost("/api/notifications/" + id + "/mark_read/"); },
+    mutationFn: function (id) { return apiPost(NOTIFICATIONS.MARK_READ(id)); },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["unread"] });

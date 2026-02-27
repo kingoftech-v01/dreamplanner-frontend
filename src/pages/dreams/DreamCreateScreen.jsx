@@ -3,13 +3,14 @@ import { useNavigate } from "react-router-dom";
 import {
   X, ArrowLeft, ArrowRight, Sparkles, Briefcase, Heart, DollarSign,
   Palette, TrendingUp, Users, Calendar, Clock, Check, ChevronLeft, ChevronRight,
-  Globe, Lock,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { apiPost } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 import { useToast } from "../../context/ToastContext";
+import { sanitizeText, validateRequired } from "../../utils/sanitize";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -74,7 +75,6 @@ export default function DreamCreateScreen() {
   const [calYear, setCalYear] = useState(new Date().getFullYear());
   const [focusedField, setFocusedField] = useState(null);
   const [touched, setTouched] = useState({ 0: false, 1: false, 2: false, 3: false });
-  const [visibility, setVisibility] = useState("private");
 
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
@@ -87,8 +87,19 @@ export default function DreamCreateScreen() {
   // Create dream and navigate to calibration
   function handleCreateDream() {
     if (submitting) return;
+
+    var missing = validateRequired({ title: title });
+    if (missing.length > 0) {
+      showToast("Please enter a dream title", "error");
+      return;
+    }
+
     setSubmitting(true);
     setServerError("");
+
+    var cleanTitle = sanitizeText(title, 200);
+    var cleanDescription = sanitizeText(description, 2000);
+    var cleanCategory = category ? sanitizeText(category, 100) : category;
 
     var targetDate = null;
     if (customDate) {
@@ -100,11 +111,11 @@ export default function DreamCreateScreen() {
       targetDate = now.toISOString().split("T")[0];
     }
 
-    apiPost("/api/dreams/dreams/", {
-      title: title.trim(),
-      description: description.trim(),
-      category: category,
-      target_date: targetDate,
+    apiPost(DREAMS.LIST, {
+      title: cleanTitle,
+      description: cleanDescription,
+      category: cleanCategory,
+      targetDate: targetDate,
     }).then(function (dream) {
       setSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
@@ -284,56 +295,6 @@ export default function DreamCreateScreen() {
                 />
               </div>
 
-              {/* Visibility */}
-              <div style={{ marginTop: 20 }}>
-                <label style={{
-                  fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                  fontFamily: "Inter, sans-serif", display: "block", marginBottom: 10,
-                }}>
-                  Dream Visibility
-                </label>
-                <div style={{ display: "flex", gap: 10 }}>
-                  {[
-                    { id: "private", label: "Private", Icon: Lock },
-                    { id: "public", label: "Public", Icon: Globe },
-                  ].map(({ id: vid, label, Icon }) => {
-                    const sel = visibility === vid;
-                    const isPublicOption = vid === "public";
-                    return (
-                      <button
-                        key={vid}
-                        onClick={() => setVisibility(vid)}
-                        style={{
-                          flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                          padding: "12px 0", borderRadius: 14, cursor: "pointer",
-                          fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600,
-                          background: sel
-                            ? (isPublicOption ? "rgba(16,185,129,0.1)" : "rgba(139,92,246,0.1)")
-                            : "var(--dp-surface)",
-                          border: sel
-                            ? (isPublicOption ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(139,92,246,0.3)")
-                            : "1px solid var(--dp-input-border)",
-                          color: sel
-                            ? (isPublicOption ? (isLight ? "#059669" : "#5DE5A8") : (isLight ? "#6D28D9" : "#C4B5FD"))
-                            : "var(--dp-text-tertiary)",
-                          transition: "all 0.25s ease",
-                        }}
-                      >
-                        <Icon size={16} />
-                        {label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <p style={{
-                  fontSize: 12, color: "var(--dp-text-muted)",
-                  fontFamily: "Inter, sans-serif", marginTop: 8, lineHeight: 1.5,
-                }}>
-                  {visibility === "public"
-                    ? "Public dreams appear on your profile and social feed"
-                    : "Only you can see this dream"}
-                </p>
-              </div>
             </div>
           )}
 

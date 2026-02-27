@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
+import { CALENDAR } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import ErrorState from "../../components/shared/ErrorState";
 import BottomNav from "../../components/shared/BottomNav";
+import { sanitizeText, validateRequired } from "../../utils/sanitize";
 import {
   ArrowLeft, ChevronLeft, ChevronRight, Plus, Clock,
   Target, CheckCircle, Circle, X, Check, Calendar,
@@ -50,13 +52,13 @@ export default function CalendarScreen(){
   // ── Monthly calendar view query ──
   var eventsQuery = useQuery({
     queryKey: ["calendar-events", startDate, endDate],
-    queryFn: function () { return apiGet("/api/calendar/view/?start=" + startDate + "&end=" + endDate); },
+    queryFn: function () { return apiGet(CALENDAR.VIEW + "?start=" + startDate + "&end=" + endDate); },
   });
 
   // ── Today's events query ──
   var todayQuery = useQuery({
     queryKey: ["calendar-today"],
-    queryFn: function () { return apiGet("/api/calendar/today/"); },
+    queryFn: function () { return apiGet(CALENDAR.TODAY); },
   });
 
   // Show toast on query errors
@@ -107,7 +109,7 @@ export default function CalendarScreen(){
   // ── Mutations ──
   var toggleMutation = useMutation({
     mutationFn: function (params) {
-      return apiPatch("/api/calendar/events/" + params.id + "/", { completed: params.completed });
+      return apiPatch(CALENDAR.EVENT_DETAIL(params.id), { completed: params.completed });
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
@@ -118,7 +120,7 @@ export default function CalendarScreen(){
 
   var deleteMutation = useMutation({
     mutationFn: function (params) {
-      return apiDelete("/api/calendar/events/" + params.id + "/");
+      return apiDelete(CALENDAR.EVENT_DETAIL(params.id));
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
@@ -130,7 +132,7 @@ export default function CalendarScreen(){
 
   var createMutation = useMutation({
     mutationFn: function (body) {
-      return apiPost("/api/calendar/events/", body);
+      return apiPost(CALENDAR.EVENTS, body);
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
@@ -152,10 +154,15 @@ export default function CalendarScreen(){
   };
 
   var handleAddEvt = function () {
-    if (!newTitle.trim()) return;
+    var cleanTitle = sanitizeText(newTitle, 200);
+    var missing = validateRequired({ title: cleanTitle });
+    if (missing.length > 0) {
+      showToast("Title is required", "error");
+      return;
+    }
     var day = selDay || TODAY.d;
     var dateStr = viewY + "-" + String(viewM + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
-    createMutation.mutate({ title: newTitle.trim(), time: newTime, date: dateStr, type: "event" });
+    createMutation.mutate({ title: cleanTitle, time: newTime, date: dateStr, type: "event" });
     setNewTitle("");
     setAddEvt(false);
   };

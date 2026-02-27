@@ -8,6 +8,7 @@ import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { apiPost } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — AI Dream Calibration Screen
@@ -93,7 +94,7 @@ export default function CalibrationScreen() {
     var cancelled = false;
     async function fetchQuestions() {
       try {
-        var data = await apiPost("/api/dreams/dreams/" + id + "/start_calibration/");
+        var data = await apiPost(DREAMS.START_CALIBRATION(id));
         if (!cancelled && data && Array.isArray(data.questions) && data.questions.length > 0) {
           // Map backend questions to expected format
           var mapped = data.questions.map(function (q, i) {
@@ -151,7 +152,7 @@ export default function CalibrationScreen() {
 
     // Fire-and-forget: submit this answer to the backend
     if (answer) {
-      apiPost("/api/dreams/dreams/" + id + "/answer_calibration/", {
+      apiPost(DREAMS.ANSWER_CALIBRATION(id), {
         question: question.text,
         answer: answer,
         questionNumber: currentQ + 1,
@@ -180,7 +181,7 @@ export default function CalibrationScreen() {
       }, 200);
     } else {
       // Skipping from the last question — skip all remaining
-      apiPost("/api/dreams/dreams/" + id + "/skip_calibration/").catch(() => {});
+      apiPost(DREAMS.SKIP_CALIBRATION(id)).catch(() => {});
       handleCalibrationComplete();
     }
   };
@@ -189,7 +190,7 @@ export default function CalibrationScreen() {
     setCompleted(true);
     setGeneratingPlan(true);
     try {
-      var result = await apiPost("/api/dreams/dreams/" + id + "/generate_plan/");
+      var result = await apiPost(DREAMS.GENERATE_PLAN(id));
       setPlanResult(result);
       showToast("Your personalized plan is ready!", "success");
     } catch (err) {

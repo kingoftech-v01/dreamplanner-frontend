@@ -5,6 +5,7 @@ import PageLayout from "../../components/shared/PageLayout";
 import { isValidEmail } from "../../utils/sanitize";
 import { useAuth } from "../../context/AuthContext";
 import { openBrowser, addBrowserListener, isNative } from "../../services/native";
+import { AUTH } from "../../services/endpoints";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -172,7 +173,7 @@ export default function LoginScreen() {
       var nativeRedirectUri = "com.dreamplanner.app://auth/apple/callback";
       var nativeAuthUrl = "https://appleid.apple.com/auth/authorize" +
         "?client_id=" + encodeURIComponent(appleClientId) +
-        "&redirect_uri=" + encodeURIComponent((import.meta.env.VITE_API_BASE || "") + "/api/auth/apple/redirect/") +
+        "&redirect_uri=" + encodeURIComponent((import.meta.env.VITE_API_BASE || "") + AUTH.APPLE_REDIRECT) +
         "&response_type=code%20id_token" +
         "&response_mode=form_post" +
         "&scope=name%20email" +

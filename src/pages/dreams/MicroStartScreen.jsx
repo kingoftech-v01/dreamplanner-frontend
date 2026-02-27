@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
@@ -45,7 +46,7 @@ export default function MicroStartScreen() {
   var dreamQuery = useQuery({
     queryKey: ["dream", dreamId],
     queryFn: function () {
-      return apiGet("/api/dreams/dreams/" + dreamId + "/");
+      return apiGet(DREAMS.DETAIL(dreamId));
     },
   });
   var dream = dreamQuery.data || {};
@@ -55,7 +56,7 @@ export default function MicroStartScreen() {
 
   var microActionMutation = useMutation({
     mutationFn: function () {
-      return apiPost("/api/dreams/dreams/" + dreamId + "/generate_two_minute_start/");
+      return apiPost(DREAMS.GENERATE_TWO_MIN(dreamId));
     },
     onSuccess: function (data) {
       setMicroTask(data);
@@ -70,7 +71,7 @@ export default function MicroStartScreen() {
   var completeTaskMutation = useMutation({
     mutationFn: function () {
       if (microTask && microTask.id) {
-        return apiPost("/api/dreams/tasks/" + microTask.id + "/complete/");
+        return apiPost(DREAMS.TASKS.COMPLETE(microTask.id));
       }
       return Promise.resolve();
     },

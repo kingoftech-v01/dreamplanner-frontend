@@ -5,7 +5,9 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { apiPut, apiPost } from "../../services/api";
+import { USERS } from "../../services/endpoints";
 import { takePicture, isNative } from "../../services/native";
+import { sanitizeText, sanitizeUrl, isValidEmail } from "../../utils/sanitize";
 import {
   ArrowLeft, Camera, User, Mail, Clock, MapPin,
   FileText, Check, X, Image, Loader
@@ -45,7 +47,7 @@ export default function EditProfileScreen(){
 
   var profileMutation = useMutation({
     mutationFn: function(data) {
-      return apiPut("/api/users/update_profile/", data);
+      return apiPut(USERS.UPDATE_PROFILE, data);
     },
     onSuccess: function(data) {
       updateUser({ displayName: name.trim(), bio: bio.trim(), timezone: timezone });
@@ -62,7 +64,7 @@ export default function EditProfileScreen(){
     mutationFn: function(file) {
       var formData = new FormData();
       formData.append("avatar", file);
-      return apiPost("/api/users/upload_avatar/", formData);
+      return apiPost(USERS.UPLOAD_AVATAR, formData);
     },
     onSuccess: function(data) {
       var newUrl = (data && data.avatarUrl) || null;
@@ -105,13 +107,17 @@ export default function EditProfileScreen(){
 
   const handleSave=()=>{
     if(!validate())return;
+    var cleanName = sanitizeText(name, 50);
+    var cleanBio = sanitizeText(bio, 500);
+    var cleanTimezone = sanitizeText(timezone, 100);
+    if (!cleanName) { showToast("Display name is required", "error"); return; }
     if(avatarFile){
       avatarMutation.mutate(avatarFile);
     }
     profileMutation.mutate({
-      displayName: name.trim(),
-      bio: bio.trim(),
-      timezone: timezone,
+      displayName: cleanName,
+      bio: cleanBio,
+      timezone: cleanTimezone,
     });
   };
 

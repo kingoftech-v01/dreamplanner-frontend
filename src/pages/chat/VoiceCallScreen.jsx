@@ -4,6 +4,7 @@ import { PhoneOff, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { apiGet, apiPost } from "../../services/api";
+import { CONVERSATIONS } from "../../services/endpoints";
 import { createAgoraCallSession } from "../../services/agora";
 
 function formatTime(s) {
@@ -66,7 +67,7 @@ export default function VoiceCallScreen() {
     if (answering) return; // callee flow handled below
     // Start polling call status
     function checkStatus() {
-      apiGet("/api/conversations/calls/" + callId + "/status/").then(function (data) {
+      apiGet(CONVERSATIONS.CALLS.STATUS(callId)).then(function (data) {
         var s = data.status;
         if (s === "accepted") {
           // Callee accepted — join RTC
@@ -91,7 +92,7 @@ export default function VoiceCallScreen() {
   useEffect(function () {
     if (!answering) return;
     // Accept the call via API, then join RTC
-    apiPost("/api/conversations/calls/" + callId + "/accept/").then(function () {
+    apiPost(CONVERSATIONS.CALLS.ACCEPT(callId)).then(function () {
       setCallStatus("connecting");
       joinRTC();
     }).catch(function (err) {
@@ -115,7 +116,7 @@ export default function VoiceCallScreen() {
   useEffect(function () {
     if (callStatus !== "ringing") return;
     var timeout = setTimeout(function () {
-      apiPost("/api/conversations/calls/" + callId + "/cancel/").catch(function () {});
+      apiPost(CONVERSATIONS.CALLS.CANCEL(callId)).catch(function () {});
       setError("No answer");
       setTimeout(function () { navigate(-1); }, 1500);
     }, 30000);
@@ -126,12 +127,12 @@ export default function VoiceCallScreen() {
     if (sessionRef.current) {
       sessionRef.current.leave();
     }
-    apiPost("/api/conversations/calls/" + callId + "/end/").catch(function () {});
+    apiPost(CONVERSATIONS.CALLS.END(callId)).catch(function () {});
     navigate(-1);
   };
 
   var cancelCall = function () {
-    apiPost("/api/conversations/calls/" + callId + "/cancel/").catch(function () {});
+    apiPost(CONVERSATIONS.CALLS.CANCEL(callId)).catch(function () {});
     navigate(-1);
   };
 

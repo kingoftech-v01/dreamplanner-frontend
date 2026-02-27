@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../services/api";
+import { CONVERSATIONS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import BottomNav from "../../components/shared/BottomNav";
@@ -49,7 +50,7 @@ export default function CallHistoryScreen() {
 
   var callsQuery = useQuery({
     queryKey: ["call-history"],
-    queryFn: function () { return apiGet("/api/conversations/calls/history/"); },
+    queryFn: function () { return apiGet(CONVERSATIONS.CALLS.HISTORY); },
   });
 
   var calls = callsQuery.data || [];

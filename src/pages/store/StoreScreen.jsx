@@ -10,6 +10,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { STORE } from "../../services/endpoints";
 
 var CATEGORIES = [
   { id: "all", label: "All" },
@@ -55,22 +56,22 @@ export default function StoreScreen() {
   var userXp = (user && user.xp) || 0;
 
   // ── Store items query (infinite scroll) ──
-  var itemsUrl = "/api/store/items/" + (activeCategory !== "all" ? "?category=" + activeCategory : "");
+  var itemsUrl = STORE.ITEMS + (activeCategory !== "all" ? "?category=" + activeCategory : "");
   var itemsInf = useInfiniteList({ queryKey: ["store-items", activeCategory], url: itemsUrl, limit: 30 });
   var items = itemsInf.items;
 
   // ── Inventory query (infinite scroll, only when inventory tab active) ──
-  var inventoryInf = useInfiniteList({ queryKey: ["store-inventory"], url: "/api/store/inventory/", limit: 30, enabled: activeTab === "inventory" });
+  var inventoryInf = useInfiniteList({ queryKey: ["store-inventory"], url: STORE.INVENTORY, limit: 30, enabled: activeTab === "inventory" });
   var inventoryItems = inventoryInf.items;
 
   // ── History query (infinite scroll, only when history tab active) ──
-  var historyInf = useInfiniteList({ queryKey: ["store-history"], url: "/api/store/inventory/history/", limit: 30, enabled: activeTab === "history" });
+  var historyInf = useInfiniteList({ queryKey: ["store-history"], url: STORE.INVENTORY_HISTORY, limit: 30, enabled: activeTab === "history" });
   var historyItems = historyInf.items;
 
   // ── Wishlist query ──
   var wishlistQuery = useQuery({
     queryKey: ["store-wishlist"],
-    queryFn: function () { return apiGet("/api/store/wishlist/"); },
+    queryFn: function () { return apiGet(STORE.WISHLIST); },
   });
   var wishlistData = (wishlistQuery.data && wishlistQuery.data.results) || wishlistQuery.data || [];
   var wishlistSet = new Set(wishlistData.map(function (w) { return w.itemId || w.id; }));
@@ -98,7 +99,7 @@ export default function StoreScreen() {
 
   var purchaseMut = useMutation({
     mutationFn: function (itemId) {
-      return apiPost("/api/store/purchase/xp/", { itemId: itemId });
+      return apiPost(STORE.PURCHASE_XP, { itemId: itemId });
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-items"] });
@@ -113,7 +114,7 @@ export default function StoreScreen() {
 
   var equipMut = useMutation({
     mutationFn: function (itemId) {
-      return apiPost("/api/store/inventory/" + itemId + "/equip/");
+      return apiPost(STORE.EQUIP(itemId));
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-items"] });
@@ -127,7 +128,7 @@ export default function StoreScreen() {
 
   var wishlistAddMut = useMutation({
     mutationFn: function (itemId) {
-      return apiPost("/api/store/wishlist/", { itemId: itemId });
+      return apiPost(STORE.WISHLIST, { itemId: itemId });
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-wishlist"] });
@@ -139,7 +140,7 @@ export default function StoreScreen() {
 
   var wishlistRemoveMut = useMutation({
     mutationFn: function (itemId) {
-      return apiDelete("/api/store/wishlist/" + itemId + "/");
+      return apiDelete(STORE.WISHLIST + itemId + "/");
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-wishlist"] });
@@ -150,7 +151,7 @@ export default function StoreScreen() {
   });
 
   var refundMut = useMutation({
-    mutationFn: function (data) { return apiPost("/api/store/refunds/", data); },
+    mutationFn: function (data) { return apiPost(STORE.REFUNDS, data); },
     onSuccess: function () {
       showToast("Refund request submitted", "success");
       setRefundModal(null);

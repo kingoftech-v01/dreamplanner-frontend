@@ -6,6 +6,7 @@ import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPost } from "../../services/api";
+import { CALENDAR } from "../../services/endpoints";
 import { openBrowser, isNative } from "../../services/native";
 
 function Toggle({ on, onToggle, color }) {
@@ -40,7 +41,7 @@ export default function GoogleCalendarConnect() {
   // ── Query connection status ──
   var statusQuery = useQuery({
     queryKey: ["google-calendar-status"],
-    queryFn: function () { return apiGet("/api/calendar/google/status/"); },
+    queryFn: function () { return apiGet(CALENDAR.GOOGLE.STATUS); },
   });
 
   // Sync local state from status query
@@ -63,7 +64,7 @@ export default function GoogleCalendarConnect() {
 
   // ── Handle OAuth callback code on mount ──
   var callbackMut = useMutation({
-    mutationFn: function (payload) { return apiPost("/api/calendar/google/callback/", payload); },
+    mutationFn: function (payload) { return apiPost(CALENDAR.GOOGLE.CALLBACK, payload); },
     onSuccess: function () {
       setConnecting(false);
       queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
@@ -88,7 +89,7 @@ export default function GoogleCalendarConnect() {
       // On native, pass the native redirect_uri so the backend uses the correct one for token exchange
       var payload = { code: code };
       if (isNative) {
-        payload.redirectUri = (import.meta.env.VITE_API_BASE || "") + "/api/calendar/google/native-callback/";
+        payload.redirectUri = (import.meta.env.VITE_API_BASE || "") + CALENDAR.GOOGLE.NATIVE_CALLBACK;
       }
       callbackMut.mutate(payload);
     }
@@ -96,7 +97,7 @@ export default function GoogleCalendarConnect() {
 
   // ── Sync mutation ──
   var syncMut = useMutation({
-    mutationFn: function () { return apiPost("/api/calendar/google/sync/"); },
+    mutationFn: function () { return apiPost(CALENDAR.GOOGLE.SYNC); },
     onSuccess: function () {
       setLastSync(new Date());
       queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
@@ -109,7 +110,7 @@ export default function GoogleCalendarConnect() {
 
   // ── Disconnect mutation ──
   var disconnectMut = useMutation({
-    mutationFn: function () { return apiPost("/api/calendar/google/disconnect/"); },
+    mutationFn: function () { return apiPost(CALENDAR.GOOGLE.DISCONNECT); },
     onSuccess: function () {
       setConnected(false);
       setLastSync(null);
@@ -126,9 +127,9 @@ export default function GoogleCalendarConnect() {
     setConnecting(true);
     // On native, use the backend's native-callback endpoint as redirect_uri
     // so Google redirects there, and it redirects to the custom scheme
-    var authUrl = "/api/calendar/google/auth/";
+    var authUrl = CALENDAR.GOOGLE.AUTH;
     if (isNative) {
-      var nativeRedirect = (import.meta.env.VITE_API_BASE || "") + "/api/calendar/google/native-callback/";
+      var nativeRedirect = (import.meta.env.VITE_API_BASE || "") + CALENDAR.GOOGLE.NATIVE_CALLBACK;
       authUrl += "?redirect_uri=" + encodeURIComponent(nativeRedirect);
     }
     apiGet(authUrl)

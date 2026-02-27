@@ -2,9 +2,11 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost, apiUpload } from "../../services/api";
+import { CIRCLES } from "../../services/endpoints";
 import { takePicture, isNative } from "../../services/native";
 import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
+import { sanitizeText, validateRequired } from "../../utils/sanitize";
 import {
   ArrowLeft, Users, Image, ChevronDown, Globe, Lock,
   Loader, Check, X
@@ -91,9 +93,9 @@ export default function CircleCreateScreen() {
         formData.append("category", payload.category);
         formData.append("privacy", payload.privacy);
         formData.append("cover_image", coverImage);
-        return apiUpload("/api/circles/", formData);
+        return apiUpload(CIRCLES.LIST, formData);
       }
-      return apiPost("/api/circles/", payload);
+      return apiPost(CIRCLES.LIST, payload);
     },
     onSuccess: function (data) {
       queryClient.invalidateQueries({ queryKey: ["circles"] });
@@ -111,7 +113,8 @@ export default function CircleCreateScreen() {
   });
 
   var handleSubmit = function () {
-    if (!name.trim()) {
+    var missing = validateRequired({ name: name });
+    if (missing.length > 0) {
       showToast("Circle name is required", "error");
       return;
     }
@@ -119,10 +122,15 @@ export default function CircleCreateScreen() {
       showToast("Please select a category", "error");
       return;
     }
+
+    var cleanName = sanitizeText(name, 100);
+    var cleanDescription = sanitizeText(description, 500);
+    var cleanCategory = sanitizeText(category, 100);
+
     createMutation.mutate({
-      name: name.trim(),
-      description: description.trim(),
-      category: category,
+      name: cleanName,
+      description: cleanDescription,
+      category: cleanCategory,
       privacy: privacy,
     });
   };

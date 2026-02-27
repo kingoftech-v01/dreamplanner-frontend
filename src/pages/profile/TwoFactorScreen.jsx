@@ -2,10 +2,12 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { USERS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { clipboardWrite } from "../../services/native";
 import PageLayout from "../../components/shared/PageLayout";
+import { sanitizeParam } from "../../utils/sanitize";
 import {
   ArrowLeft, Shield, Key, Copy, Check, AlertTriangle, Loader,
 } from "lucide-react";
@@ -47,7 +49,7 @@ export default function TwoFactorScreen() {
   // ─── 2FA status query ─────────────────────────────────────────
   var statusQuery = useQuery({
     queryKey: ["2fa-status"],
-    queryFn: function () { return apiGet("/api/users/2fa/status/"); },
+    queryFn: function () { return apiGet(USERS.TFA.STATUS); },
   });
 
   var statusData = statusQuery.data;
@@ -55,7 +57,7 @@ export default function TwoFactorScreen() {
 
   // ─── Setup mutation ───────────────────────────────────────────
   var setupMutation = useMutation({
-    mutationFn: function () { return apiPost("/api/users/2fa/setup/"); },
+    mutationFn: function () { return apiPost(USERS.TFA.SETUP); },
     onSuccess: function (data) {
       setSecret(data.secret || data.secretKey || "");
       setQrUri(data.qrCodeUrl || data.qrUri || data.qrCode || data.qr || "");
@@ -68,7 +70,7 @@ export default function TwoFactorScreen() {
 
   // ─── Verify mutation ──────────────────────────────────────────
   var verifyMutation = useMutation({
-    mutationFn: function () { return apiPost("/api/users/2fa/verify/", { code: totpCode }); },
+    mutationFn: function () { var code = sanitizeParam(totpCode); if (!/^\d{6}$/.test(code)) { return Promise.reject(new Error("Please enter a valid 6-digit code")); } return apiPost(USERS.TFA.VERIFY, { code: code }); },
     onSuccess: function (data) {
       if (data.success) {
         setBackupCodes(data.backupCodes || []);
@@ -86,7 +88,7 @@ export default function TwoFactorScreen() {
 
   // ─── Disable mutation ─────────────────────────────────────────
   var disableMutation = useMutation({
-    mutationFn: function () { return apiPost("/api/users/2fa/disable/", { code: disableCode }); },
+    mutationFn: function () { var code = sanitizeParam(disableCode); if (!/^\d{6}$/.test(code)) { return Promise.reject(new Error("Please enter a valid 6-digit code")); } return apiPost(USERS.TFA.DISABLE, { code: code }); },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["2fa-status"] });
       setShowDisable(false);
@@ -101,7 +103,7 @@ export default function TwoFactorScreen() {
 
   // ─── Regenerate backup codes mutation ─────────────────────────
   var regenMutation = useMutation({
-    mutationFn: function () { return apiGet("/api/users/2fa/backup-codes/"); },
+    mutationFn: function () { return apiGet(USERS.TFA.BACKUP_CODES); },
     onSuccess: function (data) {
       setBackupCodes(data.backupCodes || data.codes || []);
       setStep("backupCodes");

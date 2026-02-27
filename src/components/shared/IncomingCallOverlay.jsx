@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Phone, PhoneOff, Video } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
+import { CONVERSATIONS } from "../../services/endpoints";
 
 /**
  * Full-screen overlay for incoming calls.
@@ -51,7 +52,7 @@ export default function IncomingCallOverlay() {
       var hash = window.location.hash || "";
       if (hash.indexOf("/voice-call/") !== -1 || hash.indexOf("/video-call/") !== -1) return;
 
-      apiGet("/api/conversations/calls/incoming/").then(function (data) {
+      apiGet(CONVERSATIONS.CALLS.INCOMING).then(function (data) {
         var list = data || [];
         if (list.length === 0) return;
         // Take the most recent ringing call we haven't dismissed
@@ -102,7 +103,7 @@ export default function IncomingCallOverlay() {
   var reject = function () {
     var callId = call.callId;
     setCall(null);
-    apiPost("/api/conversations/calls/" + callId + "/reject/").catch(function () {});
+    apiPost(CONVERSATIONS.CALLS.REJECT(callId)).catch(function () {});
   };
 
   var initial = call.callerName.charAt(0).toUpperCase();

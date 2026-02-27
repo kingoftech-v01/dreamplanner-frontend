@@ -8,6 +8,7 @@
 import AgoraRTM from "agora-rtm-sdk";
 import AgoraRTC from "agora-rtc-sdk-ng";
 import { apiGet, apiPost } from "./api";
+import { CONVERSATIONS } from "./endpoints";
 
 // ─── Shared state ────────────────────────────────────────────────
 var _appId = null;
@@ -20,7 +21,7 @@ var _rtmTokenRefreshTimer = null;
  */
 async function getAppId() {
   if (_appId) return _appId;
-  var res = await apiGet("/api/conversations/agora/config/");
+  var res = await apiGet(CONVERSATIONS.AGORA.CONFIG);
   _appId = res.appId;
   return _appId;
 }
@@ -37,7 +38,7 @@ export async function initRTM() {
   if (_rtmClient) return _rtmClient;
 
   var appId = await getAppId();
-  var tokenRes = await apiPost("/api/conversations/agora/rtm-token/");
+  var tokenRes = await apiPost(CONVERSATIONS.AGORA.RTM_TOKEN);
 
   _rtmClient = AgoraRTM.createInstance(appId);
   _rtmUid = tokenRes.uid;
@@ -56,7 +57,7 @@ function _scheduleRTMTokenRenewal(expiresInSec) {
   var renewInMs = Math.max((expiresInSec - 3600) * 1000, 60000);
   _rtmTokenRefreshTimer = setTimeout(async function () {
     try {
-      var tokenRes = await apiPost("/api/conversations/agora/rtm-token/");
+      var tokenRes = await apiPost(CONVERSATIONS.AGORA.RTM_TOKEN);
       if (_rtmClient) {
         await _rtmClient.renewToken(tokenRes.token);
         _scheduleRTMTokenRenewal(tokenRes.expiresIn);
@@ -239,7 +240,7 @@ export function createAgoraCallSession(channelName, opts) {
     permissionStream.getTracks().forEach(function (t) { t.stop(); });
 
     var appId = await getAppId();
-    var tokenRes = await apiPost("/api/conversations/agora/rtc-token/", {
+    var tokenRes = await apiPost(CONVERSATIONS.AGORA.RTC_TOKEN, {
       channelName: channelName,
     });
 

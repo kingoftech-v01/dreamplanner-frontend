@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Lock, Eye, EyeOff, Check, Shield, Loader2 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { apiPost } from "../../services/api";
+import { AUTH } from "../../services/endpoints";
 
 const glass = {
   background: "var(--dp-glass-bg)",
@@ -92,10 +93,10 @@ export default function ChangePasswordScreen() {
     }
 
     setSubmitting(true);
-    apiPost("/api/auth/password/change/", {
-      old_password: currentPassword,
-      new_password1: newPassword,
-      new_password2: confirmPassword,
+    apiPost(AUTH.PASSWORD_CHANGE, {
+      oldPassword: currentPassword,
+      newPassword1: newPassword,
+      newPassword2: confirmPassword,
     })
       .then(function () {
         setShowToast(true);

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { SOCIAL, USERS } from "../../services/endpoints";
 import {
   ArrowLeft, UserPlus, MessageCircle, Trophy, Flame, Star,
   Zap, Target, Check, Users, Heart, Briefcase, Palette,
@@ -49,13 +50,13 @@ export default function UserProfileScreen() {
 
   var profileQuery = useQuery({
     queryKey: ["user-profile", id],
-    queryFn: function () { return apiGet("/api/users/" + id + "/"); },
+    queryFn: function () { return apiGet(USERS.PROFILE(id)); },
     enabled: !!id,
   });
 
   var countsQuery = useQuery({
     queryKey: ["user-counts", id],
-    queryFn: function () { return apiGet("/api/social/counts/" + id + "/"); },
+    queryFn: function () { return apiGet(SOCIAL.COUNTS(id)); },
     enabled: !!id,
   });
 
@@ -84,7 +85,7 @@ export default function UserProfileScreen() {
 
   var handleSendRequest = function () {
     setRequestSent(true);
-    apiPost("/api/social/friends/request/", { targetUserId: id }).then(function () {
+    apiPost(SOCIAL.FRIENDS.REQUEST, { targetUserId: id }).then(function () {
       showToast("Friend request sent!", "success");
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
     }).catch(function (err) {
@@ -96,22 +97,22 @@ export default function UserProfileScreen() {
   var handleFollow = function () {
     if (isFollowing) {
       setIsFollowing(false);
-      apiDelete("/api/social/unfollow/" + id + "/").catch(function () { setIsFollowing(true); });
+      apiDelete(SOCIAL.UNFOLLOW(id)).catch(function () { setIsFollowing(true); });
     } else {
       setIsFollowing(true);
-      apiPost("/api/social/follow/", { targetUserId: id }).catch(function () { setIsFollowing(false); });
+      apiPost(SOCIAL.FOLLOW, { targetUserId: id }).catch(function () { setIsFollowing(false); });
     }
   };
 
   var handleBlock = function () {
     setShowMenu(false);
     if (isBlocked) {
-      apiDelete("/api/social/unblock/" + id + "/").then(function () {
+      apiDelete(SOCIAL.UNBLOCK(id)).then(function () {
         setIsBlocked(false);
         showToast("User unblocked", "info");
       }).catch(function (err) { showToast(err.message || "Failed to unblock", "error"); });
     } else {
-      apiPost("/api/social/block/", { targetUserId: id }).then(function () {
+      apiPost(SOCIAL.BLOCK, { targetUserId: id }).then(function () {
         setIsBlocked(true);
         showToast("User blocked", "info");
       }).catch(function (err) { showToast(err.message || "Failed to block", "error"); });
@@ -125,7 +126,7 @@ export default function UserProfileScreen() {
 
   var submitReport = function () {
     if (!reportReason.trim()) return;
-    apiPost("/api/social/report/", { targetUserId: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
+    apiPost(SOCIAL.REPORT, { targetUserId: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
       showToast("Report submitted", "success");
       setShowReportModal(false);
       setReportReason("");
@@ -134,7 +135,7 @@ export default function UserProfileScreen() {
 
   var handleRemoveFriend = function () {
     setShowMenu(false);
-    apiDelete("/api/social/friends/remove/" + id + "/").then(function () {
+    apiDelete(SOCIAL.FRIENDS.REMOVE(id)).then(function () {
       showToast("Friend removed", "info");
       queryClient.invalidateQueries({ queryKey: ["friends"] });
     }).catch(function (err) { showToast(err.message || "Failed to remove", "error"); });

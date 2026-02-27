@@ -7,6 +7,7 @@ import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { StatsSkeleton, SkeletonCard, SkeletonLine } from "../../components/shared/Skeleton";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 import { exportDreamCard } from "../../utils/exportDreamCard";
 import { saveBlobFile, nativeShare, isNative } from "../../services/native";
 import {
@@ -14,7 +15,7 @@ import {
   ChevronDown, ChevronUp, Plus, Check, Circle, Trash2,
   Edit3, Share2, FileText, Copy, Zap, Flame, Star,
   X, CheckCircle, AlertTriangle, Sparkles, Flag,
-  Globe, Lock, Tag, UserPlus
+  Globe, Lock, Tag, UserPlus, TrendingUp, Download
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -31,80 +32,87 @@ export default function DreamDetailScreen(){
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
   var { showToast } = useToast();
 
-  var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/"); } });
+  var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet(DREAMS.DETAIL(id)); } });
   var DREAM = dreamQuery.data || {};
   var MILESTONES = [];
 
   // ── Mutations ──
   var taskCompleteMut = useMutation({
-    mutationFn: function (taskId) { return apiPost("/api/dreams/tasks/" + taskId + "/complete/"); },
+    mutationFn: function (taskId) { return apiPost(DREAMS.TASKS.COMPLETE(taskId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); queryClient.invalidateQueries({ queryKey: ["dreams"] }); },
   });
   var addGoalMut = useMutation({
-    mutationFn: function (data) { return apiPost("/api/dreams/goals/", data); },
+    mutationFn: function (data) { return apiPost(DREAMS.GOALS.LIST, data); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
   });
   var addTaskMut = useMutation({
-    mutationFn: function (data) { return apiPost("/api/dreams/tasks/", data); },
+    mutationFn: function (data) { return apiPost(DREAMS.TASKS.LIST, data); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
   });
   var deleteDreamMut = useMutation({
-    mutationFn: function () { return apiDelete("/api/dreams/dreams/" + id + "/"); },
+    mutationFn: function () { return apiDelete(DREAMS.DETAIL(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dreams"] }); showToast("Dream deleted", "success"); navigate("/"); },
     onError: function (err) { showToast(err.message || "Failed to delete dream", "error"); },
   });
   var duplicateDreamMut = useMutation({
-    mutationFn: function () { return apiPost("/api/dreams/dreams/" + id + "/duplicate/"); },
+    mutationFn: function () { return apiPost(DREAMS.DUPLICATE(id)); },
     onSuccess: function (data) { showToast("Dream duplicated!", "success"); navigate("/dream/" + data.id); },
     onError: function (err) { showToast(err.message || "Failed to duplicate", "error"); },
   });
 
   // ── Obstacles query & mutations ──
-  var obstaclesQuery = useQuery({ queryKey: ["obstacles", id], queryFn: function () { return apiGet("/api/dreams/obstacles/?dream=" + id); } });
+  var obstaclesQuery = useQuery({ queryKey: ["obstacles", id], queryFn: function () { return apiGet(DREAMS.OBSTACLES.LIST + "?dream=" + id); } });
   var obstacles = (obstaclesQuery.data && obstaclesQuery.data.results) || obstaclesQuery.data || [];
 
   var addObstacleMut = useMutation({
-    mutationFn: function (data) { return apiPost("/api/dreams/obstacles/", data); },
+    mutationFn: function (data) { return apiPost(DREAMS.OBSTACLES.LIST, data); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle added", "success"); },
     onError: function (err) { showToast(err.message || "Failed to add obstacle", "error"); },
   });
   var resolveObstacleMut = useMutation({
-    mutationFn: function (obstacleId) { return apiPost("/api/dreams/obstacles/" + obstacleId + "/resolve/"); },
+    mutationFn: function (obstacleId) { return apiPost(DREAMS.OBSTACLES.RESOLVE(obstacleId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle resolved!", "success"); },
     onError: function (err) { showToast(err.message || "Failed to resolve obstacle", "error"); },
   });
   var deleteObstacleMut = useMutation({
-    mutationFn: function (obstacleId) { return apiDelete("/api/dreams/obstacles/" + obstacleId + "/"); },
+    mutationFn: function (obstacleId) { return apiDelete(DREAMS.OBSTACLES.DETAIL(obstacleId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle removed", "success"); },
     onError: function (err) { showToast(err.message || "Failed to delete obstacle", "error"); },
   });
 
   // ── Tags mutations ──
   var addTagMut = useMutation({
-    mutationFn: function (tagName) { return apiPost("/api/dreams/dreams/" + id + "/tags/", { tagName: tagName }); },
+    mutationFn: function (tagName) { return apiPost(DREAMS.TAGS(id), { tagName: tagName }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag added", "success"); },
     onError: function (err) { showToast(err.message || "Failed to add tag", "error"); },
   });
   var removeTagMut = useMutation({
-    mutationFn: function (tagName) { return apiDelete("/api/dreams/dreams/" + id + "/tags/" + tagName + "/"); },
+    mutationFn: function (tagName) { return apiDelete(DREAMS.TAG_DELETE(id, tagName)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag removed", "success"); },
     onError: function (err) { showToast(err.message || "Failed to remove tag", "error"); },
   });
 
   // ── Collaborators query & mutations ──
-  var collabsQuery = useQuery({ queryKey: ["collaborators", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/collaborators/list/"); } });
+  var collabsQuery = useQuery({ queryKey: ["collaborators", id], queryFn: function () { return apiGet(DREAMS.COLLABORATORS_LIST(id)); } });
   var collaborators = (collabsQuery.data && collabsQuery.data.collaborators) || collabsQuery.data || [];
 
   var inviteCollabMut = useMutation({
-    mutationFn: function (userId) { return apiPost("/api/dreams/dreams/" + id + "/collaborators/", { userId: userId }); },
+    mutationFn: function (userId) { return apiPost(DREAMS.COLLABORATORS(id), { userId: userId }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator invited!", "success"); },
     onError: function (err) { showToast(err.message || "Failed to invite collaborator", "error"); },
   });
   var removeCollabMut = useMutation({
-    mutationFn: function (userId) { return apiDelete("/api/dreams/dreams/" + id + "/collaborators/" + userId + "/"); },
+    mutationFn: function (userId) { return apiDelete(DREAMS.COLLABORATOR_DELETE(id, userId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator removed", "success"); },
     onError: function (err) { showToast(err.message || "Failed to remove collaborator", "error"); },
   });
+
+  // ── Progress history query ──
+  var progressQuery = useQuery({
+    queryKey: ["progress-history", id],
+    queryFn: function () { return apiGet(DREAMS.PROGRESS_HISTORY(id)); },
+  });
+  var progressHistory = (progressQuery.data && progressQuery.data.results) || progressQuery.data || [];
 
   const[mounted,setMounted]=useState(false);
   const[goals,setGoals]=useState([]);
@@ -172,10 +180,10 @@ export default function DreamDetailScreen(){
       return next;
     });
     // Persist task toggle to API
-    apiPost("/api/dreams/tasks/" + tId + "/complete/").catch(function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); });
+    apiPost(DREAMS.TASKS.COMPLETE(tId)).catch(function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); });
   };
-  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost("/api/dreams/goals/",{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddGoal(false);};
-  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost("/api/dreams/tasks/",{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddTask(null);};
+  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost(DREAMS.GOALS.LIST,{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddGoal(false);};
+  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost(DREAMS.TASKS.LIST,{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddTask(null);};
 
   const handleShare = async () => {
     setShareModal(true);
@@ -264,7 +272,7 @@ export default function DreamDetailScreen(){
           <div style={{position:"relative"}}>
             <button className="dp-ib" aria-label="More options" onClick={()=>setMenu(!menu)}><MoreVertical size={17} strokeWidth={2}/></button>
             {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
-              {[{icon:Edit3,label:"Edit Dream",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:"Generate Plan",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:"Share Dream",action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:"Generate Vision",action:function(){setMenu(false);apiPost("/api/dreams/dreams/"+id+"/generate_vision/").then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:"Export PDF",action:()=>{setMenu(false);apiGet("/api/dreams/dreams/"+id+"/export-pdf/",{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Copy,label:"Duplicate",action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:"Delete",danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
+              {[{icon:Edit3,label:"Edit Dream",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:"Generate Plan",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:"Share Dream",action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:"Generate Vision",action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:"Export PDF",action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Copy,label:"Duplicate",action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:"Delete",danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
                 <button key={i} onClick={action||(()=>setMenu(false))} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"),transition:"background 0.15s"}}
                   onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -527,6 +535,47 @@ export default function DreamDetailScreen(){
             </div>
           </div>
 
+          {/* ── Progress History ── */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"560ms",marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <TrendingUp size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Progress History</span>
+              </div>
+            </div>
+            <div className="dp-g" style={{padding:16,marginBottom:16}}>
+              {progressHistory.length === 0 ? (
+                <div style={{textAlign:"center",padding:"8px 0"}}>
+                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No progress entries yet</span>
+                </div>
+              ) : (
+                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                  {progressHistory.slice(0, 10).map(function (entry, ei) {
+                    return (
+                      <div key={entry.id || ei} style={{display:"flex",alignItems:"center",gap:12}}>
+                        <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,background:"linear-gradient(135deg,#5DE5A8,#14B8A6)"}}/>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                            <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{entry.progressPercentage != null ? entry.progressPercentage + "%" : entry.note || "Update"}</span>
+                            <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",flexShrink:0}}>{entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : ""}</span>
+                          </div>
+                          {entry.note && entry.progressPercentage != null && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:2}}>{entry.note}</div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Export PDF ── */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"640ms",marginTop:8,marginBottom:16}}>
+            <button onClick={function () { apiGet(DREAMS.EXPORT_PDF(id), { responseType: "blob" }).then(function (blob) { saveBlobFile(blob, "dream-" + id + ".pdf"); }).catch(function () { showToast("PDF export failed", "error"); }); }} style={{width:"100%",padding:"12px 0",borderRadius:14,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.25s ease"}}>
+              <Download size={15} strokeWidth={2}/>Export as PDF
+            </button>
+          </div>
+
         </div>
       </main>
 
@@ -595,7 +644,7 @@ export default function DreamDetailScreen(){
             </div>
             <div style={{display:"flex",gap:10,marginTop:20}}>
               <button onClick={()=>setShowDeleteConfirm(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.7)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={()=>{setShowDeleteConfirm(false);apiDelete("/api/dreams/dreams/"+id+"/").then(function(){queryClient.invalidateQueries({queryKey:["dreams"]});}).catch(function(){});navigate("/");}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EF4444,#DC2626)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
+              <button onClick={()=>{setShowDeleteConfirm(false);apiDelete(DREAMS.DETAIL(id)).then(function(){queryClient.invalidateQueries({queryKey:["dreams"]});}).catch(function(){});navigate("/");}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EF4444,#DC2626)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
             </div>
           </div>
         </div>

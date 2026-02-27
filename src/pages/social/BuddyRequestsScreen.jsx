@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { BUDDIES } from "../../services/endpoints";
 import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
 import { ArrowLeft, UserPlus, Check, X, Users, Clock } from "lucide-react";
@@ -56,7 +57,7 @@ export default function BuddyRequestsScreen() {
 
   var historyQuery = useQuery({
     queryKey: ["buddy-history"],
-    queryFn: function () { return apiGet("/api/buddies/history/"); },
+    queryFn: function () { return apiGet(BUDDIES.HISTORY); },
   });
 
   var ALL_REQUESTS = ((historyQuery.data && historyQuery.data.results) || historyQuery.data || []).map(function (req) {
@@ -87,7 +88,7 @@ export default function BuddyRequestsScreen() {
 
   var acceptMutation = useMutation({
     mutationFn: function (buddyId) {
-      return apiPost("/api/buddies/" + buddyId + "/accept/");
+      return apiPost(BUDDIES.ACCEPT(buddyId));
     },
     onSuccess: function () {
       showToast("Buddy request accepted!", "success");
@@ -103,7 +104,7 @@ export default function BuddyRequestsScreen() {
 
   var rejectMutation = useMutation({
     mutationFn: function (buddyId) {
-      return apiPost("/api/buddies/" + buddyId + "/reject/");
+      return apiPost(BUDDIES.REJECT(buddyId));
     },
     onSuccess: function () {
       showToast("Buddy request declined", "info");

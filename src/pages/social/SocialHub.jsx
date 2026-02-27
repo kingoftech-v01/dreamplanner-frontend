@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { SOCIAL, LEAGUES } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
@@ -72,7 +73,7 @@ export default function SocialHubScreen(){
     friends: user?.friendsCount || 0, streak: user?.streakDays || 0,
   };
 
-  var feedInf = useInfiniteList({ queryKey: ["feed"], url: "/api/social/feed/friends", limit: 20 });
+  var feedInf = useInfiniteList({ queryKey: ["feed"], url: SOCIAL.FEED.FRIENDS, limit: 20 });
   var feedData = feedInf.items.map(function (item) {
     return Object.assign({}, item, {
       time: new Date(item.time || item.createdAt || Date.now()),
@@ -85,7 +86,7 @@ export default function SocialHubScreen(){
   var [feed, setFeed] = useState([]);
   useEffect(function () { if (feedData.length > 0) setFeed(feedData); }, [feedInf.items]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  var requestsQuery = useQuery({ queryKey: ["friend-requests"], queryFn: function () { return apiGet("/api/social/friends/requests/pending/"); } });
+  var requestsQuery = useQuery({ queryKey: ["friend-requests"], queryFn: function () { return apiGet(SOCIAL.FRIENDS.PENDING); } });
   var requests = (requestsQuery.data && requestsQuery.data.results) || requestsQuery.data || [];
   if (!Array.isArray(requests)) requests = [];
   requests = requests.map(function (r) {
@@ -94,7 +95,7 @@ export default function SocialHubScreen(){
     return Object.assign({}, r, { name: senderName, initial: senderName[0].toUpperCase(), level: s.level || r.level || 1 });
   });
 
-  var onlineQuery = useQuery({ queryKey: ["friends-online"], queryFn: function () { return apiGet("/api/social/friends/online/"); } });
+  var onlineQuery = useQuery({ queryKey: ["friends-online"], queryFn: function () { return apiGet(SOCIAL.FRIENDS.ONLINE); } });
   var rawOnline = (onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || [];
   if (!Array.isArray(rawOnline)) rawOnline = [];
   var ONLINE_FRIENDS = rawOnline.map(function (f, i) {
@@ -102,7 +103,7 @@ export default function SocialHubScreen(){
     return { id: f.id, name: fName, initial: fName[0].toUpperCase(), level: f.currentLevel || f.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], dream: f.currentDream || "", streak: f.currentStreak || 0 };
   });
 
-  var lbQuery = useQuery({ queryKey: ["leaderboard", lbTab], queryFn: function () { return apiGet("/api/leagues/leaderboard/friends/?period=" + lbTab); } });
+  var lbQuery = useQuery({ queryKey: ["leaderboard", lbTab], queryFn: function () { return apiGet(LEAGUES.LEADERBOARD.FRIENDS + "?period=" + lbTab); } });
   var LEADERBOARD = ((lbQuery.data && lbQuery.data.results) || lbQuery.data || []).map(function (entry, i) {
     return Object.assign({}, entry, {
       name: entry.userDisplayName || entry.name || "User",
@@ -120,7 +121,7 @@ export default function SocialHubScreen(){
     setSearchLoading(true);
     var cancelled = false;
     var timer = setTimeout(function () {
-      apiGet("/api/social/users/search?q=" + encodeURIComponent(searchQ)).then(function (data) {
+      apiGet(SOCIAL.USER_SEARCH + "?q=" + encodeURIComponent(searchQ)).then(function (data) {
         if (cancelled) return;
         var results = (data && data.results) || data || [];
         setSearchResults(results.map(function (u, i) {
@@ -136,23 +137,23 @@ export default function SocialHubScreen(){
 
   const toggleFeedLike=function(id){
     setFeed(p=>p.map(f=>f.id===id?{...f,liked:!f.liked,likes:f.liked?f.likes-1:f.likes+1}:f));
-    apiPost("/api/social/feed/" + id + "/like/").catch(function () {});
+    apiPost(SOCIAL.FEED.LIKE(id)).catch(function () {});
   };
   const toggleComments=(id)=>{setExpandedComments(prev=>prev===id?null:id);setCommentInput("");};
   const addComment=function(feedId){
     const text=commentInput.trim();if(!text)return;
     setFeed(p=>p.map(f=>f.id===feedId?{...f,comments:[...f.comments,{id:Date.now()+"c",user:{name:ME.displayName,initial:ME.initial,color:"#8B5CF6"},text:text,time:new Date()}]}:f));
     setCommentInput("");
-    apiPost("/api/social/feed/" + feedId + "/comment/", { text: text }).catch(function () {});
+    apiPost(SOCIAL.FEED.COMMENT(feedId), { text: text }).catch(function () {});
   };
   const acceptReq=function(id){
-    apiPost("/api/social/friends/accept/" + id + "/").then(function () {
+    apiPost(SOCIAL.FRIENDS.ACCEPT(id)).then(function () {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
       showToast("Friend request accepted!", "success");
     }).catch(function (err) { showToast(err.message || "Failed", "error"); });
   };
   const declineReq=function(id){
-    apiPost("/api/social/friends/reject/" + id + "/").then(function () {
+    apiPost(SOCIAL.FRIENDS.REJECT(id)).then(function () {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
     }).catch(function (err) { showToast(err.message || "Failed", "error"); });
   };
@@ -476,7 +477,7 @@ export default function SocialHubScreen(){
                       <div style={{width:32,height:32,borderRadius:10,background:`${f.color||"#8B5CF6"}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:f.color||"#8B5CF6"}}>{f.initial}</div>
                       <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{f.name}</div><div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{f.title} · Level {f.level}{f.isFriend?" · Friend":""}</div></div>
                       {!f.isFriend&&f.friendshipStatus!=="pending"&&(
-                        <button onClick={function(e){e.stopPropagation();apiPost("/api/social/friends/request/",{targetUserId:f.id}).then(function(){showToast("Friend request sent!","success");setSearchResults(function(prev){return prev.map(function(s){return s.id===f.id?Object.assign({},s,{friendshipStatus:"pending"}):s;});});}).catch(function(err){showToast(err.message||"Failed to send request","error");});}} style={{padding:"6px 12px",borderRadius:10,border:"none",background:"rgba(139,92,246,0.15)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
+                        <button onClick={function(e){e.stopPropagation();apiPost(SOCIAL.FRIENDS.REQUEST,{targetUserId:f.id}).then(function(){showToast("Friend request sent!","success");setSearchResults(function(prev){return prev.map(function(s){return s.id===f.id?Object.assign({},s,{friendshipStatus:"pending"}):s;});});}).catch(function(err){showToast(err.message||"Failed to send request","error");});}} style={{padding:"6px 12px",borderRadius:10,border:"none",background:"rgba(139,92,246,0.15)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
                           <UserPlus size={14} style={{verticalAlign:"middle",marginRight:4}} strokeWidth={2.5}/>Add
                         </button>
                       )}

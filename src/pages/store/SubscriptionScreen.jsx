@@ -9,6 +9,7 @@ import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { apiGet, apiPost } from "../../services/api";
+import { SUBSCRIPTIONS } from "../../services/endpoints";
 import { openBrowser, isNative } from "../../services/native";
 
 const PLAN_ACCENTS = {
@@ -52,12 +53,12 @@ export default function SubscriptionScreen() {
   // ─── Queries ──────────────────────────────────────────────────────
   var plansQuery = useQuery({
     queryKey: ["subscription-plans"],
-    queryFn: function () { return apiGet("/api/subscriptions/plans/"); },
+    queryFn: function () { return apiGet(SUBSCRIPTIONS.PLANS); },
   });
 
   var subQuery = useQuery({
     queryKey: ["subscription-current"],
-    queryFn: function () { return apiGet("/api/subscriptions/subscription/current/"); },
+    queryFn: function () { return apiGet(SUBSCRIPTIONS.CURRENT); },
   });
 
   var plans = plansQuery.data || [];
@@ -73,7 +74,7 @@ export default function SubscriptionScreen() {
         payload.successUrl = "com.dreamplanner.app://stripe/return";
         payload.cancelUrl = "com.dreamplanner.app://stripe/return?cancelled=true";
       }
-      return apiPost("/api/subscriptions/subscription/checkout/", payload);
+      return apiPost(SUBSCRIPTIONS.CHECKOUT, payload);
     },
     onSuccess: function (data) {
       var url = data && (data.checkoutUrl || data.url);
@@ -91,7 +92,7 @@ export default function SubscriptionScreen() {
   });
 
   var portalMut = useMutation({
-    mutationFn: function () { return apiPost("/api/subscriptions/subscription/portal/"); },
+    mutationFn: function () { return apiPost(SUBSCRIPTIONS.PORTAL); },
     onSuccess: function (data) {
       if (data && data.url && /^https:\/\/(billing\.stripe\.com|checkout\.stripe\.com)\b/.test(data.url)) {
         if (isNative) {
@@ -107,7 +108,7 @@ export default function SubscriptionScreen() {
   });
 
   var cancelMut = useMutation({
-    mutationFn: function () { return apiPost("/api/subscriptions/subscription/cancel/"); },
+    mutationFn: function () { return apiPost(SUBSCRIPTIONS.CANCEL); },
     onSuccess: function () {
       showToast("Subscription cancelled", "success");
       subQuery.refetch();
@@ -116,7 +117,7 @@ export default function SubscriptionScreen() {
   });
 
   var couponMut = useMutation({
-    mutationFn: function (code) { return apiPost("/api/subscriptions/subscription/apply-coupon/", { couponCode: code }); },
+    mutationFn: function (code) { return apiPost(SUBSCRIPTIONS.CURRENT + "apply-coupon/", { couponCode: code }); },
     onSuccess: function (data) {
       showToast(data.message || "Coupon applied!", "success");
       setCouponCode("");
@@ -127,7 +128,7 @@ export default function SubscriptionScreen() {
 
   var invoicesQuery = useQuery({
     queryKey: ["invoices"],
-    queryFn: function () { return apiGet("/api/subscriptions/invoices/"); },
+    queryFn: function () { return apiGet(SUBSCRIPTIONS.INVOICES); },
     enabled: showInvoices,
   });
   var invoices = (invoicesQuery.data && invoicesQuery.data.results) || invoicesQuery.data || [];

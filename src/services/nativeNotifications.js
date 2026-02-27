@@ -7,6 +7,7 @@
 
 import { Capacitor } from "@capacitor/core";
 import { apiPost } from "./api";
+import { NOTIFICATIONS } from "./endpoints";
 
 var isNative = Capacitor.isNativePlatform();
 
@@ -328,7 +329,7 @@ function hashCode(str) {
 // ── Internal ─────────────────────────────────────────────────
 
 function sendTokenToBackend(fcmToken) {
-  return apiPost("/api/notifications/devices/", {
+  return apiPost(NOTIFICATIONS.DEVICES, {
     fcmToken: fcmToken,
     platform: Capacitor.getPlatform(), // "android" or "ios"
   });

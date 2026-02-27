@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../services/api";
+import { USERS, NOTIFICATIONS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -89,19 +90,19 @@ export default function ProfileScreen() {
   // ── Fetch gamification data from API ──
   var gamifQuery = useQuery({
     queryKey: ["gamification"],
-    queryFn: function () { return apiGet("/api/users/gamification/"); },
+    queryFn: function () { return apiGet(USERS.GAMIFICATION); },
   });
 
   // ── Fetch stats data from API ──
   var statsQuery = useQuery({
     queryKey: ["user-stats"],
-    queryFn: function () { return apiGet("/api/users/stats/"); },
+    queryFn: function () { return apiGet(USERS.STATS); },
   });
 
   // ── Notification unread count ──
   var unreadQuery = useQuery({
     queryKey: ["notif-unread"],
-    queryFn: function () { return apiGet("/api/notifications/unread_count/"); },
+    queryFn: function () { return apiGet(NOTIFICATIONS.UNREAD_COUNT); },
   });
   var notifUnread = (unreadQuery.data && (unreadQuery.data.unreadCount || unreadQuery.data.count)) || 0;
 

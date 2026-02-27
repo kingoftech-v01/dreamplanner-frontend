@@ -38,6 +38,7 @@ var DreamTemplatesScreen = lazy(function () { return import("./pages/dreams/Drea
 var CalibrationScreen = lazy(function () { return import("./pages/dreams/CalibrationScreen"); });
 var VisionBoardScreen = lazy(function () { return import("./pages/dreams/VisionBoardScreen"); });
 var MicroStartScreen = lazy(function () { return import("./pages/dreams/MicroStartScreen"); });
+var SharedDreamsScreen = lazy(function () { return import("./pages/dreams/SharedDreamsScreen"); });
 
 // Lazy — Social
 var SocialHub = lazy(function () { return import("./pages/social/SocialHub"); });
@@ -53,6 +54,7 @@ var CircleCreateScreen = lazy(function () { return import("./pages/social/Circle
 var CircleInvitationsScreen = lazy(function () { return import("./pages/social/CircleInvitationsScreen"); });
 var SeasonsScreen = lazy(function () { return import("./pages/social/SeasonsScreen"); });
 var BuddyRequestsScreen = lazy(function () { return import("./pages/social/BuddyRequestsScreen"); });
+var DreamPostsFeedScreen = lazy(function () { return import("./pages/social/DreamPostsFeedScreen"); });
 
 // Lazy — Calendar
 var CalendarScreen = lazy(function () { return import("./pages/calendar/CalendarScreen"); });
@@ -69,6 +71,7 @@ var PrivacyPolicyScreen = lazy(function () { return import("./pages/profile/Priv
 var AppVersionScreen = lazy(function () { return import("./pages/profile/AppVersionScreen"); });
 var TwoFactorScreen = lazy(function () { return import("./pages/profile/TwoFactorScreen"); });
 var DataExportScreen = lazy(function () { return import("./pages/profile/DataExportScreen"); });
+var BlockedUsersScreen = lazy(function () { return import("./pages/profile/BlockedUsersScreen"); });
 
 // Lazy — Store
 var StoreScreen = lazy(function () { return import("./pages/store/StoreScreen"); });
@@ -247,6 +250,7 @@ export default function App() {
         <Route path="/dream/:id/calibration" element={<P><CalibrationScreen /></P>} />
         <Route path="/vision-board" element={<P><VisionBoardScreen /></P>} />
         <Route path="/micro-start/:dreamId" element={<P><MicroStartScreen /></P>} />
+        <Route path="/dreams/shared" element={<P><SharedDreamsScreen /></P>} />
 
         {/* Social */}
         <Route path="/social" element={<P><SocialHub /></P>} />
@@ -262,6 +266,7 @@ export default function App() {
         <Route path="/circle/:id/invitations" element={<P><CircleInvitationsScreen /></P>} />
         <Route path="/seasons" element={<P><SeasonsScreen /></P>} />
         <Route path="/buddy-requests" element={<P><BuddyRequestsScreen /></P>} />
+        <Route path="/social/feed" element={<P><DreamPostsFeedScreen /></P>} />
 
         {/* Calendar */}
         <Route path="/calendar" element={<P><CalendarScreen /></P>} />
@@ -276,6 +281,7 @@ export default function App() {
         <Route path="/app-version" element={<P><AppVersionScreen /></P>} />
         <Route path="/settings/2fa" element={<P><TwoFactorScreen /></P>} />
         <Route path="/settings/export" element={<P><DataExportScreen /></P>} />
+        <Route path="/settings/blocked" element={<P><BlockedUsersScreen /></P>} />
 
         {/* Store */}
         <Route path="/store" element={<P><StoreScreen /></P>} />

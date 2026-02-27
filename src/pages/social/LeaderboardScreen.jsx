@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../services/api";
+import { LEAGUES } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Flame, Trophy, Globe, Users, Shield, MapPin } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
@@ -53,11 +54,12 @@ export default function LeaderboardScreen() {
   const [timeFilter, setTimeFilter] = useState("weekly");
   const [scopeFilter, setScopeFilter] = useState("global");
 
-  var lbInf = useInfiniteList({ queryKey: ["leaderboard", scopeFilter, timeFilter], url: "/api/leagues/leaderboard/" + scopeFilter + "/?period=" + timeFilter, limit: 50 });
+  var SCOPE_URLS = { global: LEAGUES.LEADERBOARD.GLOBAL, friends: LEAGUES.LEADERBOARD.FRIENDS, league: LEAGUES.LEADERBOARD.LEAGUE, nearby: LEAGUES.LEADERBOARD.NEARBY };
+  var lbInf = useInfiniteList({ queryKey: ["leaderboard", scopeFilter, timeFilter], url: (SCOPE_URLS[scopeFilter] || LEAGUES.LEADERBOARD.GLOBAL) + "?period=" + timeFilter, limit: 50 });
 
   var myRankQuery = useQuery({
     queryKey: ["leaderboard-me", timeFilter],
-    queryFn: function () { return apiGet("/api/leagues/leaderboard/me/?period=" + timeFilter); },
+    queryFn: function () { return apiGet(LEAGUES.LEADERBOARD.ME + "?period=" + timeFilter); },
   });
 
   var rawData = lbInf.items;

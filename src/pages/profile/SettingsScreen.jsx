@@ -6,6 +6,8 @@ import { useT } from "../../context/I18nContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPut, apiPost, apiDelete } from "../../services/api";
+import { USERS } from "../../services/endpoints";
+import { isValidEmail, sanitizeText } from "../../utils/sanitize";
 import {
   ArrowLeft, User, Mail, Lock, Sun, Moon, Monitor, Sparkles,
   Globe, Clock, Bell, Calendar, Crown, ShoppingBag,
@@ -68,7 +70,7 @@ export default function SettingsScreen(){
   // Fetch notification preferences from API
   useQuery({
     queryKey:["notification-preferences"],
-    queryFn:function(){return apiGet("/api/users/notification-preferences/");},
+    queryFn:function(){return apiGet(USERS.NOTIFICATION_PREFS);},
     onSuccess:function(data){
       if(data){
         setNotifs({
@@ -95,7 +97,7 @@ export default function SettingsScreen(){
 
   // ─── Notification preferences mutation ─────────────────────────
   var notifMutation=useMutation({
-    mutationFn:function(prefs){return apiPut("/api/users/notification-preferences/",prefs);},
+    mutationFn:function(prefs){return apiPut(USERS.NOTIFICATION_PREFS,prefs);},
     onSuccess:function(){
       queryClient.invalidateQueries({queryKey:["user"]});
       showToast(t("settings.preferencesSaved")||"Preferences saved","success");
@@ -107,7 +109,7 @@ export default function SettingsScreen(){
 
   // ─── Email change mutation ─────────────────────────────────────
   var emailMutation=useMutation({
-    mutationFn:function(body){return apiPost("/api/users/change-email/",body);},
+    mutationFn:function(body){return apiPost(USERS.CHANGE_EMAIL,body);},
     onSuccess:function(){
       queryClient.invalidateQueries({queryKey:["user"]});
       showToast(t("settings.emailChanged")||"Verification email sent","success");
@@ -121,7 +123,7 @@ export default function SettingsScreen(){
 
   // ─── Delete account mutation ───────────────────────────────────
   var deleteMutation=useMutation({
-    mutationFn:function(body){return apiDelete("/api/users/delete-account/",{body:body});},
+    mutationFn:function(body){return apiDelete(USERS.DELETE_ACCOUNT,{body:body});},
     onSuccess:function(){
       showToast(t("settings.accountDeleted")||"Account deleted","info");
       setShowDelete(false);
@@ -381,7 +383,7 @@ export default function SettingsScreen(){
               style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
             <div style={{display:"flex",gap:8}}>
               <button onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")||"Cancel"}</button>
-              <button disabled={!newEmail||emailMutation.isPending} onClick={function(){emailMutation.mutate({newEmail:newEmail});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newEmail?"rgba(139,92,246,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:newEmail?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:newEmail?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{emailMutation.isPending?"Saving...":"Save"}</button>
+              <button disabled={!newEmail||emailMutation.isPending} onClick={function(){var cleanEmail=sanitizeText(newEmail,254);if(!isValidEmail(cleanEmail)){showToast("Please enter a valid email address","error");return;}emailMutation.mutate({newEmail:cleanEmail});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newEmail?"rgba(139,92,246,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:newEmail?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:newEmail?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{emailMutation.isPending?"Saving...":"Save"}</button>
             </div>
           </div>
         </div>

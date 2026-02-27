@@ -12,6 +12,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Vision Board Screen
@@ -71,7 +72,7 @@ export default function VisionBoardScreen() {
   // ── Fetch all user dreams ──
   var dreamsQuery = useQuery({
     queryKey: ["dreams"],
-    queryFn: function () { return apiGet("/api/dreams/dreams/"); },
+    queryFn: function () { return apiGet(DREAMS.LIST); },
   });
 
   var allDreams = (dreamsQuery.data && dreamsQuery.data.results) || dreamsQuery.data || [];
@@ -131,7 +132,7 @@ export default function VisionBoardScreen() {
 
   var generateForDream = function (dreamId) {
     setGenerating(dreamId);
-    apiPost("/api/dreams/dreams/" + dreamId + "/generate_vision/").then(function (data) {
+    apiPost(DREAMS.GENERATE_VISION(dreamId)).then(function (data) {
       showToast("Vision image generated!", "success");
       setGenerating(null);
       setShowGenModal(false);

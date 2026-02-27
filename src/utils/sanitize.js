@@ -56,3 +56,40 @@ export function sanitizeText(str, maxLength) {
   if (maxLength) return clean.slice(0, maxLength);
   return clean;
 }
+
+/** Sanitize URL — block javascript: and data: schemes, validate format */
+export function sanitizeUrl(url) {
+  if (typeof url !== "string") return "";
+  var trimmed = url.trim();
+  if (!trimmed) return "";
+  // Block dangerous schemes
+  if (/^(javascript|data|vbscript):/i.test(trimmed)) return "";
+  // Must start with http://, https://, or // (protocol-relative)
+  if (!/^(https?:\/\/|\/\/)/i.test(trimmed)) {
+    // Allow relative paths starting with /
+    if (/^\/[^\/]/.test(trimmed)) return trimmed.slice(0, 2000);
+    return "";
+  }
+  return trimmed.slice(0, 2000);
+}
+
+/** Sanitize number — ensure numeric within range */
+export function sanitizeNumber(val, min, max) {
+  var num = Number(val);
+  if (isNaN(num)) return min !== undefined ? min : 0;
+  if (min !== undefined && num < min) return min;
+  if (max !== undefined && num > max) return max;
+  return num;
+}
+
+/** Batch check required fields — returns array of missing field names */
+export function validateRequired(fields) {
+  var missing = [];
+  for (var key in fields) {
+    var val = fields[key];
+    if (val === undefined || val === null || (typeof val === "string" && !val.trim())) {
+      missing.push(key);
+    }
+  }
+  return missing;
+}

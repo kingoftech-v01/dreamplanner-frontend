@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "../../context/ThemeContext";
 import { useT } from "../../context/I18nContext";
-import { apiPatch } from "../../services/api";
+import { apiPost } from "../../services/api";
+import { USERS } from "../../services/endpoints";
 import { useAuth } from "../../context/AuthContext";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -46,7 +47,7 @@ export default function OnboardingScreen() {
   var completeOnboarding = useCallback(function () {
     localStorage.setItem("dp-onboarded", "true");
     // Save onboarding completion to backend
-    apiPatch("/api/users/update_profile/", { hasOnboarded: true })
+    apiPost(USERS.COMPLETE_ONBOARDING, { hasOnboarded: true })
       .then(function () { updateUser({ hasOnboarded: true }); })
       .catch(function () { /* ignore — localStorage is fallback */ });
     navigate("/");

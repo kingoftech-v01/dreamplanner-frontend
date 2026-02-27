@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { LEAGUES } from "../../services/endpoints";
 import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
 import {
@@ -67,12 +68,12 @@ export default function SeasonsScreen() {
   // ─── API Queries ──────────────────────────────────────────────
   var seasonQuery = useQuery({
     queryKey: ["current-season"],
-    queryFn: function () { return apiGet("/api/leagues/seasons/current/"); },
+    queryFn: function () { return apiGet(LEAGUES.SEASONS.CURRENT); },
   });
 
   var rewardsQuery = useQuery({
     queryKey: ["season-rewards"],
-    queryFn: function () { return apiGet("/api/leagues/seasons/my-rewards/"); },
+    queryFn: function () { return apiGet(LEAGUES.SEASONS.MY_REWARDS); },
   });
 
   var season = seasonQuery.data || {};
@@ -85,7 +86,7 @@ export default function SeasonsScreen() {
   // ─── Claim Reward Mutation ───────────────────────────────────
   var claimMutation = useMutation({
     mutationFn: function (rewardId) {
-      return apiPost("/api/leagues/seasons/claim-reward/", { rewardId: rewardId });
+      return apiPost(LEAGUES.SEASONS.CLAIM_REWARD(rewardId));
     },
     onSuccess: function (_data, rewardId) {
       setClaimedSet(function (prev) {

@@ -5,6 +5,7 @@ import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { apiGet } from "../../services/api";
+import { USERS } from "../../services/endpoints";
 import { saveBlobFile } from "../../services/native";
 
 var glassStyle = {
@@ -69,7 +70,7 @@ export default function DataExportScreen() {
       });
     }, 300);
 
-    apiGet("/api/users/export-data/?format=" + selectedFormat, { responseType: "blob" })
+    apiGet(USERS.EXPORT_DATA + "?format=" + selectedFormat, { responseType: "blob" })
       .then(function (blob) {
         clearInterval(progressInterval);
         setExportProgress(100);

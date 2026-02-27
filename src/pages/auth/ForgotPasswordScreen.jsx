@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Lock, Mail, CheckCircle, ArrowRight, Loader2 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { apiPost } from "../../services/api";
+import { AUTH } from "../../services/endpoints";
 import { isValidEmail } from "../../utils/sanitize";
 
 const glass = {
@@ -62,7 +63,7 @@ export default function ForgotPasswordScreen() {
       return;
     }
     setSubmitting(true);
-    apiPost("/api/auth/password/reset/", { email: email })
+    apiPost(AUTH.PASSWORD_RESET, { email: email })
       .then(function () {
         setSent(true);
       })

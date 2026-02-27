@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { BUDDIES } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -71,8 +72,8 @@ export default function FindBuddyScreen(){
     dreams: user?.dreams || [],
   };
 
-  var buddyQuery = useQuery({ queryKey: ["buddy-current"], queryFn: function () { return apiGet("/api/buddies/current/"); } });
-  var suggestionsQuery = useQuery({ queryKey: ["buddy-suggestions"], queryFn: function () { return apiPost("/api/buddies/find-match/", {}); } });
+  var buddyQuery = useQuery({ queryKey: ["buddy-current"], queryFn: function () { return apiGet(BUDDIES.CURRENT); } });
+  var suggestionsQuery = useQuery({ queryKey: ["buddy-suggestions"], queryFn: function () { return apiPost(BUDDIES.FIND_MATCH, {}); } });
 
   var CURRENT_BUDDY = (buddyQuery.data && buddyQuery.data.buddy) || null;
   var rawSuggestions = suggestionsQuery.data;
@@ -100,7 +101,7 @@ export default function FindBuddyScreen(){
 
   var sendRequest=function(id){
     setSent(function(p){return Object.assign({},p,{[id]:true});});
-    apiPost("/api/buddies/pair/",{partnerId:id}).then(function(){
+    apiPost(BUDDIES.PAIR,{partnerId:id}).then(function(){
       showToast("Buddy request sent!","success");
       queryClient.invalidateQueries({queryKey:["buddy-current"]});
       queryClient.invalidateQueries({queryKey:["buddy-suggestions"]});
@@ -112,7 +113,7 @@ export default function FindBuddyScreen(){
   var sendEncourage=function(){
     if(!CURRENT_BUDDY)return;
     setSentEncourage(true);
-    apiPost("/api/buddies/"+CURRENT_BUDDY.id+"/encourage/",{message:encourageMsg}).then(function(){
+    apiPost(BUDDIES.ENCOURAGE(CURRENT_BUDDY.id),{message:encourageMsg}).then(function(){
       showToast("Encouragement sent!","success");
     }).catch(function(err){
       showToast(err.message||"Failed to send","error");

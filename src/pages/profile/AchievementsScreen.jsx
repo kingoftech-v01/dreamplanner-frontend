@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../services/api";
+import { USERS } from "../../services/endpoints";
 import {
   ArrowLeft, Award, Flame, Star, Target, Heart, Sparkles,
   Sun, Moon, Users, CheckCircle, Zap, Eye, BookOpen, Trophy,
@@ -62,13 +63,13 @@ export default function AchievementsScreen() {
   var achievementsQuery = useQuery({
     queryKey: ["achievements"],
     queryFn: function () {
-      return apiGet("/api/users/achievements/");
+      return apiGet(USERS.ACHIEVEMENTS);
     },
   });
 
   var gamifQuery = useQuery({
     queryKey: ["gamification"],
-    queryFn: function () { return apiGet("/api/users/gamification/"); },
+    queryFn: function () { return apiGet(USERS.GAMIFICATION); },
   });
   var streak = (gamifQuery.data && (gamifQuery.data.currentStreak || gamifQuery.data.streak)) || 0;
 

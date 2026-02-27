@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../services/api";
+import { CIRCLES } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import {
   ArrowLeft, Users, Plus, Flame, Trophy, MessageSquare,
@@ -58,8 +59,8 @@ export default function CirclesScreen() {
   const [activeTab, setActiveTab] = useState("my"); // "my" | "discover"
   var [justJoinedSet, setJustJoinedSet] = useState(function () { return new Set(); });
 
-  var myCirclesInf = useInfiniteList({ queryKey: ["circles", "my"], url: "/api/circles/?filter=my", limit: 20 });
-  var discoverInf = useInfiniteList({ queryKey: ["circles", "discover"], url: "/api/circles/?filter=recommended", limit: 20 });
+  var myCirclesInf = useInfiniteList({ queryKey: ["circles", "my"], url: CIRCLES.LIST + "?filter=my", limit: 20 });
+  var discoverInf = useInfiniteList({ queryKey: ["circles", "discover"], url: CIRCLES.LIST + "?filter=recommended", limit: 20 });
 
   var myCircles = normalizeCircles(myCirclesInf.items);
   var discoverCircles = normalizeCircles(discoverInf.items);
@@ -69,7 +70,7 @@ export default function CirclesScreen() {
   }, []);
 
   var joinMut = useMutation({
-    mutationFn: function (circleId) { return apiPost("/api/circles/" + circleId + "/join/"); },
+    mutationFn: function (circleId) { return apiPost(CIRCLES.JOIN(circleId)); },
     onSuccess: function (_data, circleId) {
       setJustJoinedSet(function (prev) {
         var next = new Set(prev);

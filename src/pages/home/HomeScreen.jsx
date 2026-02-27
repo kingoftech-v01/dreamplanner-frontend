@@ -5,6 +5,7 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { clipboardWrite } from "../../services/native";
 import { apiGet } from "../../services/api";
+import { DREAMS, USERS, NOTIFICATIONS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
@@ -76,18 +77,18 @@ export default function DreamPlannerHome() {
   var { user } = useAuth();
 
   // ── Fetch dreams from API (infinite scroll) ──
-  var dreamsInf = useInfiniteList({ queryKey: ["dreams"], url: "/api/dreams/dreams/", limit: 30 });
+  var dreamsInf = useInfiniteList({ queryKey: ["dreams"], url: DREAMS.LIST, limit: 30 });
 
   // ── Fetch dashboard stats ──
   var dashboardQuery = useQuery({
     queryKey: ["dashboard"],
-    queryFn: function () { return apiGet("/api/users/dashboard/"); },
+    queryFn: function () { return apiGet(USERS.DASHBOARD); },
   });
 
   // ── Fetch unread notification count ──
   var notifQuery = useQuery({
     queryKey: ["unread-count"],
-    queryFn: function () { return apiGet("/api/notifications/unread_count/"); },
+    queryFn: function () { return apiGet(NOTIFICATIONS.UNREAD_COUNT); },
     refetchInterval: 30000, // refresh every 30s
   });
 

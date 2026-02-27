@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { CONVERSATIONS, SOCIAL } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
@@ -9,6 +10,7 @@ import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { ConversationSkeleton } from "../../components/shared/Skeleton";
+import { sanitizeSearch } from "../../utils/sanitize";
 import {
   ArrowLeft, Search, Bot, Sparkles, Flag, Heart, Brain,
   Users, MessageCircle, ChevronRight, Trash2, Plus, X,
@@ -88,8 +90,8 @@ export default function ConversationListScreen() {
     var params = "";
     if (activeFilter !== "all") params += "?conversation_type=" + activeFilter;
     else params += "?conversation_type=buddy_chat";
-    if (searchQuery) params += "&search=" + searchQuery;
-    return "/api/conversations/" + params;
+    if (searchQuery) params += "&search=" + sanitizeSearch(searchQuery);
+    return CONVERSATIONS.LIST + params;
   })();
   var convsInf = useInfiniteList({ queryKey: ["conversations", activeFilter, searchQuery], url: convsUrl, limit: 30 });
   var conversations = convsInf.items;
@@ -97,7 +99,7 @@ export default function ConversationListScreen() {
   // Missed calls count for badge
   var callHistoryQuery = useQuery({
     queryKey: ["call-history"],
-    queryFn: function () { return apiGet("/api/conversations/calls/history/"); },
+    queryFn: function () { return apiGet(CONVERSATIONS.CALLS.HISTORY); },
   });
   var missedCallCount = ((callHistoryQuery.data) || []).filter(function (c) {
     return c.status === "missed" && c.calleeId === (user && user.id);
@@ -105,7 +107,7 @@ export default function ConversationListScreen() {
 
   var friendsQuery = useQuery({
     queryKey: ["buddy-contacts"],
-    queryFn: function () { return apiGet("/api/social/friends/"); },
+    queryFn: function () { return apiGet(SOCIAL.FRIENDS.LIST); },
     enabled: showNewChat,
   });
   var buddyContacts = ((friendsQuery.data && friendsQuery.data.results) || friendsQuery.data || []).map(function (f, i) {
@@ -120,17 +122,17 @@ export default function ConversationListScreen() {
   });
 
   var pinMut = useMutation({
-    mutationFn: function (id) { return apiPost("/api/conversations/" + id + "/pin/"); },
+    mutationFn: function (id) { return apiPost(CONVERSATIONS.PIN(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); },
     onError: function (err) { showToast(err.message || "Failed to pin", "error"); },
   });
   var archiveMut = useMutation({
-    mutationFn: function (id) { return apiPost("/api/conversations/" + id + "/archive/"); },
+    mutationFn: function (id) { return apiPost(CONVERSATIONS.ARCHIVE(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); },
     onError: function (err) { showToast(err.message || "Failed to archive", "error"); },
   });
   var deleteMut = useMutation({
-    mutationFn: function (id) { return apiDelete("/api/conversations/" + id + "/"); },
+    mutationFn: function (id) { return apiDelete(CONVERSATIONS.DETAIL(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); showToast("Conversation deleted", "success"); },
     onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
   });

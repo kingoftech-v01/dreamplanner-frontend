@@ -8,6 +8,7 @@
 
 import { isNative } from "./native";
 import { registerNativePush, checkNativePushPermission, unregisterNativePush } from "./nativeNotifications";
+import { NOTIFICATIONS } from "./endpoints";
 
 var VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
 
@@ -66,7 +67,7 @@ export function subscribeToPush() {
         try { token = localStorage.getItem("dp-token"); } catch (e) {}
 
         return fetch(
-          (import.meta.env.VITE_API_BASE || "") + "/api/notifications/push-subscriptions/",
+          (import.meta.env.VITE_API_BASE || "") + NOTIFICATIONS.PUSH_SUBSCRIPTIONS,
           {
             method: "POST",
             headers: {
@@ -114,7 +115,7 @@ export function unsubscribeFromPush() {
         try { token = localStorage.getItem("dp-token"); } catch (e) {}
 
         return fetch(
-          (import.meta.env.VITE_API_BASE || "") + "/api/notifications/push-subscriptions/",
+          (import.meta.env.VITE_API_BASE || "") + NOTIFICATIONS.PUSH_SUBSCRIPTIONS,
           {
             method: "DELETE",
             headers: {

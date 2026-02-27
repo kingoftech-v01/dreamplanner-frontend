@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPost, setToken, getToken, clearAuth } from "../services/api";
+import { apiGet, apiPost, apiDelete, setToken, getToken, clearAuth } from "../services/api";
+import { AUTH, USERS } from "../services/endpoints";
 
 var AuthContext = createContext(null);
 
@@ -15,7 +16,7 @@ export function AuthProvider({ children }) {
 
   // ─── Fetch current user profile ───────────────────────────────
   var fetchUser = useCallback(function () {
-    return apiGet("/api/users/me/").then(function (data) {
+    return apiGet(USERS.ME).then(function (data) {
       setUser(data);
       setIsAuthenticated(true);
       return data;
@@ -43,8 +44,12 @@ export function AuthProvider({ children }) {
 
   // ─── Login ────────────────────────────────────────────────────
   var login = useCallback(function (email, password) {
-    return apiPost("/api/auth/login/", { email: email, password: password })
+    return apiPost(AUTH.LOGIN, { email: email, password: password })
       .then(function (data) {
+        // 2FA required — backend returns indicator instead of token
+        if (data.tfaRequired) {
+          return { tfaRequired: true, email: email };
+        }
         // Backend returns { key: "token_value" } from dj-rest-auth
         var token = data.key || data.token;
         if (!token) throw new Error("No token received");
@@ -55,7 +60,7 @@ export function AuthProvider({ children }) {
 
   // ─── Register ─────────────────────────────────────────────────
   var register = useCallback(function (email, password1, password2, displayName) {
-    return apiPost("/api/auth/registration/", {
+    return apiPost(AUTH.REGISTER, {
       email: email,
       password1: password1,
       password2: password2,
@@ -72,10 +77,8 @@ export function AuthProvider({ children }) {
 
   // ─── Social login (Google / Apple) ────────────────────────────
   var socialLogin = useCallback(function (provider, accessToken) {
-    var url = provider === "apple"
-      ? "/api/auth/apple/"
-      : "/api/auth/google/";
-    return apiPost(url, { access_token: accessToken })
+    var url = provider === "apple" ? AUTH.APPLE : AUTH.GOOGLE;
+    return apiPost(url, { accessToken: accessToken })
       .then(function (data) {
         var token = data.key || data.token;
         if (!token) throw new Error("No token received");
@@ -86,7 +89,7 @@ export function AuthProvider({ children }) {
 
   // ─── Logout ───────────────────────────────────────────────────
   var logout = useCallback(function () {
-    return apiPost("/api/auth/logout/")
+    return apiPost(AUTH.LOGOUT)
       .catch(function () { /* ignore errors on logout */ })
       .finally(function () {
         clearAuth();
@@ -116,6 +119,32 @@ export function AuthProvider({ children }) {
     return (TIER_ORDER[userTier] || 0) >= (TIER_ORDER[requiredTier] || 0);
   }, [user]);
 
+  // ─── Complete onboarding ──────────────────────────────────────
+  var completeOnboarding = useCallback(function () {
+    return apiPost(USERS.COMPLETE_ONBOARDING).then(function () {
+      setUser(function (prev) {
+        if (!prev) return prev;
+        return Object.assign({}, prev, { hasOnboarded: true });
+      });
+    });
+  }, []);
+
+  // ─── Change email ─────────────────────────────────────────────
+  var changeEmail = useCallback(function (newEmail, password) {
+    return apiPost(USERS.CHANGE_EMAIL, { newEmail: newEmail, password: password });
+  }, []);
+
+  // ─── Delete account (GDPR) ────────────────────────────────────
+  var deleteAccount = useCallback(function (password) {
+    return apiDelete(USERS.DELETE_ACCOUNT, { body: { password: password } })
+      .then(function () {
+        clearAuth();
+        setUser(null);
+        setIsAuthenticated(false);
+        navigate("/login");
+      });
+  }, [navigate]);
+
   // Expose the current auth token so consumers can use it (e.g. WebSocket connections)
   var token = isAuthenticated ? getToken() : null;
 
@@ -131,6 +160,9 @@ export function AuthProvider({ children }) {
     refreshUser: refreshUser,
     updateUser: updateUser,
     hasSubscription: hasSubscription,
+    completeOnboarding: completeOnboarding,
+    changeEmail: changeEmail,
+    deleteAccount: deleteAccount,
   };
 
   return (

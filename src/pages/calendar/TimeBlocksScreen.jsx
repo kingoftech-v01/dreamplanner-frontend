@@ -10,6 +10,8 @@ import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
+import { CALENDAR, DREAMS } from "../../services/endpoints";
+import { sanitizeText, sanitizeNumber } from "../../utils/sanitize";
 
 var BLOCK_COLORS = [
   { value: "#8B5CF6", label: "Purple" },
@@ -57,21 +59,21 @@ export default function TimeBlocksScreen() {
   // ── Time blocks query ──
   var blocksQuery = useQuery({
     queryKey: ["time-blocks"],
-    queryFn: function () { return apiGet("/api/calendar/timeblocks/"); },
+    queryFn: function () { return apiGet(CALENDAR.TIMEBLOCKS); },
   });
   var timeBlocks = (blocksQuery.data && blocksQuery.data.results) || blocksQuery.data || [];
 
   // ── Dreams query (for association dropdown) ──
   var dreamsQuery = useQuery({
     queryKey: ["dreams-list"],
-    queryFn: function () { return apiGet("/api/dreams/"); },
+    queryFn: function () { return apiGet(DREAMS.LIST); },
   });
   var dreams = (dreamsQuery.data && dreamsQuery.data.results) || dreamsQuery.data || [];
 
   // ── Create mutation ──
   var createMut = useMutation({
     mutationFn: function (payload) {
-      return apiPost("/api/calendar/timeblocks/", payload);
+      return apiPost(CALENDAR.TIMEBLOCKS, payload);
     },
     onSuccess: function () {
       showToast("Time block created!", "success");
@@ -86,7 +88,7 @@ export default function TimeBlocksScreen() {
   // ── Update mutation ──
   var updateMut = useMutation({
     mutationFn: function (params) {
-      return apiPatch("/api/calendar/timeblocks/" + params.id + "/", params.data);
+      return apiPatch(CALENDAR.TIMEBLOCK_DETAIL(params.id), params.data);
     },
     onSuccess: function () {
       showToast("Time block updated!", "success");
@@ -101,7 +103,7 @@ export default function TimeBlocksScreen() {
   // ── Delete mutation ──
   var deleteMut = useMutation({
     mutationFn: function (id) {
-      return apiDelete("/api/calendar/timeblocks/" + id + "/");
+      return apiDelete(CALENDAR.TIMEBLOCK_DETAIL(id));
     },
     onSuccess: function () {
       showToast("Time block deleted", "info");
@@ -144,12 +146,22 @@ export default function TimeBlocksScreen() {
   };
 
   var handleSubmit = function () {
-    if (!formTitle.trim()) {
+    var cleanTitle = sanitizeText(formTitle, 200);
+    if (!cleanTitle) {
       showToast("Please enter a title", "error");
       return;
     }
+    var timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+    if (!timeRegex.test(formStartTime)) {
+      showToast("Please enter a valid start time (HH:MM)", "error");
+      return;
+    }
+    if (!timeRegex.test(formEndTime)) {
+      showToast("Please enter a valid end time (HH:MM)", "error");
+      return;
+    }
     var payload = {
-      title: formTitle.trim(),
+      title: cleanTitle,
       startTime: formStartTime,
       endTime: formEndTime,
       color: formColor,

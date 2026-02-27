@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../services/api";
+import { SOCIAL } from "../../services/endpoints";
 import { ArrowLeft, MessageCircle, User, Circle } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
@@ -25,7 +26,7 @@ export default function OnlineFriendsScreen() {
 
   var onlineQuery = useQuery({
     queryKey: ["friends-online"],
-    queryFn: function () { return apiGet("/api/social/friends/online/"); },
+    queryFn: function () { return apiGet(SOCIAL.FRIENDS.ONLINE); },
   });
 
   var ONLINE_FRIENDS = ((onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || []).map(function (f, i) {

@@ -3,6 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Search, X, Target, MessageCircle, Users, Clock, ArrowRight, Loader } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { apiGet } from "../../services/api";
+import { SEARCH } from "../../services/endpoints";
+import { sanitizeSearch } from "../../utils/sanitize";
 
 const CATEGORY_ICONS = { dreams: Target, messages: MessageCircle, users: Users, goals: Target, tasks: Target, calendar: Clock };
 const CATEGORY_LABELS = { dreams: "Dreams", messages: "Messages", users: "People", goals: "Goals", tasks: "Tasks", calendar: "Calendar" };
@@ -49,8 +51,8 @@ export default function GlobalSearch({ isOpen, onClose }) {
     setSearching(true);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(function () {
-      var q = query.trim();
-      apiGet("/api/search/?q=" + encodeURIComponent(q) + "&type=dreams,messages,users,goals,tasks,calendar")
+      var q = sanitizeSearch(query.trim());
+      apiGet(SEARCH.GLOBAL + "?q=" + encodeURIComponent(q) + "&type=dreams,messages,users,goals,tasks,calendar")
         .then(function (data) {
           var combined = {};
           if (data.dreams && data.dreams.length > 0) {

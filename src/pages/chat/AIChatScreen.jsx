@@ -3,10 +3,12 @@ import { useNavigate, useLocation, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
 import { createWebSocket } from "../../services/websocket";
+import { CONVERSATIONS, USERS, WS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { clipboardWrite } from "../../services/native";
+import { sanitizeText } from "../../utils/sanitize";
 import DOMPurify from "dompurify";
 import {
   ArrowLeft, Bot, Sparkles, RotateCw, Copy, Check,
@@ -75,7 +77,7 @@ export default function AIChatScreen(){
   // ─── AI usage quota ─────────────────────────────────────────────
   var aiUsageQuery = useQuery({
     queryKey: ["ai-usage"],
-    queryFn: function () { return apiGet("/api/users/ai-usage/"); },
+    queryFn: function () { return apiGet(USERS.AI_USAGE); },
   });
   var aiUsage = aiUsageQuery.data || {};
 
@@ -83,7 +85,7 @@ export default function AIChatScreen(){
   var MSG_PAGE_SIZE = 50;
   var messagesQuery = useQuery({
     queryKey: ["messages", id],
-    queryFn: function () { return apiGet("/api/conversations/" + id + "/messages/?limit=" + MSG_PAGE_SIZE); },
+    queryFn: function () { return apiGet(CONVERSATIONS.MESSAGES(id) + "?limit=" + MSG_PAGE_SIZE); },
     enabled: !isNewChat && !!id,
   });
 
@@ -129,7 +131,7 @@ export default function AIChatScreen(){
   function loadOlderMessages() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
-    apiGet("/api/conversations/" + id + "/messages/?limit=" + MSG_PAGE_SIZE + "&offset=" + nextOffset)
+    apiGet(CONVERSATIONS.MESSAGES(id) + "?limit=" + MSG_PAGE_SIZE + "&offset=" + nextOffset)
       .then(function (raw) {
         var list = raw.results || raw || [];
         if (Array.isArray(list) && list.length > 0) {
@@ -149,7 +151,7 @@ export default function AIChatScreen(){
   useEffect(function () {
     if (isNewChat || !id) return;
     var cancelled = false;
-    var ws = createWebSocket("/ws/conversations/" + id + "/", {
+    var ws = createWebSocket(WS.AI_CHAT(id), {
       onMessage: function (data) {
         if (cancelled) return;
         // Backend sends: stream_start, stream_chunk, stream_end, message
@@ -205,7 +207,7 @@ export default function AIChatScreen(){
       var msg = location.state.initialMessage.trim().slice(0, 5000);
       if (msg) {
         setIsStreaming(true);
-        apiPost("/api/conversations/" + id + "/send_message/", { content: msg })
+        apiPost(CONVERSATIONS.SEND_MESSAGE(id), { content: msg })
           .then(function (res) {
             var aiMsg = res.assistantMessage || res.assistant_message;
             if (aiMsg) {
@@ -236,15 +238,15 @@ export default function AIChatScreen(){
 
   // ─── Mutations for pin / like / reaction ────────────────────────
   var pinMsgMut = useMutation({
-    mutationFn: function (msgId) { return apiPost("/api/conversations/" + id + "/pin-message/" + msgId + "/"); },
+    mutationFn: function (msgId) { return apiPost(CONVERSATIONS.PIN_MESSAGE(id, msgId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["messages", id] }); },
   });
   var likeMsgMut = useMutation({
-    mutationFn: function (msgId) { return apiPost("/api/conversations/" + id + "/like-message/" + msgId + "/"); },
+    mutationFn: function (msgId) { return apiPost(CONVERSATIONS.LIKE_MESSAGE(id, msgId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["messages", id] }); },
   });
   var reactMsgMut = useMutation({
-    mutationFn: function (data) { return apiPost("/api/conversations/" + id + "/react-message/" + data.msgId + "/", { emoji: data.emoji }); },
+    mutationFn: function (data) { return apiPost(CONVERSATIONS.REACT_MESSAGE(id, data.msgId), { emoji: data.emoji }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["messages", id] }); },
   });
 
@@ -260,7 +262,7 @@ export default function AIChatScreen(){
   var aiHistoryQuery = useQuery({
     queryKey: ["ai-conversations"],
     queryFn: function () {
-      return apiGet("/api/conversations/?ordering=-updated_at&limit=50").then(function (data) {
+      return apiGet(CONVERSATIONS.LIST + "?ordering=-updated_at&limit=50").then(function (data) {
         var list = (data && data.results) || data || [];
         if (!Array.isArray(list)) list = [];
         return list.filter(function (c) { return c.conversationType !== "buddy_chat"; });
@@ -321,11 +323,11 @@ export default function AIChatScreen(){
 
   // ─── Send message via API ───────────────────────────────────────
   var handleSend = function () {
-    var text = input.trim(); if (!text) return;
+    var text = sanitizeText(input, 4000); if (!text) return;
     setMessages(function (prev) { return [...prev, { id: Date.now() + "u", content: text, isUser: true, time: new Date(), pinned: false, liked: false, reactions: [] }]; });
     setInput(""); if (inputRef.current) inputRef.current.style.height = "auto";
     setIsStreaming(true);
-    apiPost("/api/conversations/" + id + "/send_message/", { content: text })
+    apiPost(CONVERSATIONS.SEND_MESSAGE(id), { content: text })
       .then(function (res) {
         // Use the REST response directly — it contains the AI reply
         var aiMsg = res.assistantMessage || res.assistant_message;
@@ -385,7 +387,7 @@ export default function AIChatScreen(){
   useEffect(()=>{
     if(!searchQ||searchQ.length<2||!id||id==="new"){setSearchedMsgs([]);return;}
     const t=setTimeout(()=>{
-      apiGet("/api/conversations/"+id+"/search/?q="+encodeURIComponent(searchQ))
+      apiGet(CONVERSATIONS.SEARCH(id)+"?q="+encodeURIComponent(searchQ))
         .then(r=>{setSearchedMsgs(Array.isArray(r)?r:r.results||[]);})
         .catch(()=>{setSearchedMsgs([]);});
     },300);

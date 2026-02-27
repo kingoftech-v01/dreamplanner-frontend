@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { SOCIAL } from "../../services/endpoints";
 import { ArrowLeft, Check, X, Clock, UserX, Users, Inbox } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
@@ -30,12 +31,12 @@ export default function FriendRequestsScreen() {
 
   var receivedQuery = useQuery({
     queryKey: ["friend-requests-received"],
-    queryFn: function () { return apiGet("/api/social/friends/requests/pending/"); },
+    queryFn: function () { return apiGet(SOCIAL.FRIENDS.PENDING); },
   });
 
   var sentQuery = useQuery({
     queryKey: ["friend-requests-sent"],
-    queryFn: function () { return apiGet("/api/social/friends/requests/sent/"); },
+    queryFn: function () { return apiGet(SOCIAL.FRIENDS.SENT); },
   });
 
   var RECEIVED_REQUESTS = ((receivedQuery.data && receivedQuery.data.results) || receivedQuery.data || []).map(function (r) {
@@ -76,7 +77,7 @@ export default function FriendRequestsScreen() {
 
   var handleAccept = function (id) {
     setReceivedStates(function (prev) { return Object.assign({}, prev, { [id]: "accepted" }); });
-    apiPost("/api/social/friends/accept/" + id + "/").then(function () {
+    apiPost(SOCIAL.FRIENDS.ACCEPT(id)).then(function () {
       showToast("Friend request accepted!", "success");
       queryClient.invalidateQueries({ queryKey: ["friend-requests-received"] });
       queryClient.invalidateQueries({ queryKey: ["friends-online"] });
@@ -88,7 +89,7 @@ export default function FriendRequestsScreen() {
 
   var handleDecline = function (id) {
     setReceivedStates(function (prev) { return Object.assign({}, prev, { [id]: "declined" }); });
-    apiPost("/api/social/friends/reject/" + id + "/").then(function () {
+    apiPost(SOCIAL.FRIENDS.REJECT(id)).then(function () {
       showToast("Request declined", "info");
       queryClient.invalidateQueries({ queryKey: ["friend-requests-received"] });
     }).catch(function (err) {
@@ -99,7 +100,7 @@ export default function FriendRequestsScreen() {
 
   var handleCancelSent = function (id) {
     setCancelledSent(function (prev) { return new Set([...prev, id]); });
-    apiDelete("/api/social/friends/cancel/" + id + "/").then(function () {
+    apiDelete(SOCIAL.FRIENDS.CANCEL(id)).then(function () {
       showToast("Request cancelled", "info");
       queryClient.invalidateQueries({ queryKey: ["friend-requests-sent"] });
     }).catch(function (err) {

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
+import { CIRCLES } from "../../services/endpoints";
 import { useToast } from "../../context/ToastContext";
 import { clipboardWrite } from "../../services/native";
 import { useTheme } from "../../context/ThemeContext";
@@ -61,7 +62,7 @@ export default function CircleInvitationsScreen() {
   // ─── API Queries ──────────────────────────────────────────────
   var invitationsQuery = useQuery({
     queryKey: ["circle-invitations", id],
-    queryFn: function () { return apiGet("/api/circles/" + id + "/invitations/"); },
+    queryFn: function () { return apiGet(CIRCLES.INVITATIONS(id)); },
   });
 
   var invitations = ((invitationsQuery.data && invitationsQuery.data.results) || invitationsQuery.data || []).map(function (inv, i) {
@@ -82,7 +83,7 @@ export default function CircleInvitationsScreen() {
   // ─── Invite User Mutation ────────────────────────────────────
   var inviteMutation = useMutation({
     mutationFn: function (userId) {
-      return apiPost("/api/circles/" + id + "/invite/", { userId: userId });
+      return apiPost(CIRCLES.INVITE(id), { userId: userId });
     },
     onSuccess: function () {
       showToast("Invitation sent!", "success");
@@ -97,7 +98,7 @@ export default function CircleInvitationsScreen() {
   // ─── Generate Invite Link Mutation ───────────────────────────
   var linkMutation = useMutation({
     mutationFn: function () {
-      return apiPost("/api/circles/" + id + "/invite-link/");
+      return apiPost(CIRCLES.INVITE_LINK(id));
     },
     onSuccess: function (data) {
       var link = (data && data.link) || (data && data.inviteLink) || (data && data.url) || "";

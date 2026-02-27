@@ -7,6 +7,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
 import { apiGet, apiPost } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import ErrorState from "../../components/shared/ErrorState";
@@ -59,7 +60,7 @@ export default function DreamTemplatesScreen() {
 
   var templatesQuery = useQuery({
     queryKey: ["dream-templates"],
-    queryFn: function () { return apiGet("/api/dreams/dreams/templates/"); },
+    queryFn: function () { return apiGet(DREAMS.TEMPLATES.LIST); },
   });
   var templates = templatesQuery.data?.results || templatesQuery.data || [];
 
@@ -358,7 +359,7 @@ export default function DreamTemplatesScreen() {
                 {/* Use Template Button */}
                 <button
                   onClick={() => {
-                    apiPost("/api/dreams/dreams/templates/" + template.id + "/use/").then(function (data) {
+                    apiPost(DREAMS.TEMPLATES.USE(template.id)).then(function (data) {
                       showToast("Dream created from template!", "success");
                       navigate("/dream/" + data.id);
                     }).catch(function (err) {

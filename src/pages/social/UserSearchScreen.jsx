@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "../../services/api";
+import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { SOCIAL } from "../../services/endpoints";
 import { ArrowLeft, Search, X, UserPlus, Check, Users } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { sanitizeSearch } from "../../utils/sanitize";
 
 const AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
 
@@ -37,18 +39,18 @@ export default function UserSearchScreen() {
 
   var searchQuery = useQuery({
     queryKey: ["user-search", debouncedQuery],
-    queryFn: function () { return apiGet("/api/social/users/search?q=" + encodeURIComponent(debouncedQuery)); },
+    queryFn: function () { var q = sanitizeSearch(debouncedQuery); return apiGet(SOCIAL.USER_SEARCH + "?q=" + encodeURIComponent(q)); },
     enabled: debouncedQuery.length > 0,
   });
 
   var recentSearchesQuery = useQuery({
     queryKey: ["recent-searches"],
-    queryFn: function () { return apiGet("/api/social/recent-searches/list/"); },
+    queryFn: function () { return apiGet(SOCIAL.RECENT_SEARCHES.LIST); },
   });
 
   var suggestionsQuery = useQuery({
     queryKey: ["follow-suggestions"],
-    queryFn: function () { return apiGet("/api/social/follow-suggestions/"); },
+    queryFn: function () { return apiGet(SOCIAL.FOLLOW_SUGGESTIONS); },
   });
 
   var searchResults = ((searchQuery.data && searchQuery.data.results) || searchQuery.data || []).map(function (u) {
@@ -84,7 +86,7 @@ export default function UserSearchScreen() {
 
   var handleAddFriend = function (userId) {
     setSentRequests(function (prev) { return new Set([...prev, userId]); });
-    apiPost("/api/social/friends/request/", { targetUserId: userId }).then(function () {
+    apiPost(SOCIAL.FRIENDS.REQUEST, { targetUserId: userId }).then(function () {
       showToast("Friend request sent!", "success");
     }).catch(function (err) {
       showToast(err.message || "Failed to send request", "error");
@@ -99,7 +101,9 @@ export default function UserSearchScreen() {
       var filtered = (Array.isArray(list) ? list : []).filter(function (s) { return s.id !== id; });
       return old.results ? Object.assign({}, old, { results: filtered }) : filtered;
     });
-    // Backend only supports clear-all (DELETE /api/social/recent-searches/clear/), no individual delete
+    apiDelete(SOCIAL.RECENT_SEARCHES.REMOVE(id)).catch(function () {
+      queryClient.invalidateQueries({ queryKey: ["recent-searches"] });
+    });
   };
 
   const isSearching = query.length > 0;

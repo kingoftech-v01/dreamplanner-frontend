@@ -2,13 +2,15 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeft, Save, Trash2, X, Briefcase, Heart, DollarSign,
-  Palette, TrendingUp, Users, AlertTriangle, Globe, Lock, Loader2,
+  Palette, TrendingUp, Users, AlertTriangle, Loader2,
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
 import { apiGet, apiPatch, apiDelete } from "../../services/api";
+import { DREAMS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { sanitizeText, validateRequired } from "../../utils/sanitize";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 
@@ -70,14 +72,13 @@ export default function DreamEditScreen() {
   const [serverError, setServerError] = useState("");
   const [initialized, setInitialized] = useState(false);
 
-  var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet("/api/dreams/dreams/" + id + "/"); } });
+  var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet(DREAMS.DETAIL(id)); } });
   var dream = dreamQuery.data || {};
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState(null);
   const [timeframe, setTimeframe] = useState("6m");
-  const [visibility, setVisibility] = useState("private");
 
   useEffect(function () {
     if (dreamQuery.data && !initialized) {
@@ -85,7 +86,6 @@ export default function DreamEditScreen() {
       setDescription(dreamQuery.data.description || "");
       setCategory(dreamQuery.data.category || null);
       setTimeframe(dreamQuery.data.timeframe || "6m");
-      setVisibility("private"); // isPublic not on backend model
       setInitialized(true);
     }
   }, [dreamQuery.data, initialized]);
@@ -102,12 +102,23 @@ export default function DreamEditScreen() {
   });
 
   const handleSave = function () {
+    var missing = validateRequired({ title: title });
+    if (missing.length > 0) {
+      showToast("Please enter a dream title", "error");
+      return;
+    }
+
     setSubmitting(true);
     setServerError("");
-    apiPatch("/api/dreams/dreams/" + id + "/", {
-      title: title.trim(),
-      description: description.trim(),
-      category: category,
+
+    var cleanTitle = sanitizeText(title, 200);
+    var cleanDescription = sanitizeText(description, 2000);
+    var cleanCategory = category ? sanitizeText(category, 100) : category;
+
+    apiPatch(DREAMS.DETAIL(id), {
+      title: cleanTitle,
+      description: cleanDescription,
+      category: cleanCategory,
     }).then(function () {
       queryClient.invalidateQueries({ queryKey: ["dream", id] });
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
@@ -121,7 +132,7 @@ export default function DreamEditScreen() {
 
   const handleDelete = function () {
     setShowDeleteModal(false);
-    apiDelete("/api/dreams/dreams/" + id + "/").then(function () {
+    apiDelete(DREAMS.DETAIL(id)).then(function () {
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
       showToast("Dream deleted", "success");
       navigate("/");
@@ -275,59 +286,8 @@ export default function DreamEditScreen() {
             </div>
           </div>
 
-          {/* Visibility */}
-          <div style={{ ...stagger(4), marginBottom: 24 }}>
-            <label style={{
-              fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-              fontFamily: "Inter, sans-serif", display: "block", marginBottom: 12,
-            }}>
-              Dream Visibility
-            </label>
-            <div style={{ display: "flex", gap: 10 }}>
-              {[
-                { id: "private", label: "Private", Icon: Lock },
-                { id: "public", label: "Public", Icon: Globe },
-              ].map(({ id: vid, label, Icon }) => {
-                const sel = visibility === vid;
-                const isPublicOption = vid === "public";
-                return (
-                  <button
-                    key={vid}
-                    onClick={() => setVisibility(vid)}
-                    style={{
-                      flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      padding: "12px 0", borderRadius: 14, cursor: "pointer",
-                      fontFamily: "Inter, sans-serif", fontSize: 14, fontWeight: 600,
-                      background: sel
-                        ? (isPublicOption ? "rgba(16,185,129,0.1)" : "rgba(139,92,246,0.1)")
-                        : "var(--dp-surface)",
-                      border: sel
-                        ? (isPublicOption ? "1px solid rgba(16,185,129,0.3)" : "1px solid rgba(139,92,246,0.3)")
-                        : "1px solid var(--dp-input-border)",
-                      color: sel
-                        ? (isPublicOption ? (isLight ? "#059669" : "#5DE5A8") : (isLight ? "#6D28D9" : "#C4B5FD"))
-                        : "var(--dp-text-tertiary)",
-                      transition: "all 0.25s ease",
-                    }}
-                  >
-                    <Icon size={16} />
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-            <p style={{
-              fontSize: 12, color: "var(--dp-text-muted)",
-              fontFamily: "Inter, sans-serif", marginTop: 8, lineHeight: 1.5,
-            }}>
-              {visibility === "public"
-                ? "Public dreams appear on your profile and social feed"
-                : "Only you can see this dream"}
-            </p>
-          </div>
-
           {/* Timeframe */}
-          <div style={{ ...stagger(5), marginBottom: 32 }}>
+          <div style={{ ...stagger(4), marginBottom: 32 }}>
             <label style={{
               fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
               fontFamily: "Inter, sans-serif", display: "block", marginBottom: 12,
@@ -371,7 +331,7 @@ export default function DreamEditScreen() {
 
           {/* Progress info */}
           <div style={{
-            ...stagger(6),
+            ...stagger(5),
             ...glass,
             padding: "16px 20px",
             boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
@@ -427,7 +387,7 @@ export default function DreamEditScreen() {
         </div>
 
         {/* Save Button */}
-        <div style={stagger(7)}>
+        <div style={stagger(6)}>
           {serverError && (
             <div style={{
               background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
@@ -468,7 +428,7 @@ export default function DreamEditScreen() {
 
         {/* Delete option */}
         <div style={{
-          ...stagger(8),
+          ...stagger(7),
           textAlign: "center", marginTop: 20,
         }}>
           <button

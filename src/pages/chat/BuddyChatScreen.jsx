@@ -3,10 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
 import { joinRTMChannel } from "../../services/agora";
+import { CONVERSATIONS, BUDDIES, USERS } from "../../services/endpoints";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { clipboardWrite } from "../../services/native";
+import { sanitizeText } from "../../utils/sanitize";
 import ErrorState from "../../components/shared/ErrorState";
 import {
   ArrowLeft, Users, Send, ChevronDown, MoreVertical, Pin,
@@ -61,7 +63,7 @@ export default function BuddyChatScreen(){
     setInitLoading(true);
     setInitError(null);
     // Call POST /api/buddies/chat/ with the id as userId to get/create conversation
-    apiPost("/api/buddies/chat/", { userId: id }).then(function (data) {
+    apiPost(BUDDIES.CHAT, { userId: id }).then(function (data) {
       if (cancelled) return;
       setConvId(data.conversationId);
       setBuddyInfo(data.buddy || {});
@@ -71,7 +73,7 @@ export default function BuddyChatScreen(){
       // id might already be a conversation ID, try fetching messages directly
       setConvId(id);
       // Try to get buddy info from /api/buddies/current/
-      apiGet("/api/buddies/current/").then(function (d) {
+      apiGet(BUDDIES.CURRENT).then(function (d) {
         if (cancelled) return;
         var b = d && d.buddy;
         var p = b && b.partner;
@@ -80,7 +82,7 @@ export default function BuddyChatScreen(){
         }
       }).catch(function () {});
       // Also try to fetch the user profile
-      apiGet("/api/users/" + id + "/").then(function (u) {
+      apiGet(USERS.PROFILE(id)).then(function (u) {
         if (cancelled) return;
         if (u && u.displayName) {
           setBuddyInfo(function (prev) { return prev || { id: u.id, displayName: u.displayName || u.name || "Buddy", isOnline: u.isOnline || false }; });
@@ -100,7 +102,7 @@ export default function BuddyChatScreen(){
   var BUDDY_PAGE_SIZE=50;
   var messagesQuery=useQuery({
     queryKey:["buddy-messages",convId],
-    queryFn:function(){return apiGet("/api/conversations/"+convId+"/messages/?limit="+BUDDY_PAGE_SIZE);},
+    queryFn:function(){return apiGet(CONVERSATIONS.MESSAGES(convId)+"?limit="+BUDDY_PAGE_SIZE);},
     enabled: !!convId,
   });
 
@@ -156,7 +158,7 @@ export default function BuddyChatScreen(){
   function loadOlderBuddyMessages(){
     if(loadingMore||!hasMore||!convId)return;
     setLoadingMore(true);
-    apiGet("/api/conversations/"+convId+"/messages/?limit="+BUDDY_PAGE_SIZE+"&offset="+nextOffset)
+    apiGet(CONVERSATIONS.MESSAGES(convId)+"?limit="+BUDDY_PAGE_SIZE+"&offset="+nextOffset)
       .then(function(raw){
         var list=raw.results||raw||[];
         if(list.length>0){
@@ -175,7 +177,7 @@ export default function BuddyChatScreen(){
     if(!convId)return;
     if(markReadTimerRef.current)clearTimeout(markReadTimerRef.current);
     markReadTimerRef.current=setTimeout(function(){
-      apiPost("/api/conversations/"+convId+"/mark-read/").then(function(){
+      apiPost(CONVERSATIONS.MARK_READ(convId)).then(function(){
         queryClient.invalidateQueries({queryKey:["conversations"]});
       }).catch(function(){});
     },500);
@@ -243,7 +245,7 @@ export default function BuddyChatScreen(){
   useEffect(function(){
     if(!convId || rtmConnected)return;
     var pollInterval=setInterval(function(){
-      apiGet("/api/conversations/"+convId+"/messages/?limit="+BUDDY_PAGE_SIZE)
+      apiGet(CONVERSATIONS.MESSAGES(convId)+"?limit="+BUDDY_PAGE_SIZE)
         .then(function(raw){
           var list=raw.results||raw||[];
           if(list.length>0){
@@ -292,24 +294,24 @@ export default function BuddyChatScreen(){
   const handleScroll=()=>{if(!scrollRef.current)return;const{scrollTop,scrollHeight,clientHeight}=scrollRef.current;setShowScroll(scrollHeight-scrollTop-clientHeight>100);};
 
   var handleSend=function(){
-    var text=input.trim();if(!text||!convId)return;
+    var text=sanitizeText(input,2000);if(!text||!convId)return;
     setMessages(function(prev){return[...prev,{id:Date.now()+"u",content:text,isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[]}];});
     setInput("");if(inputRef.current)inputRef.current.style.height="auto";
     // Dual-write: send via Agora RTM for real-time delivery + REST for DB persistence
     if(rtmChannelRef.current){
       rtmChannelRef.current.sendMessage(text).catch(function(){});
     }
-    apiPost("/api/buddies/send-message/",{conversationId:convId,content:text})
+    apiPost(BUDDIES.SEND_MESSAGE,{conversationId:convId,content:text})
       .catch(function(err){showToast(err.message||"Failed to send","error");});
   };
 
   // ─── Pin / Like mutations ─────────────────────────────────────
   var pinMsgMut=useMutation({
-    mutationFn:function(msgId){return apiPost("/api/conversations/"+convId+"/pin-message/"+msgId+"/");},
+    mutationFn:function(msgId){return apiPost(CONVERSATIONS.PIN_MESSAGE(convId,msgId));},
     onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});},
   });
   var likeMsgMut=useMutation({
-    mutationFn:function(msgId){return apiPost("/api/conversations/"+convId+"/like-message/"+msgId+"/");},
+    mutationFn:function(msgId){return apiPost(CONVERSATIONS.LIKE_MESSAGE(convId,msgId));},
     onSuccess:function(){queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});},
   });
 
@@ -336,7 +338,7 @@ export default function BuddyChatScreen(){
   useEffect(function(){
     if(!searchQ||searchQ.length<2||!convId){setSearchedMsgs([]);return;}
     var t=setTimeout(function(){
-      apiGet("/api/conversations/"+convId+"/search/?q="+encodeURIComponent(searchQ))
+      apiGet(CONVERSATIONS.SEARCH(convId)+"?q="+encodeURIComponent(searchQ))
         .then(function(r){setSearchedMsgs(Array.isArray(r)?r:r.results||[]);})
         .catch(function(){setSearchedMsgs([]);});
     },300);
@@ -378,12 +380,12 @@ export default function BuddyChatScreen(){
           </div>
           <div style={{display:"flex",gap:6}}>
             <button className="dp-ib" aria-label="Call" onClick={function(){
-              apiPost("/api/conversations/calls/initiate/",{calleeId:buddyInfo&&buddyInfo.id||id,callType:"voice"}).then(function(data){
+              apiPost(CONVERSATIONS.CALLS.INITIATE,{calleeId:buddyInfo&&buddyInfo.id||id,callType:"voice"}).then(function(data){
                 navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
               }).catch(function(err){showToast(err.message||"Failed to start call","error");});
             }}><Phone size={17} strokeWidth={2}/></button>
             <button className="dp-ib" aria-label="Video call" onClick={function(){
-              apiPost("/api/conversations/calls/initiate/",{calleeId:buddyInfo&&buddyInfo.id||id,callType:"video"}).then(function(data){
+              apiPost(CONVERSATIONS.CALLS.INITIATE,{calleeId:buddyInfo&&buddyInfo.id||id,callType:"video"}).then(function(data){
                 navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
               }).catch(function(err){showToast(err.message||"Failed to start call","error");});
             }}><Video size={17} strokeWidth={2}/></button>

@@ -27,7 +27,7 @@ export default function PageTransition({ children }) {
         transition: "opacity 0.15s ease-out, transform 0.15s ease-out",
         opacity: transitionStage === "exit" ? 0 : 1,
         transform: transitionStage === "exit" ? "translateY(6px)" : "translateY(0)",
-        minHeight: "100vh",
+        height: "100%",
       }}
     >
       {displayChildren}

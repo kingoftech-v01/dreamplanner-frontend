@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "../../services/api";
 import { CONVERSATIONS } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import BottomNav from "../../components/shared/BottomNav";
@@ -48,12 +47,9 @@ export default function CallHistoryScreen() {
 
   useEffect(function () { setTimeout(function () { setMounted(true); }, 100); }, []);
 
-  var callsQuery = useQuery({
-    queryKey: ["call-history"],
-    queryFn: function () { return apiGet(CONVERSATIONS.CALLS.HISTORY); },
-  });
+  var callsInf = useInfiniteList({ queryKey: ["call-history"], url: CONVERSATIONS.CALLS.HISTORY, limit: 20 });
 
-  var calls = callsQuery.data || [];
+  var calls = callsInf.items;
 
   var iconBtnStyle = {
     width: 40, height: 40, borderRadius: 12,
@@ -102,15 +98,15 @@ export default function CallHistoryScreen() {
     return { name: name, Icon: Icon, color: color, label: label, isOutgoing: isOutgoing, buddyId: buddyId };
   }
 
-  if (callsQuery.isLoading) return (
+  if (callsInf.isLoading) return (
     <div style={{ width: "100%", padding: "80px 16px 0", display: "flex", justifyContent: "center" }}>
       <div style={{ color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)", fontSize: 14 }}>Loading calls...</div>
     </div>
   );
 
-  if (callsQuery.isError) return (
+  if (callsInf.isError) return (
     <div style={{ width: "100%", padding: "80px 16px 0", display: "flex", justifyContent: "center" }}>
-      <ErrorState message={callsQuery.error?.message} onRetry={function () { callsQuery.refetch(); }} />
+      <ErrorState message={callsInf.error?.message} onRetry={function () { callsInf.refetch(); }} />
     </div>
   );
 
@@ -235,6 +231,12 @@ export default function CallHistoryScreen() {
                 </div>
               );
             })
+          )}
+
+          {/* Infinite scroll sentinel */}
+          <div ref={callsInf.sentinelRef} />
+          {callsInf.loadingMore && (
+            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>Loading more...</div>
           )}
         </div>
       </main>

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Heart, Sparkles, RefreshCw, X, Maximize2,
   Briefcase, Palette, Heart as HeartIcon, Wallet, Brain, Users, ImageOff, Loader2
@@ -11,8 +11,9 @@ import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
-import { apiGet, apiPost } from "../../services/api";
+import { apiPost } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Vision Board Screen
@@ -69,13 +70,9 @@ export default function VisionBoardScreen() {
     } catch { return {}; }
   });
 
-  // ── Fetch all user dreams ──
-  var dreamsQuery = useQuery({
-    queryKey: ["dreams"],
-    queryFn: function () { return apiGet(DREAMS.LIST); },
-  });
-
-  var allDreams = (dreamsQuery.data && dreamsQuery.data.results) || dreamsQuery.data || [];
+  // ── Fetch all user dreams (infinite scroll) ──
+  var dreamsInf = useInfiniteList({ queryKey: ["dreams"], url: DREAMS.LIST, limit: 20 });
+  var allDreams = dreamsInf.items;
 
   // Map dreams into vision board items
   var items = allDreams.map(function (dream, i) {
@@ -144,7 +141,7 @@ export default function VisionBoardScreen() {
   };
 
   // ── Loading state ──
-  if (dreamsQuery.isLoading) {
+  if (dreamsInf.isLoading) {
     return (
       <PageLayout>
         <div style={{
@@ -179,7 +176,7 @@ export default function VisionBoardScreen() {
   }
 
   // ── Error state ──
-  if (dreamsQuery.isError) {
+  if (dreamsInf.isError) {
     return (
       <PageLayout>
         <div style={{
@@ -203,8 +200,8 @@ export default function VisionBoardScreen() {
             </span>
           </div>
           <ErrorState
-            message={dreamsQuery.error?.message || "Failed to load your dreams."}
-            onRetry={function () { dreamsQuery.refetch(); }}
+            message={dreamsInf.error?.message || "Failed to load your dreams."}
+            onRetry={function () { dreamsInf.refetch(); }}
           />
         </div>
       </PageLayout>
@@ -605,6 +602,12 @@ export default function VisionBoardScreen() {
               );
             })}
           </div>
+        )}
+
+        {/* Infinite scroll sentinel */}
+        <div ref={dreamsInf.sentinelRef} />
+        {dreamsInf.loadingMore && (
+          <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-tertiary)" }}>Loading more...</div>
         )}
 
         {/* Generate New Image FAB */}

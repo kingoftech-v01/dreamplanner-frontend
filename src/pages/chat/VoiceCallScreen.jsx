@@ -62,25 +62,41 @@ export default function VoiceCallScreen() {
     });
   }, [callId, handleCallEnd]);
 
-  // ─── CALLER flow: poll call status until accepted ─────────────
+  // ─── CALLER flow: listen for WS events + poll for acceptance ──
+  // Rejection/missed: instant via notification WebSocket (dp-call-status event)
   useEffect(function () {
-    if (answering) return; // callee flow handled below
-    // Start polling call status
+    if (answering) return;
+    function handleCallStatus(e) {
+      var data = e.detail || {};
+      if (String(data.callId) !== String(callId)) return;
+      if (data.status === "rejected" || data.status === "missed" || data.status === "cancelled") {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setCallStatus("ended");
+        setError(data.status === "rejected" ? "Call declined" : data.status === "missed" ? "No answer" : "Call ended");
+        setTimeout(function () { navigate(-1); }, 1500);
+      }
+    }
+    window.addEventListener("dp-call-status", handleCallStatus);
+    return function () { window.removeEventListener("dp-call-status", handleCallStatus); };
+  }, [callId, answering, navigate]);
+
+  // Acceptance: poll (backend doesn't broadcast accepted event via WS)
+  useEffect(function () {
+    if (answering) return;
     function checkStatus() {
       apiGet(CONVERSATIONS.CALLS.STATUS(callId)).then(function (data) {
         var s = data.status;
         if (s === "accepted") {
-          // Callee accepted — join RTC
           if (pollRef.current) clearInterval(pollRef.current);
           setCallStatus("connecting");
           joinRTC();
         } else if (s === "rejected" || s === "cancelled" || s === "missed" || s === "completed") {
+          // Already handled by WS event above, but catch edge cases
           if (pollRef.current) clearInterval(pollRef.current);
           setCallStatus("ended");
           setError(s === "rejected" ? "Call declined" : s === "missed" ? "No answer" : "Call ended");
           setTimeout(function () { navigate(-1); }, 1500);
         }
-        // else still "ringing" — keep polling
       }).catch(function () {});
     }
     checkStatus();

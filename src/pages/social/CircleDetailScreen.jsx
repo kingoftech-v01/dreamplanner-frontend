@@ -399,7 +399,7 @@ export default function CircleDetailScreen() {
               </span>
             </div>
 
-            {/* Category badge */}
+            {/* Category badge + Group Chat button */}
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span
                 style={{
@@ -414,6 +414,31 @@ export default function CircleDetailScreen() {
               >
                 {circle.category}
               </span>
+              <button
+                onClick={() => navigate("/circle-chat/" + id)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "7px 14px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                  border: "none",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#fff",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 2px 8px rgba(139,92,246,0.3)",
+                  transition: "transform 0.15s",
+                }}
+                onMouseDown={e => { e.currentTarget.style.transform = "scale(0.95)"; }}
+                onMouseUp={e => { e.currentTarget.style.transform = "scale(1)"; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
+              >
+                <MessageCircle size={14} strokeWidth={2} />
+                Group Chat
+              </button>
             </div>
 
             {/* Active challenge banner */}

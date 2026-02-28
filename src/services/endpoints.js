@@ -189,7 +189,7 @@ export var STORE = {
   ITEMS_FEATURED:           "/api/store/items/featured/",
   INVENTORY:                "/api/store/inventory/",
   EQUIP: function (id) { return "/api/store/inventory/" + id + "/equip/"; },
-  UNEQUIP: function (id) { return "/api/store/inventory/" + id + "/unequip/"; },
+  // Note: equip action toggles is_equipped — no separate unequip endpoint
   INVENTORY_HISTORY:        "/api/store/inventory/history/",
   WISHLIST:                 "/api/store/wishlist/",
   PURCHASE:                 "/api/store/purchase/",

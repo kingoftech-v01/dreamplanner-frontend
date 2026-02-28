@@ -74,7 +74,25 @@ export default function VideoCallScreen() {
     });
   }, [callId, handleCallEnd]);
 
-  // ─── CALLER flow: poll call status until accepted ─────────────
+  // ─── CALLER flow: listen for WS events + poll for acceptance ──
+  // Rejection/missed: instant via notification WebSocket (dp-call-status event)
+  useEffect(function () {
+    if (answering) return;
+    function handleCallStatus(e) {
+      var data = e.detail || {};
+      if (String(data.callId) !== String(callId)) return;
+      if (data.status === "rejected" || data.status === "missed" || data.status === "cancelled") {
+        if (pollRef.current) clearInterval(pollRef.current);
+        setCallStatus("ended");
+        setError(data.status === "rejected" ? "Call declined" : data.status === "missed" ? "No answer" : "Call ended");
+        setTimeout(function () { navigate(-1); }, 1500);
+      }
+    }
+    window.addEventListener("dp-call-status", handleCallStatus);
+    return function () { window.removeEventListener("dp-call-status", handleCallStatus); };
+  }, [callId, answering, navigate]);
+
+  // Acceptance: poll (backend doesn't broadcast accepted event via WS)
   useEffect(function () {
     if (answering) return;
     function checkStatus() {

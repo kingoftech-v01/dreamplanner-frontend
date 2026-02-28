@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPut, apiDelete } from "../../services/api";
 import { SOCIAL, DREAMS } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import PageLayout from "../../components/shared/PageLayout";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useAuth } from "../../context/AuthContext";
@@ -79,20 +80,13 @@ export default function DreamPostsFeedScreen() {
   var [visibility, setVisibility] = useState("public");
   var [openComments, setOpenComments] = useState(null);
   var [cInputs, setCInputs] = useState({});
-  var [page, setPage] = useState(1);
   var [encouragePickerFor, setEncouragePickerFor] = useState(null);
 
   useEffect(function () { var t = setTimeout(function () { setMounted(true); }, 50); return function () { clearTimeout(t); }; }, []);
 
-  // ── Feed ────────────────────────────────────────────────────
-  var feedQ = useQuery({
-    queryKey: ["dream-posts-feed", page],
-    queryFn: function () { return apiGet(SOCIAL.POSTS.FEED + "?page=" + page); },
-    keepPreviousData: true,
-  });
-  var posts = (feedQ.data && feedQ.data.results) || [];
-  var hasNext = !!(feedQ.data && feedQ.data.next);
-  var hasPrev = page > 1;
+  // ── Feed (infinite scroll) ────────────────────────────────
+  var feedInf = useInfiniteList({ queryKey: ["dream-posts-feed"], url: SOCIAL.POSTS.FEED, limit: 20 });
+  var posts = feedInf.items;
 
   // ── Dreams for create modal ─────────────────────────────────
   var dreamsQ = useQuery({
@@ -208,20 +202,20 @@ export default function DreamPostsFeedScreen() {
       </div>
 
       {/* Loading */}
-      {feedQ.isLoading && <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {feedInf.isLoading && <div style={{display:"flex",flexDirection:"column",gap:12}}>
         {[1,2,3].map(function(i){return <SkeletonCard key={i} height={180} style={{borderRadius:20}}/>;})}</div>}
 
       {/* Error */}
-      {feedQ.isError && (
+      {feedInf.isError && (
         <div style={{textAlign:"center",padding:"60px 20px",opacity:mounted?1:0,transition:"opacity 0.5s ease 0.2s"}}>
           <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text-tertiary)",fontFamily:F,marginBottom:8}}>Failed to load feed</div>
-          <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:16}}>{(feedQ.error&&feedQ.error.message)||"Something went wrong"}</div>
-          <button onClick={function(){feedQ.refetch();}} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:F}}>Try Again</button>
+          <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:16}}>{(feedInf.error&&feedInf.error.message)||"Something went wrong"}</div>
+          <button onClick={function(){feedInf.refetch();}} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:F}}>Try Again</button>
         </div>
       )}
 
       {/* Empty */}
-      {!feedQ.isLoading && !feedQ.isError && posts.length===0 && (
+      {!feedInf.isLoading && !feedInf.isError && posts.length===0 && (
         <div style={{textAlign:"center",padding:"60px 20px",opacity:mounted?1:0,transition:"opacity 0.5s ease 0.3s"}}>
           <div style={{width:72,height:72,borderRadius:20,background:"var(--dp-glass-bg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
             <Sparkles size={32} color="var(--dp-text-secondary)"/>
@@ -232,7 +226,7 @@ export default function DreamPostsFeedScreen() {
       )}
 
       {/* Posts */}
-      {!feedQ.isLoading && !feedQ.isError && posts.map(function(post, idx) {
+      {!feedInf.isLoading && !feedInf.isError && posts.map(function(post, idx) {
         var a = post.author || post.user || {};
         var aName = a.displayName || a.username || "User";
         var aInit = (aName[0]||"U").toUpperCase();
@@ -387,11 +381,11 @@ export default function DreamPostsFeedScreen() {
         );
       })}
 
-      {/* Pagination */}
-      {!feedQ.isLoading && !feedQ.isError && posts.length>0 && (
-        <div style={{display:"flex",justifyContent:"center",gap:12,padding:"8px 0 16px",opacity:mounted?1:0,transition:"opacity 0.5s ease 0.5s"}}>
-          {hasPrev && <button onClick={function(){setPage(function(p){return p-1;});}} style={{padding:"9px 20px",borderRadius:14,...glass,color:"var(--dp-text)",fontSize:13,fontWeight:600,fontFamily:F,cursor:"pointer"}}>Previous</button>}
-          {hasNext && <button onClick={function(){setPage(function(p){return p+1;});}} style={{padding:"9px 20px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",color:"#fff",fontSize:13,fontWeight:600,fontFamily:F,cursor:"pointer"}}>Next</button>}
+      {/* Infinite scroll sentinel */}
+      <div ref={feedInf.sentinelRef} />
+      {feedInf.loadingMore && (
+        <div style={{display:"flex",justifyContent:"center",padding:"16px 0"}}>
+          <div style={{fontSize:13,color:"var(--dp-text-tertiary)",fontFamily:F}}>Loading more...</div>
         </div>
       )}
 

@@ -24,13 +24,16 @@ export default function useNotificationSocket(token, opts) {
   qcRef.current = queryClient;
   var onToastRef = useRef((opts && opts.onToast) || null);
   onToastRef.current = (opts && opts.onToast) || null;
+  var onTaskReminderRef = useRef((opts && opts.onTaskReminder) || null);
+  onTaskReminderRef.current = (opts && opts.onTaskReminder) || null;
 
   var handleMessage = useCallback(function (data) {
     // ── Notification events → invalidate queries + show toast ──
     if (
       data.type === "notification" ||
       data.type === "new_notification" ||
-      data.type === "unread_count"
+      data.type === "unread_count" ||
+      data.type === "unread_count_update"
     ) {
       // Debounce invalidation — batch rapid notifications into one refetch
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -47,20 +50,48 @@ export default function useNotificationSocket(token, opts) {
         var n = data.notification;
         onToastRef.current(n.title || "New notification", n.body || n.message || "", n.data || {});
       }
+
+      // Detect task reminder / overdue / task_due notifications → trigger task call
+      if (data.type === "notification" && data.notification && onTaskReminderRef.current) {
+        var nr = data.notification;
+        var nrType = nr.notificationType || nr.notification_type || nr.type || "";
+        var nrData = nr.data || {};
+        if (nrType === "reminder" || nrType === "overdue_tasks" || nrType === "task_due" || nrType === "task_reminder") {
+          onTaskReminderRef.current({
+            id: nrData.taskId || nrData.task_id || nrData.goalId || nrData.goal_id || nr.id || "",
+            title: nr.title || nrData.title || "Task Due",
+            dream: nrData.dreamTitle || nrData.dream_title || nrData.dream || "",
+            priority: nrData.priority || "medium",
+            category: nrData.category || "personal",
+            duration: nrData.duration || "",
+          });
+        }
+      }
     }
 
     // ── notification_message events (call rejected, etc.) ──
     if (data.type === "notification_message" && data.data) {
       var d = data.data;
-      if (d.type === "call_rejected" && onToastRef.current) {
-        onToastRef.current(
-          (d.callee_name || d.calleeName || "Your buddy") + " declined your call",
-          "",
-          d
-        );
+      if (d.type === "call_rejected") {
+        if (onToastRef.current) {
+          onToastRef.current(
+            (d.callee_name || d.calleeName || "Your buddy") + " declined your call",
+            "",
+            d
+          );
+        }
+        // Dispatch instant call status event for VoiceCallScreen/VideoCallScreen
+        window.dispatchEvent(new CustomEvent("dp-call-status", {
+          detail: { callId: d.call_id || d.callId, status: "rejected" },
+        }));
       }
-      if (d.type === "missed_call" && onToastRef.current) {
-        onToastRef.current("Missed call", d.caller_name || d.callerName || "", d);
+      if (d.type === "missed_call") {
+        if (onToastRef.current) {
+          onToastRef.current("Missed call", d.caller_name || d.callerName || "", d);
+        }
+        window.dispatchEvent(new CustomEvent("dp-call-status", {
+          detail: { callId: d.call_id || d.callId, status: "missed" },
+        }));
       }
       // Refresh notifications + conversations
       qcRef.current.invalidateQueries({ queryKey: ["notifications"] });

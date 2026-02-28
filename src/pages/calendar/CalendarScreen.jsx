@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
-import { CALENDAR } from "../../services/endpoints";
+import { CALENDAR, DREAMS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { SkeletonCard } from "../../components/shared/Skeleton";
@@ -49,13 +49,55 @@ export default function CalendarScreen(){
   var endDay = getDaysInMonth(viewY, viewM);
   var endDate = viewY + "-" + String(viewM + 1).padStart(2, "0") + "-" + String(endDay).padStart(2, "0");
 
-  // ── Monthly calendar view query ──
-  var eventsQuery = useQuery({
-    queryKey: ["calendar-events", startDate, endDate],
+  // ── Normalize backend task → calendar item ──
+  function normalizeTask(t) {
+    return {
+      id: t.taskId || t.id,
+      title: t.taskTitle || t.title || "",
+      date: t.scheduledDate || t.date || "",
+      time: t.scheduledTime || t.time || "",
+      done: t.status === "completed" || t.done || t.completed || false,
+      type: "task",
+      color: TYPE_COLORS.task,
+      dream: t.dreamTitle || t.dream || "",
+      dreamId: t.dreamId || "",
+      isTask: true,
+      isDeadline: false,
+    };
+  }
+
+  // ── Normalize CalendarEvent → calendar item ──
+  function normalizeEvent(e) {
+    var start = e.startTime || e.start || "";
+    var dateStr = start ? start.split("T")[0] : "";
+    var timeStr = start && start.includes("T") ? start.split("T")[1].substring(0, 5) : "";
+    return {
+      id: e.id,
+      title: e.title || "",
+      date: dateStr,
+      time: timeStr,
+      done: e.status === "completed" || e.completed || false,
+      type: "event",
+      color: TYPE_COLORS.event,
+      dream: e.dreamTitle || e.taskTitle || "",
+      isTask: false,
+      isDeadline: false,
+    };
+  }
+
+  // ── Monthly tasks query (from dreams system) ──
+  var tasksQuery = useQuery({
+    queryKey: ["calendar-tasks", startDate, endDate],
     queryFn: function () { return apiGet(CALENDAR.VIEW + "?start=" + startDate + "&end=" + endDate); },
   });
 
-  // ── Today's events query ──
+  // ── Monthly calendar events query (CalendarEvent model) ──
+  var eventsQuery = useQuery({
+    queryKey: ["calendar-events", startDate, endDate],
+    queryFn: function () { return apiGet(CALENDAR.EVENTS + "?start_time__gte=" + startDate + "&start_time__lte=" + endDate + "T23:59:59"); },
+  });
+
+  // ── Today's tasks query ──
   var todayQuery = useQuery({
     queryKey: ["calendar-today"],
     queryFn: function () { return apiGet(CALENDAR.TODAY); },
@@ -63,64 +105,36 @@ export default function CalendarScreen(){
 
   // Show toast on query errors
   useEffect(function () {
-    if (eventsQuery.error) showToast(eventsQuery.error.message || "Failed to load calendar", "error");
-  }, [eventsQuery.error]);
+    if (tasksQuery.error) showToast(tasksQuery.error.message || "Failed to load calendar", "error");
+  }, [tasksQuery.error]);
 
   useEffect(function () {
     if (todayQuery.error) showToast(todayQuery.error.message || "Failed to load today's events", "error");
   }, [todayQuery.error]);
 
-  // Transform API events array into keyed object by "y-m-d"
-  var rawEvents = (eventsQuery.data && eventsQuery.data.results) || eventsQuery.data || [];
+  // Transform all data into keyed object by "y-m-d"
   var events = {};
-  function addEventToMap(evt, dateStr, isDeadline) {
-    var d = new Date(dateStr);
+  function addToMap(item) {
+    if (!item.date) return;
+    var d = new Date(item.date);
     if (isNaN(d.getTime())) return;
     var k = getKey(d.getFullYear(), d.getMonth(), d.getDate());
     if (!events[k]) events[k] = [];
-    var color = isDeadline ? "#F69A9A" : (evt.color || TYPE_COLORS[evt.type] || "#C4B5FD");
-    events[k].push(Object.assign({}, evt, {
-      color: color,
-      done: evt.done || evt.completed || false,
-      dream: evt.dream || evt.dreamTitle || "",
-      isDeadline: isDeadline || false,
-    }));
+    var exists = events[k].some(function (e) { return e.id === item.id; });
+    if (!exists) events[k].push(item);
   }
-  rawEvents.forEach(function (evt) {
-    var mainDate = evt.date || evt.startDate || evt.start;
-    if (evt.deadlineDate && evt.expectedDate && evt.deadlineDate !== evt.expectedDate) {
-      addEventToMap(evt, evt.expectedDate, false);
-      addEventToMap(Object.assign({}, evt, { id: evt.id + "-deadline", title: evt.title + " (Deadline)" }), evt.deadlineDate, true);
-    } else if (evt.deadlineDate) {
-      addEventToMap(evt, evt.deadlineDate, true);
-    } else if (evt.expectedDate) {
-      addEventToMap(evt, evt.expectedDate, false);
-    } else if (mainDate) {
-      addEventToMap(evt, mainDate, false);
-    }
-  });
 
-  // Transform today query data and merge into events map
+  // Add tasks from monthly view
+  var rawTasks = (tasksQuery.data && tasksQuery.data.results) || tasksQuery.data || [];
+  if (Array.isArray(rawTasks)) rawTasks.forEach(function (t) { addToMap(normalizeTask(t)); });
+
+  // Add calendar events from events endpoint
+  var rawCalEvents = (eventsQuery.data && eventsQuery.data.results) || eventsQuery.data || [];
+  if (Array.isArray(rawCalEvents)) rawCalEvents.forEach(function (e) { addToMap(normalizeEvent(e)); });
+
+  // Add today's tasks (merge without duplicates)
   var rawToday = (todayQuery.data && todayQuery.data.results) || todayQuery.data || [];
-  rawToday.forEach(function (evt) {
-    var mainDate = evt.date || evt.startDate || evt.start;
-    var dateToUse = evt.deadlineDate || evt.expectedDate || mainDate;
-    if (!dateToUse) return;
-    var d = new Date(dateToUse);
-    if (isNaN(d.getTime())) return;
-    var k = getKey(d.getFullYear(), d.getMonth(), d.getDate());
-    if (!events[k]) events[k] = [];
-    var exists = events[k].some(function (e) { return e.id === evt.id; });
-    if (!exists) {
-      var isDeadline = !!evt.deadlineDate;
-      events[k].push(Object.assign({}, evt, {
-        color: isDeadline ? "#F69A9A" : (evt.color || TYPE_COLORS[evt.type] || "#C4B5FD"),
-        done: evt.done || evt.completed || false,
-        dream: evt.dream || evt.dreamTitle || "",
-        isDeadline: isDeadline,
-      }));
-    }
-  });
+  if (Array.isArray(rawToday)) rawToday.forEach(function (t) { addToMap(normalizeTask(t)); });
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
@@ -128,52 +142,80 @@ export default function CalendarScreen(){
   const nextMonth=()=>{if(viewM===11){setViewM(0);setViewY(viewY+1);}else setViewM(viewM+1);setSelDay(1);};
   const goToday=()=>{setViewY(TODAY.y);setViewM(TODAY.m);setSelDay(null);};
 
-  // ── Mutations ──
-  var toggleMutation = useMutation({
+  // ── Helper: invalidate all calendar queries ──
+  function invalidateCalendar() {
+    queryClient.invalidateQueries({ queryKey: ["calendar-tasks"] });
+    queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+    queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
+  }
+
+  // ── Toggle task completion (Dream task via tasks API) ──
+  var toggleTaskMut = useMutation({
     mutationFn: function (params) {
-      return apiPatch(CALENDAR.EVENT_DETAIL(params.id), { completed: params.completed });
+      return apiPost(DREAMS.TASKS.COMPLETE(params.id));
     },
-    onSuccess: function () {
-      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
-    },
-    onError: function (err) { showToast(err.message || "Failed to update", "error"); },
+    onSuccess: function () { invalidateCalendar(); },
+    onError: function (err) { showToast(err.message || "Failed to update task", "error"); },
   });
 
-  var deleteMutation = useMutation({
+  // ── Toggle calendar event completion ──
+  var toggleEventMut = useMutation({
+    mutationFn: function (params) {
+      return apiPatch(CALENDAR.EVENT_DETAIL(params.id), { status: params.completed ? "completed" : "scheduled" });
+    },
+    onSuccess: function () { invalidateCalendar(); },
+    onError: function (err) { showToast(err.message || "Failed to update event", "error"); },
+  });
+
+  // ── Delete calendar event ──
+  var deleteEventMut = useMutation({
     mutationFn: function (params) {
       return apiDelete(CALENDAR.EVENT_DETAIL(params.id));
     },
-    onSuccess: function () {
-      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
-      showToast("Event deleted", "success");
-    },
+    onSuccess: function () { invalidateCalendar(); showToast("Event deleted", "success"); },
     onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
   });
 
+  // ── Create calendar event ──
   var createMutation = useMutation({
     mutationFn: function (body) {
       return apiPost(CALENDAR.EVENTS, body);
     },
-    onSuccess: function () {
-      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
-      queryClient.invalidateQueries({ queryKey: ["calendar-today"] });
-      showToast("Event created", "success");
-    },
+    onSuccess: function () { invalidateCalendar(); showToast("Event created", "success"); },
     onError: function (err) { showToast(err.message || "Failed to create event", "error"); },
   });
 
   var toggleTask = function (evtKey, evtId) {
     var evt = (events[evtKey] || []).find(function (e) { return e.id === evtId; });
     if (!evt) return;
-    toggleMutation.mutate({ id: evtId, completed: !evt.done });
+    if (evt.isTask) {
+      toggleTaskMut.mutate({ id: evtId });
+    } else {
+      toggleEventMut.mutate({ id: evtId, completed: !evt.done });
+    }
   };
 
   var deleteEvent = function (evtKey, evtId) {
-    deleteMutation.mutate({ id: evtId });
+    var evt = (events[evtKey] || []).find(function (e) { return e.id === evtId; });
+    if (evt && evt.isTask) {
+      showToast("Tasks are managed from Dream Details", "info");
+    } else {
+      deleteEventMut.mutate({ id: evtId });
+    }
     setConfirmDel(null);
   };
+
+  // ── Parse time string like "9:00 AM" to "09:00:00" ──
+  function parseTimeTo24h(timeStr) {
+    var match = (timeStr || "").match(/(\d{1,2}):(\d{2})\s*(AM|PM)?/i);
+    if (!match) return "09:00:00";
+    var h = parseInt(match[1], 10);
+    var m = match[2];
+    var ampm = (match[3] || "").toUpperCase();
+    if (ampm === "PM" && h < 12) h += 12;
+    if (ampm === "AM" && h === 12) h = 0;
+    return String(h).padStart(2, "0") + ":" + m + ":00";
+  }
 
   var handleAddEvt = function () {
     var cleanTitle = sanitizeText(newTitle, 200);
@@ -184,20 +226,25 @@ export default function CalendarScreen(){
     }
     var day = selDay || TODAY.d;
     var dateStr = viewY + "-" + String(viewM + 1).padStart(2, "0") + "-" + String(day).padStart(2, "0");
-    createMutation.mutate({ title: cleanTitle, time: newTime, date: dateStr, type: "event" });
+    var time24 = parseTimeTo24h(newTime);
+    var startTime = dateStr + "T" + time24;
+    // Default 1-hour duration
+    var endH = parseInt(time24.split(":")[0], 10) + 1;
+    var endTime = dateStr + "T" + String(endH).padStart(2, "0") + ":" + time24.split(":")[1] + ":00";
+    createMutation.mutate({ title: cleanTitle, startTime: startTime, endTime: endTime });
     setNewTitle("");
     setAddEvt(false);
   };
 
-  var isLoading = eventsQuery.isLoading || todayQuery.isLoading;
+  var isLoading = tasksQuery.isLoading || todayQuery.isLoading;
 
-  if (eventsQuery.isError && todayQuery.isError) {
+  if (tasksQuery.isError && todayQuery.isError) {
     return (
       <div style={{ width: "100%", height: "100dvh", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
-            message={(eventsQuery.error && eventsQuery.error.message) || (todayQuery.error && todayQuery.error.message) || "Failed to load calendar"}
-            onRetry={function () { eventsQuery.refetch(); todayQuery.refetch(); }}
+            message={(tasksQuery.error && tasksQuery.error.message) || (todayQuery.error && todayQuery.error.message) || "Failed to load calendar"}
+            onRetry={function () { tasksQuery.refetch(); todayQuery.refetch(); }}
           />
         </div>
         <BottomNav />

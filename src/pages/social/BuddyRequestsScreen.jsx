@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "../../services/api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiPost } from "../../services/api";
 import { BUDDIES } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
 import { ArrowLeft, UserPlus, Check, X, Users, Clock } from "lucide-react";
@@ -53,14 +54,11 @@ export default function BuddyRequestsScreen() {
     return function () { clearTimeout(timer); };
   }, []);
 
-  // ─── API Query ────────────────────────────────────────────────
+  // ─── API Query (infinite scroll) ──────────────────────────────
 
-  var historyQuery = useQuery({
-    queryKey: ["buddy-history"],
-    queryFn: function () { return apiGet(BUDDIES.HISTORY); },
-  });
+  var historyInf = useInfiniteList({ queryKey: ["buddy-history"], url: BUDDIES.HISTORY, limit: 20 });
 
-  var ALL_REQUESTS = ((historyQuery.data && historyQuery.data.results) || historyQuery.data || []).map(function (req) {
+  var ALL_REQUESTS = historyInf.items.map(function (req) {
     if (!req) return null;
     var name = req.name || req.displayName || req.username || req.buddyName || "User";
     return Object.assign({}, req, {
@@ -232,7 +230,7 @@ export default function BuddyRequestsScreen() {
 
       {/* Request List */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 32 }}>
-        {historyQuery.isLoading && [1, 2, 3].map(function (i) {
+        {historyInf.isLoading && [1, 2, 3].map(function (i) {
           return (
             <div key={i} style={{
               ...glassStyle, borderRadius: 16, padding: 16, height: 100,
@@ -241,7 +239,7 @@ export default function BuddyRequestsScreen() {
           );
         })}
 
-        {!historyQuery.isLoading && currentList.length === 0 && (
+        {!historyInf.isLoading && currentList.length === 0 && (
           <div style={{
             textAlign: "center", padding: "60px 20px",
             opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.3s",
@@ -281,7 +279,7 @@ export default function BuddyRequestsScreen() {
           </div>
         )}
 
-        {!historyQuery.isLoading && currentList.map(function (request, index) {
+        {!historyInf.isLoading && currentList.map(function (request, index) {
           if (!request) return null;
           var avatarColor = getAvatarColor(request.name);
           var isAccepted = request.status === "accepted" || actionStates[request.id] === "accepted";
@@ -429,6 +427,12 @@ export default function BuddyRequestsScreen() {
             </div>
           );
         })}
+
+        {/* Infinite scroll sentinel */}
+        <div ref={historyInf.sentinelRef} />
+        {historyInf.loadingMore && (
+          <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+        )}
       </div>
     </PageLayout>
   );

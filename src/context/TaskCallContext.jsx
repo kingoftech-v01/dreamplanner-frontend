@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useRef, useCallback, useEffect } from "react";
 import { hapticVibrate, hapticStop, acquireWakeLock as nativeAcquireWakeLock, releaseWakeLock as nativeReleaseWakeLock, isNative } from "../services/native";
 import { checkNativePushPermission, scheduleTaskCallNotification, addLocalNotificationActionListener } from "../services/nativeNotifications";
+import { apiPost } from "../services/api";
+import { CONVERSATIONS } from "../services/endpoints";
 
 var TaskCallContext = createContext(null);
 
@@ -104,17 +106,31 @@ export function TaskCallProvider({ children }) {
   useEffect(function () {
     if (!isNative) return;
 
-    var listenerPromise = addLocalNotificationActionListener(function (action) {
-      if (action.actionId === "accept") {
-        // User tapped "Start Now" — show the task call overlay
-        var taskInfo = { id: action.taskId, title: action.title, dream: action.dream };
-        pendingTaskRef.current = null;
-        setTaskData(taskInfo);
-        setIsOpen(true);
-        hapticVibrate([200, 100, 200, 100, 200]);
+    var listenerPromise = addLocalNotificationActionListener(
+      function (action) {
+        if (action.actionId === "accept") {
+          // User tapped "Start Now" — show the task call overlay
+          var taskInfo = { id: action.taskId, title: action.title, dream: action.dream };
+          pendingTaskRef.current = null;
+          setTaskData(taskInfo);
+          setIsOpen(true);
+          hapticVibrate([200, 100, 200, 100, 200]);
+        }
+        // "snooze" = dismiss, task will be rescheduled by backend
+      },
+      function (callAction) {
+        // Incoming buddy call actions from notification
+        if (callAction.actionId === "accept-call") {
+          var route = callAction.callType === "video"
+            ? "/video-call/" + callAction.callId + "?answering=true&buddyName=" + encodeURIComponent(callAction.callerName || "")
+            : "/voice-call/" + callAction.callId + "?answering=true&buddyName=" + encodeURIComponent(callAction.callerName || "");
+          window.location.hash = "#" + route;
+        }
+        if (callAction.actionId === "reject-call") {
+          apiPost(CONVERSATIONS.CALLS.REJECT(callAction.callId)).catch(function () {});
+        }
       }
-      // "snooze" = dismiss, task will be rescheduled by backend
-    });
+    );
 
     return function () {
       listenerPromise.then(function (listener) {
@@ -166,6 +182,18 @@ export function TaskCallProvider({ children }) {
       hapticVibrate([200, 100, 200, 100, 200]);
     }
   }, [notifPermission, showSystemNotification]);
+
+  // ─── Listen for dp-task-reminder custom event (from FCM/WS/scheduler) ──
+  useEffect(function () {
+    function handleTaskReminder(e) {
+      var data = e.detail || {};
+      triggerTaskCall(data);
+    }
+    window.addEventListener("dp-task-reminder", handleTaskReminder);
+    return function () {
+      window.removeEventListener("dp-task-reminder", handleTaskReminder);
+    };
+  }, [triggerTaskCall]);
 
   var dismissTaskCall = useCallback(function () {
     if (autoCloseRef.current) { clearTimeout(autoCloseRef.current); autoCloseRef.current = null; }

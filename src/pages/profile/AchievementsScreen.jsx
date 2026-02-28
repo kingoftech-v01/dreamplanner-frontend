@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "../../services/api";
 import { USERS } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import {
   ArrowLeft, Award, Flame, Star, Target, Heart, Sparkles,
   Sun, Moon, Users, CheckCircle, Zap, Eye, BookOpen, Trophy,
@@ -60,12 +61,7 @@ export default function AchievementsScreen() {
   const { resolved } = useTheme(); const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
 
-  var achievementsQuery = useQuery({
-    queryKey: ["achievements"],
-    queryFn: function () {
-      return apiGet(USERS.ACHIEVEMENTS);
-    },
-  });
+  var achievementsInf = useInfiniteList({ queryKey: ["achievements"], url: USERS.ACHIEVEMENTS, limit: 20 });
 
   var gamifQuery = useQuery({
     queryKey: ["gamification"],
@@ -73,12 +69,7 @@ export default function AchievementsScreen() {
   });
   var streak = (gamifQuery.data && (gamifQuery.data.currentStreak || gamifQuery.data.streak)) || 0;
 
-  var rawData = achievementsQuery.data;
-  var achievements = Array.isArray(rawData)
-    ? rawData.map(normalizeAchievement)
-    : Array.isArray(rawData && rawData.results)
-      ? rawData.results.map(normalizeAchievement)
-      : [];
+  var achievements = achievementsInf.items.map(normalizeAchievement);
 
   var unlockedCount = achievements.filter(function (a) { return a.unlocked; }).length;
   var totalXP = achievements.filter(function (a) { return a.unlocked; }).reduce(function (s, a) { return s + a.xp; }, 0);
@@ -91,12 +82,12 @@ export default function AchievementsScreen() {
     transition: `all 0.5s cubic-bezier(0.4,0,0.2,1) ${i * 60}ms`,
   });
 
-  if (achievementsQuery.isError) {
+  if (achievementsInf.isError) {
     return (
       <PageLayout>
         <ErrorState
-          message={(achievementsQuery.error && achievementsQuery.error.message) || "Failed to load achievements"}
-          onRetry={function () { achievementsQuery.refetch(); }}
+          message={(achievementsInf.error && achievementsInf.error.message) || "Failed to load achievements"}
+          onRetry={function () { achievementsInf.refetch(); }}
         />
       </PageLayout>
     );
@@ -140,7 +131,7 @@ export default function AchievementsScreen() {
         </div>
 
         {/* Loading State */}
-        {achievementsQuery.isLoading && (
+        {achievementsInf.isLoading && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[1, 2, 3, 4, 5, 6].map(function (n) {
               return <SkeletonCard key={n} height={180} style={{ borderRadius: 18 }} />;
@@ -149,7 +140,7 @@ export default function AchievementsScreen() {
         )}
 
         {/* Empty State */}
-        {!achievementsQuery.isLoading && achievements.length === 0 && (
+        {!achievementsInf.isLoading && achievements.length === 0 && (
           <div style={{
             textAlign: "center", padding: "48px 24px",
             background: "var(--dp-glass-bg)", borderRadius: 20,
@@ -168,7 +159,7 @@ export default function AchievementsScreen() {
         )}
 
         {/* Unlocked Section */}
-        {!achievementsQuery.isLoading && achievements.filter(function (a) { return a.unlocked; }).length > 0 && (
+        {!achievementsInf.isLoading && achievements.filter(function (a) { return a.unlocked; }).length > 0 && (
           <>
             <div style={{ marginBottom: 8, ...stagger(2) }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
@@ -223,7 +214,7 @@ export default function AchievementsScreen() {
         )}
 
         {/* Locked Section */}
-        {!achievementsQuery.isLoading && achievements.filter(function (a) { return !a.unlocked; }).length > 0 && (
+        {!achievementsInf.isLoading && achievements.filter(function (a) { return !a.unlocked; }).length > 0 && (
           <>
             <div style={{ marginBottom: 8, ...stagger(3 + achievements.filter(function (a) { return a.unlocked; }).length) }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
@@ -282,6 +273,12 @@ export default function AchievementsScreen() {
               })}
             </div>
           </>
+        )}
+
+        {/* Infinite scroll sentinel */}
+        <div ref={achievementsInf.sentinelRef} />
+        {achievementsInf.loadingMore && (
+          <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
         )}
       </div>
     </PageLayout>

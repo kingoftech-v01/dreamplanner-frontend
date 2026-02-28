@@ -1,11 +1,10 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Share2, Target, Calendar, ChevronRight } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
-import { apiGet } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 import { SkeletonCard } from "../../components/shared/Skeleton";
+import useInfiniteList from "../../hooks/useInfiniteList";
 
 var glass = {
   background: "var(--dp-glass-bg)",
@@ -26,12 +25,8 @@ export default function SharedDreamsScreen() {
     return function () { clearTimeout(timer); };
   }, []);
 
-  var query = useQuery({
-    queryKey: ["shared-dreams"],
-    queryFn: function () { return apiGet(DREAMS.SHARED_WITH_ME); },
-  });
-
-  var dreams = query.data?.results || query.data || [];
+  var sharedInf = useInfiniteList({ queryKey: ["shared-dreams"], url: DREAMS.SHARED_WITH_ME, limit: 20 });
+  var dreams = sharedInf.items;
 
   var stagger = function (index) {
     return {
@@ -42,7 +37,7 @@ export default function SharedDreamsScreen() {
   };
 
   /* ─── Loading ──────────────────────────────────────── */
-  if (query.isLoading) {
+  if (sharedInf.isLoading) {
     return (
       <PageLayout>
         <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", paddingTop: 20, paddingBottom: 24 }}>
@@ -190,6 +185,10 @@ export default function SharedDreamsScreen() {
               </div>
             );
           })}
+          <div ref={sharedInf.sentinelRef} />
+          {sharedInf.loadingMore && (
+            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-tertiary)", fontFamily: font }}>Loading more...</div>
+          )}
         </div>
       </div>
     </PageLayout>

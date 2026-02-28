@@ -1,8 +1,9 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost, apiDelete } from "../../services/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { apiPost, apiDelete } from "../../services/api";
 import { SOCIAL } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Check, X, Clock, UserX, Users, Inbox } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
@@ -29,17 +30,10 @@ export default function FriendRequestsScreen() {
   const [receivedStates, setReceivedStates] = useState({});
   const [cancelledSent, setCancelledSent] = useState(new Set());
 
-  var receivedQuery = useQuery({
-    queryKey: ["friend-requests-received"],
-    queryFn: function () { return apiGet(SOCIAL.FRIENDS.PENDING); },
-  });
+  var receivedInf = useInfiniteList({ queryKey: ["friend-requests-received"], url: SOCIAL.FRIENDS.PENDING, limit: 20 });
+  var sentInf = useInfiniteList({ queryKey: ["friend-requests-sent"], url: SOCIAL.FRIENDS.SENT, limit: 20 });
 
-  var sentQuery = useQuery({
-    queryKey: ["friend-requests-sent"],
-    queryFn: function () { return apiGet(SOCIAL.FRIENDS.SENT); },
-  });
-
-  var RECEIVED_REQUESTS = ((receivedQuery.data && receivedQuery.data.results) || receivedQuery.data || []).map(function (r) {
+  var RECEIVED_REQUESTS = receivedInf.items.map(function (r) {
     var s = r.sender || {};
     var sName = s.displayName || s.username || r.name || r.displayName || r.username || "User";
     return Object.assign({}, r, {
@@ -52,7 +46,7 @@ export default function FriendRequestsScreen() {
     });
   });
 
-  var SENT_REQUESTS = ((sentQuery.data && sentQuery.data.results) || sentQuery.data || []).map(function (r) {
+  var SENT_REQUESTS = sentInf.items.map(function (r) {
     var recv = r.receiver || r.sender || {};
     var rName = recv.displayName || recv.username || r.name || r.displayName || r.username || "User";
     return Object.assign({}, r, {
@@ -115,12 +109,12 @@ export default function FriendRequestsScreen() {
 
   const activeSentRequests = SENT_REQUESTS.filter((r) => !cancelledSent.has(r.id));
 
-  if (receivedQuery.isError || sentQuery.isError) {
+  if (receivedInf.isError || sentInf.isError) {
     return (
       <PageLayout>
         <ErrorState
-          message={((receivedQuery.error && receivedQuery.error.message) || (sentQuery.error && sentQuery.error.message)) || "Failed to load friend requests"}
-          onRetry={function () { receivedQuery.refetch(); sentQuery.refetch(); }}
+          message={((receivedInf.error && receivedInf.error.message) || (sentInf.error && sentInf.error.message)) || "Failed to load friend requests"}
+          onRetry={function () { receivedInf.refetch(); sentInf.refetch(); }}
         />
       </PageLayout>
     );
@@ -216,10 +210,10 @@ export default function FriendRequestsScreen() {
       {/* Received Tab */}
       {activeTab === "received" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {receivedQuery.isLoading && [1, 2, 3].map(function (i) {
+          {receivedInf.isLoading && [1, 2, 3].map(function (i) {
             return <SkeletonCard key={i} height={110} style={{ borderRadius: 16 }} />;
           })}
-          {!receivedQuery.isLoading && RECEIVED_REQUESTS.map((request, index) => {
+          {!receivedInf.isLoading && RECEIVED_REQUESTS.map((request, index) => {
             const state = receivedStates[request.id];
             const avatarColor = getAvatarColor(request.name);
 
@@ -353,8 +347,14 @@ export default function FriendRequestsScreen() {
             );
           })}
 
+          {/* Infinite scroll sentinel for received */}
+          <div ref={receivedInf.sentinelRef} />
+          {receivedInf.loadingMore && (
+            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+          )}
+
           {/* Empty received state */}
-          {!receivedQuery.isLoading && RECEIVED_REQUESTS.length === 0 && (
+          {!receivedInf.isLoading && RECEIVED_REQUESTS.length === 0 && (
             <div style={{
               textAlign: "center", padding: "60px 20px",
               opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.3s",
@@ -387,10 +387,10 @@ export default function FriendRequestsScreen() {
       {/* Sent Tab */}
       {activeTab === "sent" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {sentQuery.isLoading && [1, 2, 3].map(function (i) {
+          {sentInf.isLoading && [1, 2, 3].map(function (i) {
             return <SkeletonCard key={i} height={80} style={{ borderRadius: 16 }} />;
           })}
-          {!sentQuery.isLoading && activeSentRequests.map((request, index) => {
+          {!sentInf.isLoading && activeSentRequests.map((request, index) => {
             const avatarColor = getAvatarColor(request.name);
 
             return (
@@ -467,8 +467,14 @@ export default function FriendRequestsScreen() {
             );
           })}
 
+          {/* Infinite scroll sentinel for sent */}
+          <div ref={sentInf.sentinelRef} />
+          {sentInf.loadingMore && (
+            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+          )}
+
           {/* Empty sent state */}
-          {!sentQuery.isLoading && activeSentRequests.length === 0 && (
+          {!sentInf.isLoading && activeSentRequests.length === 0 && (
             <div style={{
               textAlign: "center", padding: "60px 20px",
               opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.3s",

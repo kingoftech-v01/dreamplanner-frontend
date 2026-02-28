@@ -5,6 +5,13 @@
  * foreground like a phone call when a task is due.
  * ═══════════════════════════════════════════════════════════════════ */
 
+/* ═══ Skip waiting — allow new SW to activate on demand ═══ */
+self.addEventListener("message", function (event) {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
 /* ═══ Push event — show system notification ═══ */
 self.addEventListener("push", function (event) {
   var data = {};

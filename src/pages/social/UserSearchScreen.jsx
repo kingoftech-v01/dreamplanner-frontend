@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
 import { SOCIAL } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Search, X, UserPlus, Check, Users } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
@@ -37,9 +38,11 @@ export default function UserSearchScreen() {
     return function () { clearTimeout(timer); };
   }, [query]);
 
-  var searchQuery = useQuery({
+  var sanitizedQ = sanitizeSearch(debouncedQuery);
+  var searchInf = useInfiniteList({
     queryKey: ["user-search", debouncedQuery],
-    queryFn: function () { var q = sanitizeSearch(debouncedQuery); return apiGet(SOCIAL.USER_SEARCH + "?q=" + encodeURIComponent(q)); },
+    url: SOCIAL.USER_SEARCH + "?q=" + encodeURIComponent(sanitizedQ),
+    limit: 20,
     enabled: debouncedQuery.length > 0,
   });
 
@@ -48,30 +51,26 @@ export default function UserSearchScreen() {
     queryFn: function () { return apiGet(SOCIAL.RECENT_SEARCHES.LIST); },
   });
 
-  var suggestionsQuery = useQuery({
+  var suggestionsInf = useInfiniteList({
     queryKey: ["follow-suggestions"],
-    queryFn: function () { return apiGet(SOCIAL.FOLLOW_SUGGESTIONS); },
+    url: SOCIAL.FOLLOW_SUGGESTIONS,
+    limit: 20,
   });
 
-  var searchResults = ((searchQuery.data && searchQuery.data.results) || searchQuery.data || []).map(function (u) {
+  var normalizeUser = function (u) {
     return Object.assign({}, u, {
       name: u.name || u.displayName || u.username || "User",
       initial: u.initial || (u.name || u.displayName || u.username || "U")[0].toUpperCase(),
       level: u.level || 1,
       mutualFriends: u.mutualFriends || 0,
     });
-  });
+  };
+
+  var searchResults = searchInf.items.map(normalizeUser);
 
   var recentSearches = (recentSearchesQuery.data && (recentSearchesQuery.data.recentSearches || recentSearchesQuery.data.results)) || recentSearchesQuery.data || [];
 
-  var SUGGESTED_PEOPLE = ((suggestionsQuery.data && suggestionsQuery.data.results) || suggestionsQuery.data || []).map(function (u) {
-    return Object.assign({}, u, {
-      name: u.name || u.displayName || u.username || "User",
-      initial: u.initial || (u.name || u.displayName || u.username || "U")[0].toUpperCase(),
-      level: u.level || 1,
-      mutualFriends: u.mutualFriends || 0,
-    });
-  });
+  var SUGGESTED_PEOPLE = suggestionsInf.items.map(normalizeUser);
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -274,6 +273,10 @@ export default function UserSearchScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {searchResults.map((user, i) => renderUserCard(user, i, 0.15))}
           </div>
+          <div ref={searchInf.sentinelRef} />
+          {searchInf.loadingMore && (
+            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+          )}
         </div>
       )}
 
@@ -380,6 +383,10 @@ export default function UserSearchScreen() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {SUGGESTED_PEOPLE.map((user, i) => renderUserCard(user, i, 0.3))}
           </div>
+          <div ref={suggestionsInf.sentinelRef} />
+          {suggestionsInf.loadingMore && (
+            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+          )}
         </div>
       )}
     </PageLayout>

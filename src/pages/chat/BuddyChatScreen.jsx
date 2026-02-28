@@ -189,79 +189,72 @@ export default function BuddyChatScreen(){
     return function(){if(markReadTimerRef.current)clearTimeout(markReadTimerRef.current);};
   },[convId]);
 
-  // ─── Agora RTM for real-time P2P ───────────────────────────────
+  // ─── Agora RTM for real-time P2P (instantaneous, no polling) ──
   var typingTimerRef=useRef(null);
-  var [rtmConnected, setRtmConnected] = useState(false);
+  var rtmJoinAttemptRef=useRef(0);
   useEffect(function(){
     if(!convId)return;
     var cancelled=false;
     var rtmHandle=null;
+    var retryTimer=null;
 
-    joinRTMChannel(convId,{
-      onMessage:function(parsed,memberId){
-        if(cancelled)return;
-        // Add message directly to state for instant display
-        setMessages(function(prev){
-          // Deduplicate by checking if content+timestamp already exists
-          var isDupe=prev.some(function(m){return !m.isUser && m.content===parsed.content && Math.abs((m.time?m.time.getTime():0)-(parsed.ts||0))<2000;});
-          if(isDupe)return prev;
-          return[...prev,{id:Date.now()+"r",content:parsed.content,isUser:false,time:new Date(parsed.ts||Date.now()),pinned:false,liked:false,read:true,reactions:[]}];
-        });
-        // Also refresh from DB to get server IDs
+    function attemptJoin(){
+      if(cancelled)return;
+      joinRTMChannel(convId,{
+        onMessage:function(parsed,memberId){
+          if(cancelled)return;
+          // Add message directly to state for instant display
+          setMessages(function(prev){
+            // Deduplicate by checking if content+timestamp already exists
+            var isDupe=prev.some(function(m){return !m.isUser && m.content===parsed.content && Math.abs((m.time?m.time.getTime():0)-(parsed.ts||0))<2000;});
+            if(isDupe)return prev;
+            return[...prev,{id:Date.now()+"r",content:parsed.content,isUser:false,time:new Date(parsed.ts||Date.now()),pinned:false,liked:false,read:true,reactions:[]}];
+          });
+          // Also refresh from DB to get server IDs
+          queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
+          setBuddyTyping(false);
+          if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
+          // Mark as read since user is viewing the chat
+          markAsRead();
+        },
+        onTyping:function(memberId,isTyping){
+          if(cancelled)return;
+          setBuddyTyping(isTyping);
+          if(typingTimerRef.current)clearTimeout(typingTimerRef.current);
+          if(isTyping){
+            typingTimerRef.current=setTimeout(function(){setBuddyTyping(false);},3000);
+          }
+        },
+      }).then(function(handle){
+        if(cancelled){handle.leave();return;}
+        rtmHandle=handle;
+        rtmChannelRef.current=handle;
+        rtmJoinAttemptRef.current=0;
+        // Catch up on any messages missed while disconnected
         queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
-        setBuddyTyping(false);
-        if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
-        // Mark as read since user is viewing the chat
-        markAsRead();
-      },
-      onTyping:function(memberId,isTyping){
-        if(cancelled)return;
-        setBuddyTyping(isTyping);
-        if(typingTimerRef.current)clearTimeout(typingTimerRef.current);
-        if(isTyping){
-          typingTimerRef.current=setTimeout(function(){setBuddyTyping(false);},3000);
+      }).catch(function(err){
+        console.error("RTM channel join failed:",err);
+        rtmChannelRef.current=null;
+        // Auto-retry with exponential backoff (max 30s)
+        if(!cancelled){
+          var attempt=rtmJoinAttemptRef.current;
+          rtmJoinAttemptRef.current=attempt+1;
+          var delay=Math.min(1000*Math.pow(2,attempt),30000)+Math.floor(Math.random()*2000);
+          retryTimer=setTimeout(attemptJoin,delay);
         }
-      },
-    }).then(function(handle){
-      if(cancelled){handle.leave();return;}
-      rtmHandle=handle;
-      rtmChannelRef.current=handle;
-      setRtmConnected(true);
-    }).catch(function(err){
-      console.error("RTM channel join failed:",err);
-      setRtmConnected(false);
-    });
+      });
+    }
+
+    attemptJoin();
 
     return function(){
       cancelled=true;
+      if(retryTimer)clearTimeout(retryTimer);
       if(rtmHandle){rtmHandle.leave();}
       rtmChannelRef.current=null;
-      setRtmConnected(false);
       if(typingTimerRef.current){clearTimeout(typingTimerRef.current);typingTimerRef.current=null;}
     };
   },[convId]);
-
-  // ─── Polling fallback when RTM is not connected ────────────────
-  useEffect(function(){
-    if(!convId || rtmConnected)return;
-    var pollInterval=setInterval(function(){
-      apiGet(CONVERSATIONS.MESSAGES(convId)+"?limit="+BUDDY_PAGE_SIZE)
-        .then(function(raw){
-          var list=raw.results||raw||[];
-          if(list.length>0){
-            setMessages(function(prev){
-              var mapped=list.map(mapBuddyMsg);
-              // Merge: keep optimistic local msgs, add new server msgs
-              var serverIds=new Set(mapped.map(function(m){return m.id;}));
-              var localOnly=prev.filter(function(m){return !serverIds.has(m.id)&&(m.id+"").match(/^\d+[ur]$/);});
-              return mapped.concat(localOnly);
-            });
-          }
-        })
-        .catch(function(){});
-    },3000);
-    return function(){clearInterval(pollInterval);};
-  },[convId,rtmConnected]);
 
   // Long-press handlers
   const handlePointerDown=(msgId)=>{

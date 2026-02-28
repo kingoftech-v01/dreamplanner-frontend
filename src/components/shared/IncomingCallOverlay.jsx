@@ -4,6 +4,8 @@ import { Phone, PhoneOff, Video } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { apiGet, apiPost } from "../../services/api";
 import { CONVERSATIONS } from "../../services/endpoints";
+import { isNative } from "../../services/native";
+import { scheduleIncomingCallNotification } from "../../services/nativeNotifications";
 
 /**
  * Full-screen overlay for incoming calls.
@@ -28,6 +30,10 @@ export default function IncomingCallOverlay() {
       if (window.location.hash.indexOf("/voice-call/") !== -1 ||
           window.location.hash.indexOf("/video-call/") !== -1) return;
       seenCallIds.current[data.callId] = true;
+      // On native: schedule full-screen intent notification (appears over other apps + lock screen)
+      if (isNative) {
+        scheduleIncomingCallNotification(data);
+      }
       setCall({
         callId: data.callId,
         callerName: data.callerName || "Unknown",
@@ -42,40 +48,32 @@ export default function IncomingCallOverlay() {
     };
   }, []);
 
-  // ─── Polling fallback — check for incoming ringing calls ──
+  // ─── One-time check on mount — catch calls missed while WS was disconnected
   useEffect(function () {
     if (!isAuthenticated) return;
+    var hash = window.location.hash || "";
+    if (hash.indexOf("/voice-call/") !== -1 || hash.indexOf("/video-call/") !== -1) return;
 
-    var interval = setInterval(function () {
-      // Don't poll if we're already showing a call or on a call screen
-      if (call) return;
-      var hash = window.location.hash || "";
-      if (hash.indexOf("/voice-call/") !== -1 || hash.indexOf("/video-call/") !== -1) return;
-
-      apiGet(CONVERSATIONS.CALLS.INCOMING).then(function (data) {
-        var list = data || [];
-        if (list.length === 0) return;
-        // Take the most recent ringing call we haven't dismissed
-        var incoming = null;
-        for (var i = 0; i < list.length; i++) {
-          if (!seenCallIds.current[list[i].callId]) {
-            incoming = list[i];
-            break;
-          }
+    apiGet(CONVERSATIONS.CALLS.INCOMING).then(function (data) {
+      var list = data || [];
+      if (list.length === 0) return;
+      var incoming = null;
+      for (var i = 0; i < list.length; i++) {
+        if (!seenCallIds.current[list[i].callId]) {
+          incoming = list[i];
+          break;
         }
-        if (!incoming) return;
-        seenCallIds.current[incoming.callId] = true;
-        setCall({
-          callId: incoming.callId,
-          callerName: incoming.callerName || "Unknown",
-          callType: incoming.callType || "voice",
-          callerId: incoming.callerId,
-        });
-      }).catch(function () {});
-    }, 3000);
-
-    return function () { clearInterval(interval); };
-  }, [isAuthenticated, call]);
+      }
+      if (!incoming) return;
+      seenCallIds.current[incoming.callId] = true;
+      setCall({
+        callId: incoming.callId,
+        callerName: incoming.callerName || "Unknown",
+        callType: incoming.callType || "voice",
+        callerId: incoming.callerId,
+      });
+    }).catch(function () {});
+  }, [isAuthenticated]);
 
   // Clear stale seen IDs periodically (avoid memory leak)
   useEffect(function () {

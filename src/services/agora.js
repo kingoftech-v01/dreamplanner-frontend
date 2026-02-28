@@ -133,8 +133,10 @@ export async function joinRTMChannel(channelName, handlers) {
 
   await channel.join();
 
-  function sendMessage(text) {
-    var payload = JSON.stringify({ content: text, ts: Date.now() });
+  function sendMessage(text, extra) {
+    var data = { content: text, ts: Date.now() };
+    if (extra) { for (var k in extra) { data[k] = extra[k]; } }
+    var payload = JSON.stringify(data);
     return channel.sendMessage({ text: payload });
   }
 

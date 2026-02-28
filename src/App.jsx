@@ -10,7 +10,12 @@ import IncomingCallOverlay from "./components/shared/IncomingCallOverlay";
 import ProtectedRoute from "./components/shared/ProtectedRoute";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./context/ToastContext";
+import { useTaskCall } from "./context/TaskCallContext";
 import useNotificationSocket from "./hooks/useNotificationSocket";
+import { Capacitor } from "@capacitor/core";
+import { apiGet } from "./services/api";
+import { CALENDAR } from "./services/endpoints";
+import { scheduleTaskNotifications } from "./services/taskScheduler";
 
 // Always loaded — core screen
 import HomeScreen from "./pages/home/HomeScreen";
@@ -52,6 +57,7 @@ var CirclesScreen = lazy(function () { return import("./pages/social/CirclesScre
 var CircleDetailScreen = lazy(function () { return import("./pages/social/CircleDetailScreen"); });
 var CircleCreateScreen = lazy(function () { return import("./pages/social/CircleCreateScreen"); });
 var CircleInvitationsScreen = lazy(function () { return import("./pages/social/CircleInvitationsScreen"); });
+var CircleChatScreen = lazy(function () { return import("./pages/chat/CircleChatScreen"); });
 var SeasonsScreen = lazy(function () { return import("./pages/social/SeasonsScreen"); });
 var BuddyRequestsScreen = lazy(function () { return import("./pages/social/BuddyRequestsScreen"); });
 var DreamPostsFeedScreen = lazy(function () { return import("./pages/social/DreamPostsFeedScreen"); });
@@ -106,6 +112,7 @@ function P({ children }) {
 function NotificationSocketBridge() {
   var { token } = useAuth();
   var { showToast } = useToast();
+  var { triggerTaskCall } = useTaskCall();
 
   useNotificationSocket(token, {
     onToast: function (title, body, data) {
@@ -113,6 +120,9 @@ function NotificationSocketBridge() {
       // Use "info" for generic, "warning" for calls
       var type = (data && (data.type === "call_rejected" || data.type === "missed_call")) ? "warning" : "info";
       showToast(msg, type, 4000);
+    },
+    onTaskReminder: function (taskData) {
+      triggerTaskCall(taskData);
     },
   });
   return null;
@@ -144,9 +154,10 @@ function AgoraRTMBridge() {
   return null;
 }
 
-// Wire native push notifications to dispatch incoming call events + route navigation
+// Wire native push notifications to dispatch incoming call events + task reminders + route navigation
 function NativePushBridge() {
   var { isAuthenticated } = useAuth();
+  var { triggerTaskCall } = useTaskCall();
 
   useEffect(function () {
     if (!isAuthenticated) return;
@@ -166,6 +177,18 @@ function NativePushBridge() {
                 callerId: data.callerId || data.caller_id,
               },
             }));
+          }
+          // Task reminder from push notification
+          var nType = data.notification_type || data.type || "";
+          if (nType === "reminder" || nType === "task_due" || nType === "overdue_tasks" || nType === "task_reminder") {
+            triggerTaskCall({
+              id: data.task_id || data.goal_id || data.notification_id || "",
+              title: notification.title || data.title || "Task Due",
+              dream: data.dream || data.dream_title || "",
+              priority: data.priority || "medium",
+              category: data.category || "personal",
+              duration: data.duration || "",
+            });
           }
         },
         onAction: function (action) {
@@ -194,6 +217,46 @@ function NativePushBridge() {
     return function () {
       if (cleanupRef && cleanupRef.remove) cleanupRef.remove();
     };
+  }, [isAuthenticated, triggerTaskCall]);
+
+  return null;
+}
+
+// Schedule local notifications for today's tasks on login + app resume (native only)
+function TaskSchedulerBridge() {
+  var { isAuthenticated } = useAuth();
+
+  useEffect(function () {
+    if (!isAuthenticated || !Capacitor.isNativePlatform()) return;
+
+    function scheduleTasks() {
+      apiGet(CALENDAR.TODAY).then(function (data) {
+        var tasks = (data && data.results) || (Array.isArray(data) ? data : []);
+        var normalized = [];
+        for (var i = 0; i < tasks.length; i++) {
+          var t = tasks[i];
+          normalized.push({
+            id: t.id,
+            title: t.title || t.name || "",
+            dream: t.dream || t.dreamTitle || t.dream_title || "",
+            startTime: t.startTime || t.start_time || t.time || "",
+            date: t.date || t.scheduledDate || t.scheduled_date || "",
+            done: t.done || t.completed || t.status === "completed",
+            priority: t.priority || "medium",
+            category: t.category || "personal",
+            durationMins: t.durationMins || t.duration_mins || t.duration || "",
+          });
+        }
+        scheduleTaskNotifications(normalized);
+      }).catch(function () {});
+    }
+
+    scheduleTasks();
+
+    // Re-schedule when app resumes from background
+    function handleResume() { scheduleTasks(); }
+    window.addEventListener("dp-app-resume", handleResume);
+    return function () { window.removeEventListener("dp-app-resume", handleResume); };
   }, [isAuthenticated]);
 
   return null;
@@ -217,6 +280,7 @@ export default function App() {
     <NotificationSocketBridge />
     <AgoraRTMBridge />
     <NativePushBridge />
+    <TaskSchedulerBridge />
     <ErrorBoundary>
     <Suspense fallback={<LoadingFallback />}>
     <PageTransition>
@@ -264,6 +328,7 @@ export default function App() {
         <Route path="/circle/:id" element={<P><CircleDetailScreen /></P>} />
         <Route path="/circles/create" element={<P><CircleCreateScreen /></P>} />
         <Route path="/circle/:id/invitations" element={<P><CircleInvitationsScreen /></P>} />
+        <Route path="/circle-chat/:id" element={<P><CircleChatScreen /></P>} />
         <Route path="/seasons" element={<P><SeasonsScreen /></P>} />
         <Route path="/buddy-requests" element={<P><BuddyRequestsScreen /></P>} />
         <Route path="/social/feed" element={<P><DreamPostsFeedScreen /></P>} />

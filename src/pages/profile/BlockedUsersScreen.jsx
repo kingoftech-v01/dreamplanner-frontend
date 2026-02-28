@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ShieldOff, UserX } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
-import { apiGet, apiDelete } from "../../services/api";
+import { apiDelete } from "../../services/api";
 import { SOCIAL } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 
 var glass = {
   background: "var(--dp-glass-bg)", backdropFilter: "blur(40px)",
@@ -44,12 +45,8 @@ export default function BlockedUsersScreen() {
     return function () { clearTimeout(t); };
   }, []);
 
-  var blockedQuery = useQuery({
-    queryKey: ["blocked-users"],
-    queryFn: function () { return apiGet(SOCIAL.BLOCKED); },
-  });
-
-  var users = (blockedQuery.data && blockedQuery.data.results) || [];
+  var blockedInf = useInfiniteList({ queryKey: ["blocked-users"], url: SOCIAL.BLOCKED, limit: 20 });
+  var users = blockedInf.items;
 
   var unblockMutation = useMutation({
     mutationFn: function (userId) { return apiDelete(SOCIAL.UNBLOCK(userId)); },
@@ -90,14 +87,14 @@ export default function BlockedUsersScreen() {
       </div>
 
       {/* Loading */}
-      {blockedQuery.isLoading && (
+      {blockedInf.isLoading && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[0, 1, 2].map(function (i) { return <SkeletonRow key={i} i={i} mounted={mounted} />; })}
         </div>
       )}
 
       {/* Empty state */}
-      {!blockedQuery.isLoading && users.length === 0 && (
+      {!blockedInf.isLoading && users.length === 0 && (
         <div style={{
           ...glass, padding: "48px 24px", display: "flex", flexDirection: "column",
           alignItems: "center", textAlign: "center", ...stagger(1),
@@ -119,7 +116,7 @@ export default function BlockedUsersScreen() {
       )}
 
       {/* List */}
-      {!blockedQuery.isLoading && users.length > 0 && (
+      {!blockedInf.isLoading && users.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {users.map(function (user, index) {
             var initial = (user.displayName || user.username || "?").charAt(0).toUpperCase();
@@ -171,6 +168,12 @@ export default function BlockedUsersScreen() {
             );
           })}
         </div>
+      )}
+
+      {/* Infinite scroll sentinel */}
+      <div ref={blockedInf.sentinelRef} />
+      {blockedInf.loadingMore && (
+        <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-secondary)", ...font }}>Loading more...</div>
       )}
 
       <div style={{ height: 32 }} />

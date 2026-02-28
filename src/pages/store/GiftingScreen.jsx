@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
 import { STORE, SOCIAL } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -42,17 +43,13 @@ export default function GiftingScreen() {
     return function () { clearTimeout(timer); };
   }, []);
 
-  // ── Gifts query ──
-  var giftsQuery = useQuery({
-    queryKey: ["gifts"],
-    queryFn: function () { return apiGet(STORE.GIFTS); },
-  });
-
-  var rawGifts = (giftsQuery.data && giftsQuery.data.results) || giftsQuery.data || [];
+  // ── Gifts query (infinite scroll) ──
+  var giftsInf = useInfiniteList({ queryKey: ["gifts"], url: STORE.GIFTS, limit: 20 });
+  var rawGifts = giftsInf.items;
 
   useEffect(function () {
-    if (giftsQuery.error) showToast(giftsQuery.error.message || "Failed to load gifts", "error");
-  }, [giftsQuery.error]);
+    if (giftsInf.error) showToast(giftsInf.error.message || "Failed to load gifts", "error");
+  }, [giftsInf.error]);
 
   // ── Store items query (for send gift modal) ──
   var itemsQuery = useQuery({
@@ -227,7 +224,7 @@ export default function GiftingScreen() {
       </div>
 
       {/* Loading */}
-      {giftsQuery.isLoading && (
+      {giftsInf.isLoading && (
         <div className={`dp-a ${mounted ? "dp-s" : ""}`} style={{ animationDelay: "80ms" }}>
           {[0, 1, 2].map(function (i) {
             return (
@@ -260,7 +257,7 @@ export default function GiftingScreen() {
       )}
 
       {/* Gift Cards */}
-      {!giftsQuery.isLoading && displayGifts.map(function (gift, index) {
+      {!giftsInf.isLoading && displayGifts.map(function (gift, index) {
         var isClaimed = gift.claimed || gift.status === "claimed";
         var canClaim = activeTab === "received" && !isClaimed;
 
@@ -404,8 +401,14 @@ export default function GiftingScreen() {
         );
       })}
 
+      {/* Infinite scroll sentinel */}
+      <div ref={giftsInf.sentinelRef} />
+      {giftsInf.loadingMore && (
+        <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-secondary)", fontFamily: "'Inter', sans-serif" }}>Loading more...</div>
+      )}
+
       {/* Empty state */}
-      {!giftsQuery.isLoading && displayGifts.length === 0 && (
+      {!giftsInf.isLoading && displayGifts.length === 0 && (
         <div className={`dp-a ${mounted ? "dp-s" : ""}`} style={{ animationDelay: "160ms" }}>
           <div style={{
             ...glassStyle, padding: 40, textAlign: "center",

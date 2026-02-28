@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { setupKeyboard } from './services/native';
 import { initToken } from './services/api';
-import { setupPushListeners, createTaskCallChannel, createDefaultNotificationChannel, createBuddyCallChannel, registerTaskCallActions, requestLocalNotificationPermission, showForegroundNotification } from './services/nativeNotifications';
+import { setupPushListeners, createTaskCallChannel, createDefaultNotificationChannel, createBuddyCallChannel, registerTaskCallActions, registerBuddyCallActions, requestLocalNotificationPermission, showForegroundNotification, scheduleTaskCallNotification } from './services/nativeNotifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
@@ -97,6 +97,25 @@ if (Capacitor.isNativePlatform()) {
         showForegroundNotification(n);
         return;
       }
+      // Task reminder from push — dispatch event + schedule task call notification
+      var nType = n.data && (n.data.notification_type || n.data.type) || "";
+      if (nType === "reminder" || nType === "task_due" || nType === "overdue_tasks" || nType === "task_reminder") {
+        window.dispatchEvent(new CustomEvent("dp-task-reminder", {
+          detail: {
+            id: n.data.task_id || n.data.goal_id || n.data.notification_id || "",
+            title: n.title || n.data.title || "Task Due",
+            dream: n.data.dream || n.data.dream_title || "",
+            priority: n.data.priority || "medium",
+            category: n.data.category || "personal",
+          },
+        }));
+        scheduleTaskCallNotification({
+          id: n.data.task_id || n.data.goal_id || Date.now(),
+          title: n.title || n.data.title || "Task Due",
+          dream: n.data.dream || n.data.dream_title || "",
+        });
+        return;
+      }
       // Show local notification with sound for all other push types in foreground
       showForegroundNotification(n);
     },
@@ -120,6 +139,14 @@ if (Capacitor.isNativePlatform()) {
     createBuddyCallChannel();
     createTaskCallChannel();
     registerTaskCallActions();
+    registerBuddyCallActions();
+  });
+}
+
+// Auto-reload when a new service worker takes control (PWA update)
+if ("serviceWorker" in navigator && !Capacitor.isNativePlatform()) {
+  navigator.serviceWorker.addEventListener("controllerchange", function () {
+    window.location.reload();
   });
 }
 

@@ -209,6 +209,68 @@ export function showForegroundNotification(notification) {
   });
 }
 
+// ── Local Notifications — Incoming Call Full-Screen Intent ────
+
+/**
+ * Schedule a high-priority local notification for an incoming buddy call.
+ * Uses the buddy-calls channel (importance 5, ringtone) so Android shows
+ * it as a full-screen intent over other apps and the lock screen.
+ */
+export function scheduleIncomingCallNotification(callData) {
+  if (!isNative) return Promise.resolve();
+
+  return import("@capacitor/local-notifications").then(function (mod) {
+    var id = callData.callId
+      ? Math.abs(hashCode(String(callData.callId)))
+      : Date.now() % 2147483647;
+
+    return mod.LocalNotifications.schedule({
+      notifications: [{
+        id: id,
+        title: "Incoming " + (callData.callType === "video" ? "Video" : "Voice") + " Call",
+        body: (callData.callerName || "Someone") + " is calling you",
+        channelId: "buddy-calls",
+        ongoing: true,
+        autoCancel: false,
+        sound: "ringtone",
+        smallIcon: "ic_notification",
+        extra: {
+          type: "incoming-call",
+          callId: callData.callId,
+          callerId: callData.callerId,
+          callerName: callData.callerName,
+          callType: callData.callType,
+        },
+        actionTypeId: "BUDDY_CALL_ACTIONS",
+        schedule: { at: new Date(Date.now() + 500) },
+      }],
+    });
+  }).catch(function (err) {
+    console.warn("Failed to schedule incoming call notification:", err);
+  });
+}
+
+/**
+ * Register action types for incoming call notifications (accept / decline).
+ */
+export function registerBuddyCallActions() {
+  if (!isNative) return Promise.resolve();
+
+  return import("@capacitor/local-notifications").then(function (mod) {
+    return mod.LocalNotifications.registerActionTypes({
+      types: [{
+        id: "BUDDY_CALL_ACTIONS",
+        actions: [
+          { id: "accept-call", title: "Accept" },
+          { id: "reject-call", title: "Decline" },
+        ],
+      }],
+    });
+  }).catch(function (err) {
+    console.warn("Failed to register buddy-call actions:", err);
+  });
+}
+
 // ── Local Notifications — Task Call Full-Screen Intent ───────
 
 /**
@@ -284,20 +346,34 @@ export function scheduleTaskCallNotification(task) {
 }
 
 /**
- * Listen for local notification action (accept/snooze).
+ * Listen for local notification actions (task-call accept/snooze, incoming-call accept/decline).
+ * @param {function} taskCallback - Called for task-call actions
+ * @param {function} callCallback - Called for incoming-call actions
  * Returns a cleanup function.
  */
-export function addLocalNotificationActionListener(callback) {
+export function addLocalNotificationActionListener(taskCallback, callCallback) {
   if (!isNative) return Promise.resolve({ remove: function () {} });
 
   return import("@capacitor/local-notifications").then(function (mod) {
     return mod.LocalNotifications.addListener("localNotificationActionPerformed", function (action) {
-      if (action.notification.extra && action.notification.extra.type === "task-call") {
-        callback({
+      var extra = (action.notification && action.notification.extra) || {};
+
+      if (extra.type === "task-call" && taskCallback) {
+        taskCallback({
           actionId: action.actionId,
-          taskId: action.notification.extra.taskId,
-          title: action.notification.extra.title,
-          dream: action.notification.extra.dream,
+          taskId: extra.taskId,
+          title: extra.title,
+          dream: extra.dream,
+        });
+      }
+
+      if (extra.type === "incoming-call" && callCallback) {
+        callCallback({
+          actionId: action.actionId,
+          callId: extra.callId,
+          callerId: extra.callerId,
+          callerName: extra.callerName,
+          callType: extra.callType,
         });
       }
     });

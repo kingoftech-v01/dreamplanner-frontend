@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import { apiGet } from "../../services/api";
 import { SOCIAL } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, MessageCircle, User, Circle } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
@@ -24,12 +23,9 @@ export default function OnlineFriendsScreen() {
   const isLight = resolved === "light";
   const [mounted, setMounted] = useState(false);
 
-  var onlineQuery = useQuery({
-    queryKey: ["friends-online"],
-    queryFn: function () { return apiGet(SOCIAL.FRIENDS.ONLINE); },
-  });
+  var onlineInf = useInfiniteList({ queryKey: ["friends-online"], url: SOCIAL.FRIENDS.ONLINE, limit: 20 });
 
-  var ONLINE_FRIENDS = ((onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || []).map(function (f, i) {
+  var ONLINE_FRIENDS = onlineInf.items.map(function (f, i) {
     if (!f) return null;
     return Object.assign({}, f, {
       name: f.displayName || f.username || "Friend",
@@ -82,7 +78,7 @@ export default function OnlineFriendsScreen() {
       </div>
 
       {/* Loading State */}
-      {onlineQuery.isLoading && (
+      {onlineInf.isLoading && (
         <div style={{
           display: "flex", justifyContent: "center", alignItems: "center",
           padding: "48px 0",
@@ -100,7 +96,7 @@ export default function OnlineFriendsScreen() {
       )}
 
       {/* Friends List */}
-      {!onlineQuery.isLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {!onlineInf.isLoading && <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {ONLINE_FRIENDS.map((friend, index) => {
           if (!friend) return null;
           return (
@@ -197,6 +193,12 @@ export default function OnlineFriendsScreen() {
         );
         })}
       </div>}
+
+      {/* Infinite scroll sentinel */}
+      <div ref={onlineInf.sentinelRef} />
+      {onlineInf.loadingMore && (
+        <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+      )}
 
       {/* Bottom spacer */}
       <div style={{ height: 32 }} />

@@ -10,6 +10,7 @@ import { useToast } from "../../context/ToastContext";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { apiGet, apiPost } from "../../services/api";
 import { SUBSCRIPTIONS } from "../../services/endpoints";
+import useInfiniteList from "../../hooks/useInfiniteList";
 import { openBrowser, isNative } from "../../services/native";
 
 const PLAN_ACCENTS = {
@@ -126,12 +127,8 @@ export default function SubscriptionScreen() {
     onError: function (err) { showToast(err.message || "Invalid coupon code", "error"); },
   });
 
-  var invoicesQuery = useQuery({
-    queryKey: ["invoices"],
-    queryFn: function () { return apiGet(SUBSCRIPTIONS.INVOICES); },
-    enabled: showInvoices,
-  });
-  var invoices = (invoicesQuery.data && invoicesQuery.data.results) || invoicesQuery.data || [];
+  var invoicesInf = useInfiniteList({ queryKey: ["invoices"], url: SUBSCRIPTIONS.INVOICES, limit: 20, enabled: showInvoices });
+  var invoices = invoicesInf.items;
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -577,15 +574,15 @@ export default function SubscriptionScreen() {
           </button>
           {showInvoices && (
             <div style={{ ...glassStyle, overflow: "hidden" }}>
-              {invoicesQuery.isLoading && (
+              {invoicesInf.isLoading && (
                 <div style={{ padding: 24, textAlign: "center" }}>
                   <Loader size={20} color="var(--dp-accent)" style={{ animation: "shimmerBadge 1s linear infinite" }} />
                 </div>
               )}
-              {!invoicesQuery.isLoading && invoices.length === 0 && (
+              {!invoicesInf.isLoading && invoices.length === 0 && (
                 <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>No invoices yet</div>
               )}
-              {!invoicesQuery.isLoading && invoices.map(function (inv, i) {
+              {!invoicesInf.isLoading && invoices.map(function (inv, i) {
                 return (
                   <div key={inv.id || i} style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px",
@@ -615,6 +612,11 @@ export default function SubscriptionScreen() {
                   </div>
                 );
               })}
+              {/* Infinite scroll sentinel for invoices */}
+              <div ref={invoicesInf.sentinelRef} />
+              {invoicesInf.loadingMore && (
+                <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+              )}
             </div>
           )}
         </div>

@@ -88,9 +88,15 @@ export default function DreamCreateScreen() {
   function handleCreateDream() {
     if (submitting) return;
 
-    var missing = validateRequired({ title: title });
+    var missing = validateRequired({ title: title, description: description });
     if (missing.length > 0) {
-      showToast("Please enter a dream title", "error");
+      showToast("Title and description are required", "error");
+      return;
+    }
+
+    var cleanDescription = sanitizeText(description, 2000);
+    if (cleanDescription.length < 10) {
+      showToast("Description must be at least 10 characters", "error");
       return;
     }
 
@@ -98,7 +104,6 @@ export default function DreamCreateScreen() {
     setServerError("");
 
     var cleanTitle = sanitizeText(title, 200);
-    var cleanDescription = sanitizeText(description, 2000);
     var cleanCategory = category ? sanitizeText(category, 100) : category;
 
     var targetDate = null;
@@ -136,7 +141,7 @@ export default function DreamCreateScreen() {
   const progressPercent = ((step + 1) / STEPS.length) * 100;
 
   const canNext = () => {
-    if (step === 0) return title.trim().length > 0;
+    if (step === 0) return title.trim().length > 0 && description.trim().length >= 10;
     if (step === 1) return category !== null;
     if (step === 2) return timeframe !== null || customDate !== null;
     return true;
@@ -144,6 +149,7 @@ export default function DreamCreateScreen() {
 
   const getValidationMessage = (s) => {
     if (s === 0 && title.trim().length === 0) return "Please enter a dream title";
+    if (s === 0 && title.trim().length > 0 && description.trim().length < 10) return "Description must be at least 10 characters";
     if (s === 1 && category === null) return "Please select a category";
     if (s === 2 && timeframe === null && customDate === null) return "Please set a target date";
     return null;
@@ -278,7 +284,7 @@ export default function DreamCreateScreen() {
                   fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
                   fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
                 }}>
-                  Description (optional)
+                  Description *
                 </label>
                 <textarea
                   placeholder="Add more details about what you want to achieve..."

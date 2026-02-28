@@ -8,7 +8,7 @@ import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { sanitizeText, sanitizeUrl } from "../../utils/sanitize";
-import { Heart, MessageCircle, Send, Plus, Sparkles, Share2, ArrowLeft, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Heart, MessageCircle, Send, Plus, Sparkles, Share2, ArrowLeft, MoreVertical, Pencil, Trash2, Flame, Star, Zap, ArrowRight, ThumbsUp } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Dream Posts Feed Screen
@@ -37,6 +37,14 @@ function timeAgo(ds) {
 }
 
 var VIS = [{value:"public",label:"Public"},{value:"friends",label:"Friends"},{value:"private",label:"Private"}];
+
+var ENCOURAGE_TYPES = [
+  { type: "you_got_this", icon: ThumbsUp, label: "You got this!", color: "#3B82F6" },
+  { type: "keep_going", icon: ArrowRight, label: "Keep going!", color: "#10B981" },
+  { type: "inspired", icon: Sparkles, label: "Inspired!", color: "#A855F7" },
+  { type: "proud", icon: Star, label: "Proud!", color: "#FCD34D" },
+  { type: "fire", icon: Flame, label: "Fire!", color: "#EF4444" },
+];
 
 // ── Action button helper ────────────────────────────────────────
 function ActionBtn(props) {
@@ -72,6 +80,7 @@ export default function DreamPostsFeedScreen() {
   var [openComments, setOpenComments] = useState(null);
   var [cInputs, setCInputs] = useState({});
   var [page, setPage] = useState(1);
+  var [encouragePickerFor, setEncouragePickerFor] = useState(null);
 
   useEffect(function () { var t = setTimeout(function () { setMounted(true); }, 50); return function () { clearTimeout(t); }; }, []);
 
@@ -111,8 +120,8 @@ export default function DreamPostsFeedScreen() {
   });
 
   var encourageMut = useMutation({
-    mutationFn: function (id) { return apiPost(SOCIAL.POSTS.ENCOURAGE(id)); },
-    onSuccess: function () { showToast("Encouragement sent!", "success"); qc.invalidateQueries({ queryKey: ["dream-posts-feed"] }); },
+    mutationFn: function (d) { return apiPost(SOCIAL.POSTS.ENCOURAGE(d.id), { encouragementType: d.type, message: "" }); },
+    onSuccess: function () { showToast("Encouragement sent!", "success"); setEncouragePickerFor(null); qc.invalidateQueries({ queryKey: ["dream-posts-feed"] }); },
     onError: function (e) { showToast(e.message || "Failed to encourage", "error"); },
   });
 
@@ -296,6 +305,20 @@ export default function DreamPostsFeedScreen() {
               </div>
             )}
 
+            {/* Encouragement summary */}
+            {post.encouragementSummary && Object.keys(post.encouragementSummary).length > 0 && (
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8,flexWrap:"wrap"}}>
+                {ENCOURAGE_TYPES.filter(function (et) { return post.encouragementSummary[et.type] > 0; }).map(function (et) {
+                  var EIcon = et.icon;
+                  return (
+                    <span key={et.type} style={{display:"inline-flex",alignItems:"center",gap:3,padding:"3px 8px",borderRadius:10,background:et.color + "15",fontSize:11,fontWeight:600,color:et.color}}>
+                      <EIcon size={12} strokeWidth={2}/>{post.encouragementSummary[et.type]}
+                    </span>
+                  );
+                })}
+              </div>
+            )}
+
             {/* Actions */}
             <div style={{display:"flex",alignItems:"center",gap:6,borderTop:"1px solid var(--dp-input-border)",paddingTop:12}}>
               <ActionBtn onClick={function(){likeMut.mutate(post.id);}} active={liked} activeBg="rgba(239,68,68,0.1)" activeBorder="rgba(239,68,68,0.2)" activeColor="#EF4444">
@@ -304,13 +327,29 @@ export default function DreamPostsFeedScreen() {
               <ActionBtn onClick={function(){setOpenComments(function(p){return p===post.id?null:post.id;});}} active={isOpen} activeBg="rgba(139,92,246,0.1)" activeBorder="rgba(139,92,246,0.2)" activeColor="#C4B5FD">
                 <MessageCircle size={16} strokeWidth={2} fill={isOpen?"rgba(196,181,253,0.15)":"none"}/>{cc>0?cc:""}
               </ActionBtn>
-              <ActionBtn onClick={function(){encourageMut.mutate(post.id);}} active={encour} activeBg="rgba(16,185,129,0.1)" activeBorder="rgba(16,185,129,0.2)" activeColor="#10B981">
+              <ActionBtn onClick={function(){setEncouragePickerFor(function(p){return p===post.id?null:post.id;});}} active={encour || encouragePickerFor===post.id} activeBg="rgba(16,185,129,0.1)" activeBorder="rgba(16,185,129,0.2)" activeColor="#10B981">
                 <Sparkles size={16} strokeWidth={2}/>
               </ActionBtn>
               <ActionBtn onClick={function(){handleShare(post);}} ml>
                 <Share2 size={16} strokeWidth={2}/>
               </ActionBtn>
             </div>
+
+            {/* Encouragement type picker */}
+            {encouragePickerFor===post.id && (
+              <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8,paddingTop:8,borderTop:"1px solid var(--dp-input-border)",flexWrap:"wrap"}}>
+                {ENCOURAGE_TYPES.map(function (et) {
+                  var EIcon = et.icon;
+                  return (
+                    <button key={et.type} onClick={function(){encourageMut.mutate({id:post.id,type:et.type});}} disabled={encourageMut.isPending}
+                      title={et.label}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"6px 10px",borderRadius:12,border:"1px solid "+et.color+"30",background:et.color+"10",color:et.color,fontSize:11,fontWeight:600,fontFamily:F,cursor:"pointer",transition:"all 0.2s"}}>
+                      <EIcon size={14} strokeWidth={2}/>{et.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Comments panel */}
             {isOpen && (

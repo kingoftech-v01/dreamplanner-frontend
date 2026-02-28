@@ -102,9 +102,15 @@ export default function DreamEditScreen() {
   });
 
   const handleSave = function () {
-    var missing = validateRequired({ title: title });
+    var missing = validateRequired({ title: title, description: description });
     if (missing.length > 0) {
-      showToast("Please enter a dream title", "error");
+      showToast("Title and description are required", "error");
+      return;
+    }
+
+    var cleanDescription = sanitizeText(description, 2000);
+    if (cleanDescription.length < 10) {
+      showToast("Description must be at least 10 characters", "error");
       return;
     }
 
@@ -112,7 +118,6 @@ export default function DreamEditScreen() {
     setServerError("");
 
     var cleanTitle = sanitizeText(title, 200);
-    var cleanDescription = sanitizeText(description, 2000);
     var cleanCategory = category ? sanitizeText(category, 100) : category;
 
     apiPatch(DREAMS.DETAIL(id), {
@@ -223,7 +228,7 @@ export default function DreamEditScreen() {
               fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
               fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
             }}>
-              Description
+              Description *
             </label>
             <textarea
               value={description}

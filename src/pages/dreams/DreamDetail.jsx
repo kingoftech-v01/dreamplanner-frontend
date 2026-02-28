@@ -34,7 +34,23 @@ export default function DreamDetailScreen(){
 
   var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet(DREAMS.DETAIL(id)); } });
   var DREAM = dreamQuery.data || {};
-  var MILESTONES = [];
+  var MILESTONES = (DREAM.milestones || []).map(function (m, i) {
+    var isDone = m.status === "completed" || m.completed;
+    var isActive = !isDone && i === 0 || (!isDone && (DREAM.milestones || []).slice(0, i).every(function (pm) { return pm.status === "completed" || pm.completed; }));
+    return {
+      id: m.id,
+      label: m.title,
+      description: m.description,
+      order: m.order != null ? m.order : i,
+      done: isDone,
+      active: isActive,
+      progressPercentage: m.progressPercentage || 0,
+      expectedDate: m.expectedDate,
+      deadlineDate: m.deadlineDate,
+      date: m.deadlineDate ? new Date(m.deadlineDate).toLocaleDateString() : (m.expectedDate ? new Date(m.expectedDate).toLocaleDateString() : ""),
+      goals: m.goals || [],
+    };
+  });
 
   // ── Mutations ──
   var taskCompleteMut = useMutation({
@@ -58,6 +74,11 @@ export default function DreamDetailScreen(){
     mutationFn: function () { return apiPost(DREAMS.DUPLICATE(id)); },
     onSuccess: function (data) { showToast("Dream duplicated!", "success"); navigate("/dream/" + data.id); },
     onError: function (err) { showToast(err.message || "Failed to duplicate", "error"); },
+  });
+  var milestoneCompleteMut = useMutation({
+    mutationFn: function (milestoneId) { return apiPost(DREAMS.MILESTONES.COMPLETE(milestoneId)); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Milestone completed!", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to complete milestone", "error"); },
   });
 
   // ── Obstacles query & mutations ──
@@ -308,7 +329,9 @@ export default function DreamDetailScreen(){
                   <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:8,lineHeight:1.5}}>{DREAM.description}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
                     <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:isLight?"#7C3AED":"#C4B5FD"}}>{DREAM.category}</span>
-                    {DREAM.targetDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}><Clock size={11} strokeWidth={2}/>{DREAM.daysLeft != null ? DREAM.daysLeft + " days left" : new Date(DREAM.targetDate).toLocaleDateString()}</span>}
+                    {DREAM.expectedDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"#2563EB":"#60A5FA",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Expected: {new Date(DREAM.expectedDate).toLocaleDateString()}</span>}
+                    {DREAM.deadlineDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"#DC2626":"#F87171",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Deadline: {new Date(DREAM.deadlineDate).toLocaleDateString()}</span>}
+                    {!DREAM.expectedDate && !DREAM.deadlineDate && DREAM.targetDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}><Clock size={11} strokeWidth={2}/>{DREAM.daysLeft != null ? DREAM.daysLeft + " days left" : new Date(DREAM.targetDate).toLocaleDateString()}</span>}
                     <button onClick={()=>{setIsPublic(!isPublic);}} style={{
                       display:"flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",
                       background:isPublic?(isLight?"rgba(16,185,129,0.1)":"rgba(93,229,168,0.1)"):(isLight?"rgba(26,21,53,0.06)":"rgba(255,255,255,0.06)"),
@@ -372,25 +395,45 @@ export default function DreamDetailScreen(){
 
           {/* ── Milestones Timeline ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"160ms"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-              <Flag size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-              <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Milestones</span>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <Flag size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Milestones ({MILESTONES.length})</span>
+              </div>
+              {DREAM.milestonesCount > 0 && <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{DREAM.completedMilestonesCount || 0}/{DREAM.milestonesCount} done</span>}
             </div>
             <div className="dp-g" style={{padding:16,marginBottom:16}}>
-              {MILESTONES.map((m,i)=>(
-                <div key={i} style={{display:"flex",gap:12,position:"relative"}}>
-                  {/* Line */}
+              {MILESTONES.length === 0 ? (
+                <div style={{textAlign:"center",padding:"8px 0"}}>
+                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No milestones yet — generate a plan to create them</span>
+                </div>
+              ) : MILESTONES.map(function (m, i) {
+                return (
+                <div key={m.id || i} style={{display:"flex",gap:12,position:"relative"}}>
                   {i<MILESTONES.length-1&&<div style={{position:"absolute",left:11,top:24,bottom:-4,width:2,background:m.done?"rgba(93,229,168,0.2)":(isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)")}}/>}
-                  {/* Dot */}
-                  <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:m.done?"rgba(93,229,168,0.15)":m.active?"rgba(252,211,77,0.12)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),border:m.done?"2px solid rgba(93,229,168,0.3)":m.active?"2px solid rgba(252,211,77,0.3)":(isLight?"2px solid rgba(139,92,246,0.15)":"2px solid rgba(255,255,255,0.08)")}}>
+                  <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:!m.done&&m.active?"pointer":"default",background:m.done?"rgba(93,229,168,0.15)":m.active?"rgba(252,211,77,0.12)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),border:m.done?"2px solid rgba(93,229,168,0.3)":m.active?"2px solid rgba(252,211,77,0.3)":(isLight?"2px solid rgba(139,92,246,0.15)":"2px solid rgba(255,255,255,0.08)")}} onClick={function () { if (!m.done && m.active && m.id) milestoneCompleteMut.mutate(m.id); }}>
                     {m.done?<Check size={12} color={isLight?"#059669":"#5DE5A8"} strokeWidth={3}/>:m.active?<div style={{width:6,height:6,borderRadius:3,background:"#FCD34D"}}/>:null}
                   </div>
                   <div style={{flex:1,paddingBottom:i<MILESTONES.length-1?16:0}}>
                     <div style={{fontSize:13,fontWeight:m.active?600:m.done?500:400,color:m.done?(isLight?"#059669":"#5DE5A8"):m.active?(isLight?"#B45309":"#FCD34D"):(isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)")}}>{m.label}</div>
-                    <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{m.date}</div>
+                    {m.description && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",marginTop:2}}>{m.description}</div>}
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
+                      {m.expectedDate && <span style={{fontSize:11,color:isLight?"#2563EB":"#60A5FA",fontWeight:500}}>Expected: {new Date(m.expectedDate).toLocaleDateString()}</span>}
+                      {m.deadlineDate && <span style={{fontSize:11,color:isLight?"#DC2626":"#F87171",fontWeight:500}}>Deadline: {new Date(m.deadlineDate).toLocaleDateString()}</span>}
+                      {!m.expectedDate && !m.deadlineDate && m.date && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{m.date}</div>}
+                    </div>
+                    {m.progressPercentage > 0 && (
+                      <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
+                        <div style={{flex:1,maxWidth:100,height:3,borderRadius:2,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}}>
+                          <div style={{height:"100%",borderRadius:2,background:m.done?"#5DE5A8":"#C4B5FD",width:m.progressPercentage+"%",transition:"width 0.5s ease"}}/>
+                        </div>
+                        <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{m.progressPercentage}%</span>
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 

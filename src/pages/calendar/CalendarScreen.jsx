@@ -73,29 +73,51 @@ export default function CalendarScreen(){
   // Transform API events array into keyed object by "y-m-d"
   var rawEvents = (eventsQuery.data && eventsQuery.data.results) || eventsQuery.data || [];
   var events = {};
-  rawEvents.forEach(function (evt) {
-    var d = new Date(evt.date || evt.startDate || evt.start);
+  function addEventToMap(evt, dateStr, isDeadline) {
+    var d = new Date(dateStr);
+    if (isNaN(d.getTime())) return;
     var k = getKey(d.getFullYear(), d.getMonth(), d.getDate());
     if (!events[k]) events[k] = [];
+    var color = isDeadline ? "#F69A9A" : (evt.color || TYPE_COLORS[evt.type] || "#C4B5FD");
     events[k].push(Object.assign({}, evt, {
-      color: evt.color || TYPE_COLORS[evt.type] || "#C4B5FD",
+      color: color,
       done: evt.done || evt.completed || false,
       dream: evt.dream || evt.dreamTitle || "",
+      isDeadline: isDeadline || false,
     }));
+  }
+  rawEvents.forEach(function (evt) {
+    var mainDate = evt.date || evt.startDate || evt.start;
+    if (evt.deadlineDate && evt.expectedDate && evt.deadlineDate !== evt.expectedDate) {
+      addEventToMap(evt, evt.expectedDate, false);
+      addEventToMap(Object.assign({}, evt, { id: evt.id + "-deadline", title: evt.title + " (Deadline)" }), evt.deadlineDate, true);
+    } else if (evt.deadlineDate) {
+      addEventToMap(evt, evt.deadlineDate, true);
+    } else if (evt.expectedDate) {
+      addEventToMap(evt, evt.expectedDate, false);
+    } else if (mainDate) {
+      addEventToMap(evt, mainDate, false);
+    }
   });
 
   // Transform today query data and merge into events map
   var rawToday = (todayQuery.data && todayQuery.data.results) || todayQuery.data || [];
   rawToday.forEach(function (evt) {
-    var d = new Date(evt.date || evt.startDate || evt.start);
+    var mainDate = evt.date || evt.startDate || evt.start;
+    var dateToUse = evt.deadlineDate || evt.expectedDate || mainDate;
+    if (!dateToUse) return;
+    var d = new Date(dateToUse);
+    if (isNaN(d.getTime())) return;
     var k = getKey(d.getFullYear(), d.getMonth(), d.getDate());
     if (!events[k]) events[k] = [];
     var exists = events[k].some(function (e) { return e.id === evt.id; });
     if (!exists) {
+      var isDeadline = !!evt.deadlineDate;
       events[k].push(Object.assign({}, evt, {
-        color: evt.color || TYPE_COLORS[evt.type] || "#C4B5FD",
+        color: isDeadline ? "#F69A9A" : (evt.color || TYPE_COLORS[evt.type] || "#C4B5FD"),
         done: evt.done || evt.completed || false,
         dream: evt.dream || evt.dreamTitle || "",
+        isDeadline: isDeadline,
       }));
     }
   });
@@ -202,6 +224,7 @@ export default function CalendarScreen(){
           <div style={{fontSize:14,fontWeight:500,color:evt.done?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),textDecoration:evt.done?"line-through":"none",transition:"all 0.2s"}}>{evt.title}</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
             <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{evt.time}</span>
+            {evt.isDeadline&&<span style={{padding:"1px 6px",borderRadius:6,fontSize:10,fontWeight:700,textTransform:"uppercase",background:"rgba(239,68,68,0.12)",color:isLight?"#DC2626":"#F87171"}}>Deadline</span>}
             {evt.dream&&<span style={{fontSize:12,color:isLight?(evt.color==="#5DE5A8"?"#059669":evt.color==="#C4B5FD"?"#6D28D9":evt.color==="#FCD34D"?"#B45309":evt.color==="#5EEAD4"?"#0D9488":evt.color==="#F69A9A"?"#DC2626":evt.color):evt.color,fontWeight:500}}>{evt.dream}</span>}
           </div>
         </div>

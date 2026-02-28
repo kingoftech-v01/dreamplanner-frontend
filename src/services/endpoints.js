@@ -90,6 +90,11 @@ export var DREAMS = {
     USE: function (id) { return "/api/dreams/dreams/templates/" + id + "/use/"; },
     FEATURED: "/api/dreams/dreams/templates/featured/",
   },
+  MILESTONES: {
+    LIST:     "/api/dreams/milestones/",
+    DETAIL: function (id) { return "/api/dreams/milestones/" + id + "/"; },
+    COMPLETE: function (id) { return "/api/dreams/milestones/" + id + "/complete/"; },
+  },
 };
 
 // ─── Conversations ───────────────────────────────────────────────────

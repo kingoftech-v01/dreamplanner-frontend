@@ -150,13 +150,27 @@ export default function CalibrationScreen() {
       answer = selectedOption;
     }
 
-    // Fire-and-forget: submit this answer to the backend
+    // Submit this answer to the backend — may return more questions
     if (answer) {
       apiPost(DREAMS.ANSWER_CALIBRATION(id), {
         question: question.text,
         answer: answer,
         questionNumber: currentQ + 1,
-      }).catch(() => {
+      }).then(function (res) {
+        // If backend returns additional questions, append them
+        if (res && Array.isArray(res.questions) && res.questions.length > 0) {
+          var newQs = res.questions.map(function (q, i) {
+            return {
+              id: q.id || "extra-" + Date.now() + "-" + i,
+              text: q.question || q.text || "Follow-up question",
+              type: "text",
+              placeholder: "Type your answer...",
+              category: q.category || "",
+            };
+          });
+          setQuestions(function (prev) { return prev.concat(newQs); });
+        }
+      }).catch(function () {
         // Silently ignore — answers are also stored locally
       });
     }

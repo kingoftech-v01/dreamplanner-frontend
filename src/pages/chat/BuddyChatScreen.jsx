@@ -177,6 +177,10 @@ export default function BuddyChatScreen(){
     if(!convId)return;
     if(markReadTimerRef.current)clearTimeout(markReadTimerRef.current);
     markReadTimerRef.current=setTimeout(function(){
+      // Notify buddy in real-time via RTM
+      if(rtmChannelRef.current){
+        rtmChannelRef.current.sendMarkRead();
+      }
       apiPost(CONVERSATIONS.MARK_READ(convId)).then(function(){
         queryClient.invalidateQueries({queryKey:["conversations"]});
       }).catch(function(){});
@@ -224,6 +228,16 @@ export default function BuddyChatScreen(){
           if(isTyping){
             typingTimerRef.current=setTimeout(function(){setBuddyTyping(false);},3000);
           }
+        },
+        onMarkRead:function(memberId){
+          if(cancelled)return;
+          // Buddy has read our messages — update all user messages to read
+          setMessages(function(prev){
+            return prev.map(function(m){
+              if(m.isUser&&!m.read)return Object.assign({},m,{read:true});
+              return m;
+            });
+          });
         },
       }).then(function(handle){
         if(cancelled){handle.leave();return;}
@@ -341,7 +355,7 @@ export default function BuddyChatScreen(){
   // ─── Loading / Error states ────────────────────────────────────
   if(initLoading||messagesQuery.isLoading){
     return(
-      <div style={{width:"100%",height:"100dvh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif"}}>
+      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif"}}>
         <Loader size={28} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2} style={{animation:"spin 1s linear infinite"}}/>
         <style>{"@keyframes spin{to{transform:rotate(360deg);}}"}</style>
       </div>
@@ -352,7 +366,7 @@ export default function BuddyChatScreen(){
   }
 
   return(
-    <div style={{width:"100%",height:"100dvh",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
 
       {/* ═══ APP BAR ═══ */}
       <header style={{position:"relative",zIndex:100,flexShrink:0,background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>

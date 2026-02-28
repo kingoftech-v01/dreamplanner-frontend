@@ -236,7 +236,7 @@ export default function TwoFactorScreen() {
         display: "flex",
         alignItems: "center",
         gap: 12,
-        paddingTop: "env(safe-area-inset-top, 12px)",
+        paddingTop: 12,
         paddingBottom: 16,
         marginBottom: 4,
         opacity: mounted ? 1 : 0,

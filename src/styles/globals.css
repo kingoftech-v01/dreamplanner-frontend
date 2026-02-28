@@ -59,24 +59,29 @@
   --dp-modal-bg: rgba(255,255,255,0.97);
 }
 
-html {
-  /* Use dvh so the layout adapts to the Android nav bar */
-  height: 100dvh;
-  height: 100vh; /* fallback for older browsers */
-}
-
-html, body, #root {
+html, body {
   width: 100%;
   height: 100%;
+  margin: 0;
   overflow: hidden;
-  overflow-x: hidden;
-  padding-top: env(safe-area-inset-top, 0px);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   background: var(--dp-body-bg);
   color: var(--dp-body-color);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+  right: 0;
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: 0;
+  overflow: hidden;
+  /* Contain position:fixed children within safe area */
+  transform: translateZ(0);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  color: var(--dp-body-color);
 }
 
 /* Scrollbar */

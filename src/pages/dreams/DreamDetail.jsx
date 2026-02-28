@@ -133,7 +133,7 @@ export default function DreamDetailScreen(){
     queryKey: ["progress-history", id],
     queryFn: function () { return apiGet(DREAMS.PROGRESS_HISTORY(id)); },
   });
-  var progressHistory = (progressQuery.data && progressQuery.data.results) || progressQuery.data || [];
+  var progressHistory = (progressQuery.data && (progressQuery.data.snapshots || progressQuery.data.results)) || progressQuery.data || [];
 
   const[mounted,setMounted]=useState(false);
   const[goals,setGoals]=useState([]);
@@ -274,7 +274,7 @@ export default function DreamDetailScreen(){
   );
 
   return(
-    <div style={{width:"100%",height:"100dvh",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width:"100%",height:"100%",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
 
       <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -404,8 +404,21 @@ export default function DreamDetailScreen(){
             </div>
             <div className="dp-g" style={{padding:16,marginBottom:16}}>
               {MILESTONES.length === 0 ? (
-                <div style={{textAlign:"center",padding:"8px 0"}}>
-                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No milestones yet — generate a plan to create them</span>
+                <div style={{textAlign:"center",padding:"16px 0"}}>
+                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",display:"block",marginBottom:12}}>No milestones yet</span>
+                  <button
+                    onClick={function () { navigate("/dream/" + id + "/calibration"); }}
+                    style={{
+                      padding:"10px 24px",borderRadius:12,border:"none",
+                      background:"linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                      color:"#fff",
+                      fontSize:14,fontWeight:600,cursor:"pointer",
+                      fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6,
+                      boxShadow:"0 2px 12px rgba(139,92,246,0.3)",
+                    }}
+                  >
+                    <Sparkles size={14} /> {DREAM.calibrationStatus === "completed" ? "Generate Plan" : "Start Calibration"}
+                  </button>
                 </div>
               ) : MILESTONES.map(function (m, i) {
                 return (
@@ -599,8 +612,8 @@ export default function DreamDetailScreen(){
                         <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,background:"linear-gradient(135deg,#5DE5A8,#14B8A6)"}}/>
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                            <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{entry.progressPercentage != null ? entry.progressPercentage + "%" : entry.note || "Update"}</span>
-                            <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",flexShrink:0}}>{entry.createdAt ? new Date(entry.createdAt).toLocaleDateString() : ""}</span>
+                            <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{entry.progressPercentage != null ? entry.progressPercentage + "%" : entry.progress != null ? entry.progress + "%" : entry.note || "Update"}</span>
+                            <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",flexShrink:0}}>{(entry.createdAt || entry.date) ? new Date(entry.createdAt || entry.date).toLocaleDateString() : ""}</span>
                           </div>
                           {entry.note && entry.progressPercentage != null && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:2}}>{entry.note}</div>}
                         </div>

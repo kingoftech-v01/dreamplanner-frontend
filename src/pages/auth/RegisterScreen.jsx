@@ -239,7 +239,12 @@ export default function RegisterScreen() {
         if (err.fieldErrors) {
           setErrors(err.fieldErrors);
         }
-        setServerError(err.message || "Registration failed. Please try again.");
+        var msg = err.message || "";
+        if (err.status === 500) msg = "Server error. Please try again later.";
+        else if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already exists"))
+          msg = "An account with this email already exists. Try signing in instead.";
+        else if (!msg) msg = "Registration failed. Please try again.";
+        setServerError(msg);
       })
       .finally(function () {
         setSubmitting(false);
@@ -339,6 +344,7 @@ export default function RegisterScreen() {
                   }}
                 />
               </div>
+              {errors.name && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.name}</p>}
             </div>
 
             {/* Email */}
@@ -368,6 +374,7 @@ export default function RegisterScreen() {
                   }}
                 />
               </div>
+              {errors.email && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.email}</p>}
             </div>
 
             {/* Password */}
@@ -438,6 +445,7 @@ export default function RegisterScreen() {
                 </span>
               </div>
             )}
+            {errors.password && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, marginBottom: 8, fontFamily: "Inter, sans-serif" }}>{errors.password}</p>}
 
             {/* Confirm Password */}
             <div style={{ ...stagger(6), marginBottom: 18 }}>
@@ -481,6 +489,7 @@ export default function RegisterScreen() {
                   }
                 </button>
               </div>
+              {errors.confirm && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.confirm}</p>}
             </div>
 
             {/* Terms */}
@@ -517,6 +526,7 @@ export default function RegisterScreen() {
                   <span style={{ color: "#C4B5FD", fontWeight: 500 }}>Privacy Policy</span>
                 </span>
               </button>
+              {errors.terms && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.terms}</p>}
             </div>
 
             {/* Create Account Button */}

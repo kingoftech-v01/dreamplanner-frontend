@@ -50,6 +50,7 @@ export var DREAMS = {
   ANSWER_CALIBRATION: function (id) { return "/api/dreams/dreams/" + id + "/answer_calibration/"; },
   SKIP_CALIBRATION: function (id) { return "/api/dreams/dreams/" + id + "/skip_calibration/"; },
   GENERATE_PLAN: function (id) { return "/api/dreams/dreams/" + id + "/generate_plan/"; },
+  PLAN_STATUS: function (id) { return "/api/dreams/dreams/" + id + "/plan_status/"; },
   GENERATE_TWO_MIN: function (id) { return "/api/dreams/dreams/" + id + "/generate_two_minute_start/"; },
   GENERATE_VISION: function (id) { return "/api/dreams/dreams/" + id + "/generate_vision/"; },
   VISION_BOARD: function (id) { return "/api/dreams/dreams/" + id + "/vision-board/"; },
@@ -178,6 +179,8 @@ export var SUBSCRIPTIONS = {
   REACTIVATE:               "/api/subscriptions/subscription/reactivate/",
   SYNC:                     "/api/subscriptions/subscription/sync/",
   INVOICES:                 "/api/subscriptions/subscription/invoices/",
+  CHANGE_PLAN:              "/api/subscriptions/subscription/change-plan/",
+  CANCEL_PENDING_CHANGE:    "/api/subscriptions/subscription/cancel-pending-change/",
 };
 
 // ─── Store ───────────────────────────────────────────────────────────

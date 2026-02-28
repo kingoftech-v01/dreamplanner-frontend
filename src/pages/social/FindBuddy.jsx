@@ -73,7 +73,12 @@ export default function FindBuddyScreen(){
   };
 
   var buddyQuery = useQuery({ queryKey: ["buddy-current"], queryFn: function () { return apiGet(BUDDIES.CURRENT); } });
-  var suggestionsQuery = useQuery({ queryKey: ["buddy-suggestions"], queryFn: function () { return apiPost(BUDDIES.FIND_MATCH, {}); } });
+  var hasBuddy = buddyQuery.data && buddyQuery.data.buddy;
+  var suggestionsQuery = useQuery({
+    queryKey: ["buddy-suggestions"],
+    queryFn: function () { return apiPost(BUDDIES.FIND_MATCH, {}); },
+    enabled: buddyQuery.isSuccess && !hasBuddy,
+  });
 
   var CURRENT_BUDDY = (buddyQuery.data && buddyQuery.data.buddy) || null;
   var rawSuggestions = suggestionsQuery.data;

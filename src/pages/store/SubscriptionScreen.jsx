@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, X, Crown, Star, Zap, CreditCard, XCircle, Receipt, Tag, Loader } from "lucide-react";
+import { ArrowLeft, Check, X, Crown, Star, Zap, CreditCard, XCircle, Receipt, Tag, Loader, AlertTriangle } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
@@ -62,10 +62,15 @@ export default function SubscriptionScreen() {
     queryFn: function () { return apiGet(SUBSCRIPTIONS.CURRENT); },
   });
 
+  var TIER_ORDER = { free: 0, premium: 1, pro: 2 };
   var plans = plansQuery.data || [];
   var subscription = subQuery.data || null;
-  var currentPlan = (subscription && subscription.plan ? subscription.plan : (user && user.subscription ? user.subscription : "free")).toLowerCase();
+  var currentPlanSlug = subscription && subscription.plan && subscription.plan.slug ? subscription.plan.slug : null;
+  var currentPlan = (currentPlanSlug || (user && user.subscription ? user.subscription : "free")).toLowerCase();
+  var hasActiveSubscription = subscription && subscription.stripe_subscription_id && (subscription.status === "active" || subscription.status === "trialing");
   var renewalDate = subscription && subscription.renewalDate ? subscription.renewalDate : null;
+  var pendingPlan = subscription && subscription.pending_plan ? subscription.pending_plan : null;
+  var pendingPlanEffectiveDate = subscription && subscription.pending_plan_effective_date ? subscription.pending_plan_effective_date : null;
 
   // ─── Mutations ────────────────────────────────────────────────────
   var checkoutMut = useMutation({
@@ -115,6 +120,28 @@ export default function SubscriptionScreen() {
       subQuery.refetch();
     },
     onError: function (err) { showToast(err.message || "Failed to cancel subscription", "error"); },
+  });
+
+  var changePlanMut = useMutation({
+    mutationFn: function (planSlug) { return apiPost(SUBSCRIPTIONS.CHANGE_PLAN, { plan_slug: planSlug }); },
+    onSuccess: function (data) {
+      if (data.action === "upgraded") {
+        showToast("Plan upgraded successfully!", "success");
+      } else {
+        showToast("Downgrade scheduled for end of billing period", "success");
+      }
+      subQuery.refetch();
+    },
+    onError: function (err) { showToast(err.message || "Failed to change plan", "error"); },
+  });
+
+  var cancelPendingChangeMut = useMutation({
+    mutationFn: function () { return apiPost(SUBSCRIPTIONS.CANCEL_PENDING_CHANGE); },
+    onSuccess: function () {
+      showToast("Pending plan change cancelled", "success");
+      subQuery.refetch();
+    },
+    onError: function (err) { showToast(err.message || "Failed to cancel pending change", "error"); },
   });
 
   var couponMut = useMutation({
@@ -234,6 +261,55 @@ export default function SubscriptionScreen() {
             fontFamily: "Inter, sans-serif",
           }}>
             {renewalDate ? "Renews " + renewalDate : ""}
+          </div>
+        </div>
+      )}
+
+      {/* Pending Downgrade Banner */}
+      {!isLoading && pendingPlan && (
+        <div style={{
+          ...glassStyle, padding: "16px 20px",
+          marginBottom: 16,
+          background: "rgba(251,191,36,0.08)",
+          border: "1px solid rgba(251,191,36,0.2)",
+          opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
+          transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.12s",
+        }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+            <AlertTriangle size={20} color="#FBBF24" style={{ flexShrink: 0, marginTop: 2 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: 14, fontWeight: 600, color: "var(--dp-text)",
+                fontFamily: "Inter, sans-serif", marginBottom: 4,
+              }}>
+                Plan change scheduled
+              </div>
+              <div style={{
+                fontSize: 13, color: "var(--dp-text-secondary)",
+                fontFamily: "Inter, sans-serif", marginBottom: 12,
+              }}>
+                Your plan will change to <strong>{pendingPlan.name}</strong>
+                {pendingPlanEffectiveDate
+                  ? " on " + new Date(pendingPlanEffectiveDate).toLocaleDateString()
+                  : " at the end of your billing period"}.
+              </div>
+              <button
+                onClick={function () { cancelPendingChangeMut.mutate(); }}
+                disabled={cancelPendingChangeMut.isPending}
+                style={{
+                  padding: "8px 16px", borderRadius: 10,
+                  background: "transparent",
+                  border: "1px solid rgba(251,191,36,0.3)",
+                  color: isLight ? "#92400E" : "#FBBF24",
+                  fontSize: 13, fontWeight: 600,
+                  fontFamily: "Inter, sans-serif",
+                  cursor: cancelPendingChangeMut.isPending ? "wait" : "pointer",
+                  opacity: cancelPendingChangeMut.isPending ? 0.6 : 1,
+                  transition: "all 0.25s ease",
+                }}>
+                {cancelPendingChangeMut.isPending ? "Cancelling..." : "Cancel Change"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -446,12 +522,17 @@ export default function SubscriptionScreen() {
                 <button
                   onClick={function () {
                     if (plan.slug === "free") {
+                      // Downgrade to free = cancel at period end
                       cancelMut.mutate();
+                    } else if (hasActiveSubscription) {
+                      // User has an active subscription — use change_plan (upgrade or downgrade)
+                      changePlanMut.mutate(plan.slug);
                     } else {
+                      // No active subscription — use checkout to create a new one
                       checkoutMut.mutate(plan.slug);
                     }
                   }}
-                  disabled={checkoutMut.isPending || cancelMut.isPending}
+                  disabled={checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending}
                   style={{
                     padding: "14px 0", width: "100%", borderRadius: 14,
                     background: plan.slug === "free"
@@ -462,13 +543,17 @@ export default function SubscriptionScreen() {
                       : "none",
                     color: plan.slug === "pro" ? "#000" : plan.slug === "free" ? (isLight ? "#1a1535" : "#fff") : "#fff",
                     fontSize: 14, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                    cursor: (checkoutMut.isPending || cancelMut.isPending) ? "wait" : "pointer",
+                    cursor: (checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending) ? "wait" : "pointer",
                     transition: "all 0.25s ease",
-                    opacity: (checkoutMut.isPending || cancelMut.isPending) ? 0.6 : 1,
+                    opacity: (checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending) ? 0.6 : 1,
                   }}>
-                  {(checkoutMut.isPending || cancelMut.isPending)
+                  {(checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending)
                     ? "Processing..."
-                    : plan.slug === "free" ? "Downgrade" : `Upgrade to ${plan.name}`}
+                    : plan.slug === "free"
+                      ? "Downgrade"
+                      : hasActiveSubscription && (TIER_ORDER[plan.slug] || 0) < (TIER_ORDER[currentPlan] || 0)
+                        ? `Downgrade to ${plan.name}`
+                        : `Upgrade to ${plan.name}`}
                 </button>
               )}
             </div>

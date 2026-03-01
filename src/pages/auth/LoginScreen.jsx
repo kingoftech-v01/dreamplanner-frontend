@@ -106,6 +106,12 @@ export default function LoginScreen() {
       return;
     }
 
+    // Generate cryptographic state parameter for CSRF protection
+    var stateBytes = new Uint8Array(32);
+    crypto.getRandomValues(stateBytes);
+    var oauthState = Array.from(stateBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+    sessionStorage.setItem("oauth_state", oauthState);
+
     if (isNative) {
       // Native: use in-app browser with deep link redirect
       var nativeRedirectUri = "com.dreamplanner.app://auth/google/callback";
@@ -114,7 +120,8 @@ export default function LoginScreen() {
         "?client_id=" + encodeURIComponent(googleClientId) +
         "&redirect_uri=" + encodeURIComponent(nativeRedirectUri) +
         "&response_type=token" +
-        "&scope=" + encodeURIComponent(nativeScope);
+        "&scope=" + encodeURIComponent(nativeScope) +
+        "&state=" + encodeURIComponent(oauthState);
 
       openBrowser(nativeAuthUrl);
       // Deep link callback handled in main.jsx appUrlOpen listener
@@ -128,7 +135,8 @@ export default function LoginScreen() {
       "?client_id=" + encodeURIComponent(googleClientId) +
       "&redirect_uri=" + encodeURIComponent(redirectUri) +
       "&response_type=token" +
-      "&scope=" + encodeURIComponent(scope);
+      "&scope=" + encodeURIComponent(scope) +
+      "&state=" + encodeURIComponent(oauthState);
 
     var popup = window.open(authUrl, "google-login", "width=500,height=600");
     if (!popup) {
@@ -147,6 +155,13 @@ export default function LoginScreen() {
           popup.close();
           clearInterval(interval);
           var params = new URLSearchParams(hash.replace("#", ""));
+          var returnedState = params.get("state");
+          var expectedState = sessionStorage.getItem("oauth_state");
+          sessionStorage.removeItem("oauth_state");
+          if (returnedState !== expectedState) {
+            setServerError("OAuth state mismatch. Please try again.");
+            return;
+          }
           var accessToken = params.get("access_token");
           if (accessToken) {
             setSubmitting(true);
@@ -186,11 +201,15 @@ export default function LoginScreen() {
     var existingScript = document.querySelector('script[src*="appleid.auth.js"]');
     var loadAndSignIn = function () {
       try {
+        var appleStateBytes = new Uint8Array(32);
+        crypto.getRandomValues(appleStateBytes);
+        var appleState = Array.from(appleStateBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
         window.AppleID.auth.init({
           clientId: appleClientId,
           scope: "name email",
           redirectURI: window.location.origin + "/auth/apple/callback",
           usePopup: true,
+          state: appleState,
         });
         window.AppleID.auth.signIn()
           .then(function (response) {

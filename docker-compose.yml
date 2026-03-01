@@ -9,5 +9,20 @@ services:
         VITE_WS_BASE: ${VITE_WS_BASE:-wss://dpapi.jhpetitfrere.com}
         VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
     ports:
-      - "3080:80"
+      - "127.0.0.1:3080:80"
     restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"

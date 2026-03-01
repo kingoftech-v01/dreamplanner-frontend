@@ -167,6 +167,8 @@ dreamplanner-frontend/
 │   │
 │   ├── utils/
 │   │   ├── sanitize.js                   # Input sanitization helpers
+│   │   ├── errorMessages.js              # User-friendly error message mapping
+│   │   ├── logger.js                     # Structured logging with redaction
 │   │   └── exportDreamCard.js            # Canvas PNG export (roundRect polyfilled)
 │   │
 │   ├── styles/
@@ -373,21 +375,53 @@ Custom scheme: `com.dreamplanner.app://`
 
 ## Security
 
+### Headers & CSP (nginx internal)
+
+All security headers are set by the Docker-internal nginx (`nginx.docker.conf`), not the external reverse proxy. This makes the frontend container "plug and play" with full security regardless of the hosting environment.
+
+| Header | Value |
+| --- | --- |
+| `X-Frame-Options` | SAMEORIGIN |
+| `X-Content-Type-Options` | nosniff |
+| `X-XSS-Protection` | 1; mode=block |
+| `Referrer-Policy` | strict-origin-when-cross-origin |
+| `Permissions-Policy` | camera=(self), microphone=(self), geolocation=(), payment=() |
+| `Cross-Origin-Opener-Policy` | same-origin |
+| `Cross-Origin-Resource-Policy` | same-origin |
+| `Strict-Transport-Security` | max-age=31536000; includeSubDomains |
+| `Content-Security-Policy` | Full CSP with `upgrade-insecure-requests`, `frame-ancestors 'self'` |
+
+**CSP notes:** `unsafe-eval` is required by Agora RTM SDK. `unsafe-inline` is required by Vite's style injection. Port wildcards (`:*`) allow Agora SDK WebSocket connections on non-standard ports.
+
+### Rate Limiting (nginx)
+
+| Zone | Rate | Applies to |
+| --- | --- | --- |
+| `static_limit` | 30 req/s | SPA routes, static assets |
+| `download_limit` | 2 req/s | APK downloads |
+
+### Application Security
+
 - **HTML sanitization** — AI chat messages rendered via `dangerouslySetInnerHTML` are sanitized with DOMPurify
-- **Input sanitization** — `src/utils/sanitize.js` provides `stripHtml`, `escapeHtml`, `sanitizeText`, etc.
-- **CSP headers** — Both in `index.html` meta tag and backend `SecurityHeadersMiddleware`. CSP includes port wildcards (`:*`) for Agora SDK WebSocket connections on non-standard ports.
+- **Input sanitization** — `src/utils/sanitize.js` provides `stripHtml`, `escapeHtml`, `sanitizeText`, `sanitizeUrl`, `sanitizeParam`, `sanitizeSearch`
+- **Error handling** — `src/utils/errorMessages.js` maps HTTP status codes to user-friendly messages; raw API errors are never shown to users. All API errors include `error.userMessage` for safe UI display.
+- **Structured logging** — `src/utils/logger.js` auto-redacts sensitive data (tokens, passwords, secrets) from console output
+- **OAuth CSRF protection** — Google OAuth uses cryptographic `state` parameter with `sessionStorage` verification on callback. Apple Sign-In uses state param via Apple JS SDK.
 - **Token storage** — `@capacitor/preferences` on native (more secure than localStorage)
 - **Auth cleanup** — `clearAuth()` removes token from both localStorage and Capacitor Preferences
 - **WebSocket auth** — Token passed via query string, validated by backend middleware
 - **Agora auth** — RTM/RTC tokens are short-lived (24h), issued by the backend, and auto-renewed
-- **Rate limiting** — Backend WebSocket consumers have per-connection rate limits (30 msg/min)
-- **Message size limits** — 8KB WebSocket frame limit, 5000 char content limit
-- **Content moderation** — Three-tier: regex patterns -> harmful content detection -> OpenAI Moderation API (cached)
-- **URL redirect validation** — Stripe and Google OAuth redirects validated against domain allowlists
 - **CSRF header** — `X-CSRFToken` auto-attached on all mutating API requests
-- **No eval/innerHTML** — No dynamic code execution; all HTML rendering uses DOMPurify
-- **Log sanitization** — Console logs never include tokens, credentials, or full error stack traces in production; only safe identifiers (error code/message) are logged
+- **Log sanitization** — Console logs never include tokens, credentials, or full error stack traces
 - **Dependency audit** — 0 known vulnerabilities (npm audit clean)
+
+### Docker Security
+
+- **Read-only filesystem** — Container runs with `read_only: true` (tmpfs for cache/run/tmp)
+- **Port binding** — Listens on `127.0.0.1:3080` only (not exposed to internet directly)
+- **Resource limits** — 128M memory, 0.5 CPU
+- **Health check** — `wget --spider` on port 80
+- **server_tokens off** — Nginx version hidden
 
 ---
 
@@ -436,6 +470,7 @@ Custom scheme: `com.dreamplanner.app://`
 - **No test suite** — no Jest, Vitest, or Cypress
 - **No linting** — no ESLint or Prettier config
 - **Mobile-first** — UI optimized for ~480px; desktop layout needs work
-- **OAuth implicit flow** — Google login uses `response_type=token` (consider migrating to Authorization Code + PKCE)
+- **OAuth implicit flow** — Google login uses `response_type=token` (consider migrating to Authorization Code + PKCE). State parameter CSRF protection is in place.
 - **Voice messages** — Backend supports Whisper transcription but frontend recording UI not yet implemented
 - **Agora RTM v1.x** — Using legacy RTM SDK; consider migrating to RTM v2 when stable
+- **CSP unsafe-eval** — Required by Agora RTM SDK; cannot be removed until Agora releases a CSP-compliant build

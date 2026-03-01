@@ -3,6 +3,7 @@
 
 import { snakeToCamel, camelToSnake } from "./transforms";
 import { Capacitor } from "@capacitor/core";
+import { getUserMessage } from "../utils/errorMessages";
 
 var API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -162,6 +163,9 @@ async function request(url, options) {
         error.fieldErrors = snakeToCamel(fieldErrors);
       }
     }
+
+    // User-friendly message (safe to display in UI)
+    error.userMessage = getUserMessage(error);
 
     // 401 → clear auth (caller handles redirect)
     if (response.status === 401) {

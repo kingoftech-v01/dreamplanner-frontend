@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_API_BASE: ${VITE_API_BASE:-https://dpapi.jhpetitfrere.com}
+        VITE_WS_BASE: ${VITE_WS_BASE:-wss://dpapi.jhpetitfrere.com}
+        VITE_VAPID_PUBLIC_KEY: ${VITE_VAPID_PUBLIC_KEY:-}
+    ports:
+      - "3080:80"
+    restart: unless-stopped

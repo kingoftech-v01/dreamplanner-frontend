@@ -7,6 +7,7 @@ import { CONVERSATIONS, USERS, WS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import { clipboardWrite } from "../../services/native";
 import { sanitizeText } from "../../utils/sanitize";
 import DOMPurify from "dompurify";
@@ -32,12 +33,6 @@ import {
  * - All 9:1+ contrast
  * ═══════════════════════════════════════════════════════════════════ */
 
-const SUGGESTIONS = [
-  "Help me plan my goals",
-  "What should I focus on today?",
-  "I need motivation",
-  "Review my progress",
-];
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 function formatTime(d){return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
@@ -46,12 +41,12 @@ function formatMarkdown(text,isLight){
     .replace(/\*\*(.*?)\*\*/g,`<strong style="color:${isLight?'#1a1535':'#fff'};font-weight:600">$1</strong>`)
     .replace(/\n/g,"<br/>");
 }
-function getDateLabel(date){
+function getDateLabel(date,t){
   const now=new Date(),today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   const msgDay=new Date(date.getFullYear(),date.getMonth(),date.getDate());
   const diff=Math.floor((today-msgDay)/(1000*60*60*24));
-  if(diff===0) return "Today";
-  if(diff===1) return "Yesterday";
+  if(diff===0) return t("chat.today");
+  if(diff===1) return t("chat.yesterday");
   if(diff<7) return date.toLocaleDateString([],{weekday:'long'});
   return date.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'});
 }
@@ -69,9 +64,16 @@ export default function AIChatScreen(){
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
   var { user } = useAuth();
   var { showToast } = useToast();
+  var { t } = useT();
   var queryClient = useQueryClient();
   var isNewChat = id === "new";
   var userInitial = (user?.displayName || user?.email || "U")[0].toUpperCase();
+  var SUGGESTIONS = [
+    t("chat.helpPlan"),
+    t("chat.focusToday"),
+    t("chat.needMotivation"),
+    t("chat.reviewProgress"),
+  ];
   const[mounted,setMounted]=useState(false);
 
   // ─── AI usage quota ─────────────────────────────────────────────
@@ -183,17 +185,17 @@ export default function AIChatScreen(){
         if (data.type === "error") {
           setIsStreaming(false);
           setStreamingContent("");
-          showToast(data.error || "Chat error", "error");
+          showToast(data.error || t("chat.chatError"), "error");
         }
         if (data.type === "quota_exceeded") {
           setIsStreaming(false);
           setStreamingContent("");
-          showToast(data.message || "AI quota exceeded", "error");
+          showToast(data.message || t("chat.quotaExceeded"), "error");
         }
         if (data.type === "moderation") {
           setIsStreaming(false);
           setStreamingContent("");
-          showToast(data.message || "Message was not appropriate", "error");
+          showToast(data.message || t("chat.moderationError"), "error");
         }
       },
     });
@@ -230,7 +232,7 @@ export default function AIChatScreen(){
           })
           .catch(function (err) {
             setIsStreaming(false);
-            showToast(err.message || "Failed to send message", "error");
+            showToast(err.message || t("chat.failedSend"), "error");
           });
       }
     }
@@ -352,7 +354,7 @@ export default function AIChatScreen(){
       })
       .catch(function (err) {
         setIsStreaming(false);
-        showToast(err.message || "Failed to send message", "error");
+        showToast(err.message || t("chat.failedSend"), "error");
       });
   };
 
@@ -407,11 +409,11 @@ export default function AIChatScreen(){
             <Bot size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
           </div>
           <div>
-            <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>AI Coach</div>
+            <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.aiCoach")}</div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{display:"flex",alignItems:"center",gap:5}}>
                 <div className="dp-conn" style={{width:6,height:6,borderRadius:"50%",background:"#5DE5A8",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
-                <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>Connected</span>
+                <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{t("chat.connected")}</span>
               </div>
               {aiUsage.remaining !== undefined && (
                 <span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:8,background:aiUsage.remaining>10?"rgba(93,229,168,0.1)":"rgba(252,211,77,0.1)",color:aiUsage.remaining>10?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D")}}>{aiUsage.remaining}/{aiUsage.limit||"--"}</span>
@@ -426,10 +428,10 @@ export default function AIChatScreen(){
             {menuOpen&&(
               <div style={{position:"absolute",top:44,right:0,zIndex:200,background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
                 {[
-                  {icon:Clock,label:"Conversation History",count:null,action:()=>{setPanel("history");setMenuOpen(false);}},
-                  {icon:Pin,label:"Pinned Messages",count:pinnedMsgs.length,action:()=>{setPanel("pinned");setMenuOpen(false);}},
-                  {icon:Heart,label:"Liked Messages",count:likedMsgs.length,action:()=>{setPanel("liked");setMenuOpen(false);}},
-                  {icon:Search,label:"Search Messages",count:null,action:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
+                  {icon:Clock,label:t("chat.conversationHistory"),count:null,action:()=>{setPanel("history");setMenuOpen(false);}},
+                  {icon:Pin,label:t("chat.pinnedMessages"),count:pinnedMsgs.length,action:()=>{setPanel("pinned");setMenuOpen(false);}},
+                  {icon:Heart,label:t("chat.likedMessages"),count:likedMsgs.length,action:()=>{setPanel("liked");setMenuOpen(false);}},
+                  {icon:Search,label:t("chat.searchMessages"),count:null,action:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
                 ].map(({icon:I,label,count,action},i)=>(
                   <button key={i} onClick={action} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",borderRadius:10,cursor:"pointer",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"background 0.15s"}}
                     onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}
@@ -452,15 +454,15 @@ export default function AIChatScreen(){
               <div style={{width:80,height:80,borderRadius:24,margin:"0 auto 24px",background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <Sparkles size={36} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={1.5}/>
               </div>
-              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>Start a conversation</div>
-              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>Your AI coach is ready to help you achieve your dreams</div>
+              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>{t("chat.startConversation")}</div>
+              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>{t("chat.aiReady")}</div>
             </div>
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
               {hasMore && (
                 <div style={{textAlign:"center",padding:"8px 0 12px"}}>
-                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?"Loading...":"Load older messages"}</button>
+                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?t("chat.loading"):t("chat.loadOlder")}</button>
                 </div>
               )}
               {messages.map((msg,i)=>(
@@ -468,7 +470,7 @@ export default function AIChatScreen(){
                   {/* Date separator */}
                   {shouldShowDate(messages,i)&&(
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"16px 0 12px"}}>
-                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{getDateLabel(msg.time)}</div>
+                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{getDateLabel(msg.time,t)}</div>
                     </div>
                   )}
                   <MsgBubble msg={msg} userInitial={userInitial} showActions={activeMsg===msg.id} copiedId={copiedId}
@@ -484,7 +486,7 @@ export default function AIChatScreen(){
                   </div>
                   <div style={{padding:"14px 18px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",gap:4,alignItems:"center"}}>
                     {streamingContent ? (
-                      <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent,isLight))}}/>
+                      <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent,isLight))}}/>
                     ) : (
                       <><span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/></>
                     )}
@@ -533,7 +535,7 @@ export default function AIChatScreen(){
           <div style={{flex:1,display:"flex",alignItems:"flex-end",gap:8,padding:"8px 14px",borderRadius:22,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInputChange}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
-              placeholder="Type a message..." rows={1}
+              placeholder={t("chat.typeMessage")} rows={1}
               style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
           </div>
           <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:44,height:44,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.05)",color:input.trim()?"#fff":(isLight?"rgba(139,92,246,0.3)":"rgba(255,255,255,0.3)"),display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(139,92,246,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
@@ -553,10 +555,10 @@ export default function AIChatScreen(){
             {/* Panel header */}
             <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                {panel==="history"&&<><Clock size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Conversation History</span></>}
-                {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Pinned Messages</span></>}
-                {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Liked Messages</span></>}
-                {panel==="search"&&<><Search size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Search</span></>}
+                {panel==="history"&&<><Clock size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.conversationHistory")}</span></>}
+                {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.pinnedMessages")}</span></>}
+                {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.likedMessages")}</span></>}
+                {panel==="search"&&<><Search size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.search")}</span></>}
               </div>
               <button className="dp-ib" onClick={()=>{setPanel(null);setSearchQ("");}} aria-label="Close"><X size={18} strokeWidth={2}/></button>
             </div>
@@ -565,7 +567,7 @@ export default function AIChatScreen(){
               <div style={{padding:"12px 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:14,background:"var(--dp-surface)",border:"1px solid var(--dp-input-border)"}}>
                   <Search size={16} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>
-                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search messages..." autoFocus
+                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("chat.searchPlaceholder")} autoFocus
                     style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit"}}/>
                 </div>
               </div>
@@ -575,8 +577,8 @@ export default function AIChatScreen(){
               {panel==="history"&&(function(){
                 var convs = aiHistoryQuery.data || [];
                 if(!Array.isArray(convs)) convs = [];
-                if(aiHistoryQuery.isLoading) return <div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Loading...</div>;
-                if(convs.length===0) return <EmptyPanel icon={Clock} text="No conversations yet"/>;
+                if(aiHistoryQuery.isLoading) return <div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>{t("chat.loading")}</div>;
+                if(convs.length===0) return <EmptyPanel icon={Clock} text={t("chat.noConversations")}/>;
                 return convs.map(function(c){
                   var isCurrent = c.id === id;
                   var lastMsg = c.lastMessage;
@@ -597,22 +599,22 @@ export default function AIChatScreen(){
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                          <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{c.title || "AI Coach"}</span>
+                          <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{c.title || t("chat.aiCoach")}</span>
                           <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.45)",flexShrink:0}}>{ago}</span>
                         </div>
                         {preview && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.5)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}</div>}
                         <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                          <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.35)"}}>{c.totalMessages || 0} messages</span>
-                          {isCurrent && <span style={{fontSize:10,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD",background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.15)",padding:"1px 7px",borderRadius:6}}>Current</span>}
+                          <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.35)"}}>{(c.totalMessages || 0) + " " + t("chat.messages")}</span>
+                          {isCurrent && <span style={{fontSize:10,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD",background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.15)",padding:"1px 7px",borderRadius:6}}>{t("chat.current")}</span>}
                         </div>
                       </div>
                     </button>
                   );
                 });
               })()}
-              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyPanel icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
-              {panel==="liked"&&(likedMsgs.length===0?<EmptyPanel icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
-              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text="No results found"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search messages</div>)}
+              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyPanel icon={Pin} text={t("chat.noPinned")}/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
+              {panel==="liked"&&(likedMsgs.length===0?<EmptyPanel icon={Heart} text={t("chat.noLiked")}/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
+              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text={t("chat.noResults")}/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>{t("chat.typeToSearch")}</div>)}
             </div>
           </div>
         </div>
@@ -739,7 +741,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
                 ))}
               </div>
             )}
-            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6,marginTop:6}}>
               {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
               {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
@@ -802,7 +804,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
               ))}
             </div>
           )}
-          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(msg.content,isLight))}}/>
+          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(msg.content,isLight))}}/>
           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
             {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
             {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
@@ -828,6 +830,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
 // ─── PANEL MESSAGE CARD ──────────────────────────────────────────
 function PanelMsg({msg,userInitial}){
   const{resolved}=useTheme();const isLight=resolved==="light";
+  var{t}=useT();
   return(
     <div style={{padding:12,marginBottom:8,borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
@@ -836,7 +839,7 @@ function PanelMsg({msg,userInitial}){
         ):(
           <div style={{width:22,height:22,borderRadius:7,background:"rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}><Bot size={12} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/></div>
         )}
-        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?"You":"AI Coach"}</span>
+        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?t("chat.you"):t("chat.aiCoach")}</span>
         <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
       </div>
       <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content.replace(/\*\*/g,"")}</div>

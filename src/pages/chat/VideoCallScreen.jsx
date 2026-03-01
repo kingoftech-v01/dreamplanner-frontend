@@ -39,8 +39,13 @@ export default function VideoCallScreen() {
   var handleCallEnd = useCallback(function () {
     if (timerRef.current) clearInterval(timerRef.current);
     if (pollRef.current) clearInterval(pollRef.current);
+    if (sessionRef.current) {
+      sessionRef.current.leave();
+      sessionRef.current = null;
+    }
+    apiPost(CONVERSATIONS.CALLS.END(callId)).catch(function () {});
     navigate(-1);
-  }, [navigate]);
+  }, [navigate, callId]);
 
   // Join the Agora RTC channel (called only when both sides are ready)
   var joinRTC = useCallback(function () {

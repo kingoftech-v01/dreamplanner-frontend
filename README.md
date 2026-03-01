@@ -36,10 +36,8 @@ Create `.env` or `.env.local`:
 VITE_API_BASE=https://your-api-domain.com
 VITE_WS_BASE=wss://your-api-domain.com
 
-# Optional: TURN server for WebRTC NAT traversal
-VITE_TURN_URL=turn:turn.example.com:3478
-VITE_TURN_USERNAME=myuser
-VITE_TURN_CREDENTIAL=mypassword
+# Optional: VAPID key for Web Push (not needed on native — uses FCM)
+VITE_VAPID_PUBLIC_KEY=BPxr...base64...
 ```
 
 ---
@@ -71,23 +69,32 @@ The frontend connects to a Django REST Framework + Django Channels backend. All 
 
 ### Real-Time Communication
 
-| WebSocket Path | Consumer | Purpose |
+| Channel | Technology | Purpose |
 | --- | --- | --- |
-| `ws/conversations/<id>/` | `ChatConsumer` | AI chat with streaming responses |
-| `ws/buddy-chat/<id>/` | `BuddyChatConsumer` | P2P buddy messaging |
-| `ws/call/<id>/` | `CallSignalingConsumer` | WebRTC signaling (offer/answer/ICE) |
-| `ws/notifications/` | `NotificationConsumer` | Real-time notification updates |
+| AI chat | WebSocket `ws/conversations/<id>/` | AI chat with streaming responses |
+| Buddy chat | Agora RTM (SDK v1.5) | P2P messaging, typing indicators, read receipts |
+| Circle chat | Agora RTM (SDK v1.5) | Group messaging in circles |
+| Voice/video calls | Agora RTC (SDK v4.24) | Cloud-relayed voice & video calls |
+| Notifications | WebSocket `ws/notifications/` | Real-time notification updates |
 
-All WebSocket connections use token auth via query string (`?token=...`), auto-reconnect with exponential backoff, and heartbeat pings.
+WebSocket connections use token auth via query string (`?token=...`), auto-reconnect with exponential backoff, and heartbeat pings. Agora RTM/RTC tokens are fetched from the backend and auto-renewed before expiry.
 
-### WebRTC Voice/Video Calls
+### Agora Voice/Video Calls
 
-Implemented in `src/services/webrtc.js`:
+Implemented in `src/services/agora.js`:
 
 1. **Initiate call** — `POST /api/conversations/calls/initiate/` (creates Call record, sends FCM to callee)
-2. **Signaling** — WebSocket at `ws/call/<callId>/` relays SDP offers/answers and ICE candidates
-3. **Media** — `getUserMedia()` for local audio/video, `RTCPeerConnection` with STUN servers
-4. **Incoming calls** — `IncomingCallOverlay.jsx` listens for `dp-incoming-call` custom events from FCM
+2. **RTC session** — `createAgoraCallSession()` joins an Agora RTC channel with backend-issued token
+3. **Media** — Agora SDK manages local audio/video tracks (mic + camera permissions requested first)
+4. **Incoming calls** — `IncomingCallOverlay.jsx` listens for `dp-incoming-call` custom events from FCM push
+5. **Call end** — `session.leave()` closes RTC tracks + `POST /api/conversations/calls/<id>/end/`
+
+### Agora RTM (Buddy & Circle Chat)
+
+1. **Init** — `initRTM()` called once after auth; logs into RTM with backend-issued token
+2. **Channel join** — `joinRTMChannel(conversationUuid)` joins the channel; guards against duplicate joins (Error 202)
+3. **Messages** — JSON payloads with `content`, `ts`, `_type` (typing/mark_read) fields
+4. **Cleanup** — `cleanupRTM()` on logout leaves all channels and logs out
 
 ---
 
@@ -107,9 +114,11 @@ dreamplanner-frontend/
 │   ├── services/                         # Core services
 │   │   ├── api.js                        # HTTP client (auth, CORS, case transforms)
 │   │   ├── websocket.js                  # WebSocket manager (reconnect, heartbeat)
-│   │   ├── webrtc.js                     # WebRTC call sessions (signaling, media)
+│   │   ├── agora.js                      # Agora RTM (chat) + RTC (voice/video calls)
 │   │   ├── native.js                     # Capacitor native APIs (keyboard, haptics, etc.)
-│   │   ├── nativeNotifications.js        # FCM push registration + local notifications
+│   │   ├── nativeNotifications.js        # FCM push + local notifications + channels
+│   │   ├── pushNotifications.js          # Web Push (VAPID) + native FCM orchestrator
+│   │   ├── endpoints.js                  # All API endpoint constants
 │   │   └── transforms.js                 # camelCase <-> snake_case converters
 │   │
 │   ├── hooks/
@@ -219,13 +228,16 @@ dreamplanner-frontend/
 | POST | `/api/conversations/<id>/pin-message/<mid>/` | Pin message |
 | POST | `/api/conversations/<id>/like-message/<mid>/` | Like message |
 
-### Calls
+### Calls (Agora RTC)
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| POST | `/api/conversations/calls/initiate/` | Start a call |
+| POST | `/api/conversations/calls/initiate/` | Start a call (creates Agora channel, sends FCM) |
 | POST | `/api/conversations/calls/<id>/accept/` | Accept call |
 | POST | `/api/conversations/calls/<id>/reject/` | Reject call |
 | POST | `/api/conversations/calls/<id>/end/` | End call |
+| GET | `/api/conversations/agora/config/` | Get Agora App ID |
+| POST | `/api/conversations/agora/rtm-token/` | Issue RTM token (24h, auto-renewed) |
+| POST | `/api/conversations/agora/rtc-token/` | Issue RTC token for a channel |
 
 ### Social
 | Method | Endpoint | Description |
@@ -256,14 +268,16 @@ dreamplanner-frontend/
 | GET | `/api/leagues/leaderboard/league/` | League leaderboard |
 | GET | `/api/leagues/leaderboard/nearby/` | Nearby leaderboard |
 
-### Notifications
+### Notifications & Push
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | GET | `/api/notifications/` | List notifications |
 | POST | `/api/notifications/<id>/mark_read/` | Mark as read |
 | POST | `/api/notifications/mark_all_read/` | Mark all read |
 | GET | `/api/notifications/unread_count/` | Unread count |
-| POST | `/api/notifications/devices/` | Register FCM token |
+| POST | `/api/notifications/devices/` | Register FCM device token (native) |
+| POST | `/api/notifications/push-subscriptions/` | Register Web Push VAPID subscription |
+| DELETE | `/api/notifications/push-subscriptions/` | Unregister Web Push subscription |
 
 ### Calendar
 | Method | Endpoint | Description |
@@ -323,11 +337,25 @@ The app uses these Capacitor plugins for native functionality:
 Declared in `android/app/src/main/AndroidManifest.xml`:
 
 ```
-INTERNET, CAMERA, VIBRATE, WAKE_LOCK, POST_NOTIFICATIONS,
+INTERNET, ACCESS_NETWORK_STATE, CAMERA, RECORD_AUDIO,
+MODIFY_AUDIO_SETTINGS, VIBRATE, WAKE_LOCK, POST_NOTIFICATIONS,
 READ_MEDIA_IMAGES, USE_FULL_SCREEN_INTENT, FOREGROUND_SERVICE,
-RECEIVE_BOOT_COMPLETED, SCHEDULE_EXACT_ALARM, RECORD_AUDIO,
-MODIFY_AUDIO_SETTINGS
+SYSTEM_ALERT_WINDOW, RECEIVE_BOOT_COMPLETED, SCHEDULE_EXACT_ALARM
 ```
+
+### MediaPermissionsPlugin
+
+Custom Capacitor plugin (`MediaPermissionsPlugin.java`) that requests CAMERA + RECORD_AUDIO permissions together at app startup. Registered in `MainActivity.java` before `super.onCreate()`. Called from `main.jsx` after notification permission is granted — Android only shows one permission dialog at a time.
+
+### Notification Channels (Android)
+
+| Channel ID | Name | Importance | Sound |
+| --- | --- | --- | --- |
+| `dreamplanner_default` | DreamPlanner | 4 (High) | default |
+| `task-calls` | Task Calls | 5 (Max) | ringtone |
+| `buddy-calls` | Buddy Calls | 5 (Max) | ringtone |
+
+Channels are created at startup in `main.jsx`. High-priority channels trigger full-screen intents for incoming calls and task reminders over the lock screen.
 
 ### Deep Links
 
@@ -336,6 +364,7 @@ Custom scheme: `com.dreamplanner.app://`
 | Deep Link | Handler |
 | --- | --- |
 | `auth/google/callback` | Google OAuth token extraction |
+| `auth/apple/callback` | Apple Sign-In id_token extraction |
 | `stripe/return` | Stripe checkout completion |
 | `calendar/callback` | Google Calendar OAuth code |
 | `notification?route=...` | Navigate to route from notification tap |
@@ -346,16 +375,18 @@ Custom scheme: `com.dreamplanner.app://`
 
 - **HTML sanitization** — AI chat messages rendered via `dangerouslySetInnerHTML` are sanitized with DOMPurify
 - **Input sanitization** — `src/utils/sanitize.js` provides `stripHtml`, `escapeHtml`, `sanitizeText`, etc.
-- **CSP headers** — Both in `index.html` meta tag and backend `SecurityHeadersMiddleware`
+- **CSP headers** — Both in `index.html` meta tag and backend `SecurityHeadersMiddleware`. CSP includes port wildcards (`:*`) for Agora SDK WebSocket connections on non-standard ports.
 - **Token storage** — `@capacitor/preferences` on native (more secure than localStorage)
 - **Auth cleanup** — `clearAuth()` removes token from both localStorage and Capacitor Preferences
 - **WebSocket auth** — Token passed via query string, validated by backend middleware
+- **Agora auth** — RTM/RTC tokens are short-lived (24h), issued by the backend, and auto-renewed
 - **Rate limiting** — Backend WebSocket consumers have per-connection rate limits (30 msg/min)
 - **Message size limits** — 8KB WebSocket frame limit, 5000 char content limit
 - **Content moderation** — Three-tier: regex patterns -> harmful content detection -> OpenAI Moderation API (cached)
 - **URL redirect validation** — Stripe and Google OAuth redirects validated against domain allowlists
 - **CSRF header** — `X-CSRFToken` auto-attached on all mutating API requests
 - **No eval/innerHTML** — No dynamic code execution; all HTML rendering uses DOMPurify
+- **Log sanitization** — Console logs never include tokens, credentials, or full error stack traces in production; only safe identifiers (error code/message) are logged
 - **Dependency audit** — 0 known vulnerabilities (npm audit clean)
 
 ---
@@ -404,7 +435,7 @@ Custom scheme: `com.dreamplanner.app://`
 
 - **No test suite** — no Jest, Vitest, or Cypress
 - **No linting** — no ESLint or Prettier config
-- **TURN server recommended** — WebRTC supports TURN via `VITE_TURN_*` env vars and backend `TURN_SERVER_*` settings; without it, calls behind symmetric NATs will fail
 - **Mobile-first** — UI optimized for ~480px; desktop layout needs work
 - **OAuth implicit flow** — Google login uses `response_type=token` (consider migrating to Authorization Code + PKCE)
 - **Voice messages** — Backend supports Whisper transcription but frontend recording UI not yet implemented
+- **Agora RTM v1.x** — Using legacy RTM SDK; consider migrating to RTM v2 when stable

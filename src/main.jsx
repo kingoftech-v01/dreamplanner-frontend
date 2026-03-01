@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { App as CapApp } from '@capacitor/app';
 import { setupKeyboard } from './services/native';
 import { initToken } from './services/api';
-import { setupPushListeners, createTaskCallChannel, createDefaultNotificationChannel, createBuddyCallChannel, registerTaskCallActions, registerBuddyCallActions, requestLocalNotificationPermission, showForegroundNotification, scheduleTaskCallNotification } from './services/nativeNotifications';
+import { setupPushListeners, createTaskCallChannel, createDefaultNotificationChannel, createBuddyCallChannel, registerTaskCallActions, registerBuddyCallActions, requestLocalNotificationPermission, scheduleIncomingCallNotification, scheduleTaskCallNotification } from './services/nativeNotifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { I18nProvider } from './context/I18nContext';
@@ -68,7 +68,7 @@ if (Capacitor.isNativePlatform()) {
         if (route) window.location.hash = "#" + route;
       }
     } catch (e) {
-      console.warn("Deep link parse error:", e);
+      console.warn("Deep link parse error");
     }
   });
 
@@ -93,8 +93,13 @@ if (Capacitor.isNativePlatform()) {
             callType: n.data.call_type,
           },
         }));
-        // Also show local notification with ringtone sound + vibration
-        showForegroundNotification(n);
+        // Schedule full-screen incoming call notification with ringtone + vibration
+        scheduleIncomingCallNotification({
+          callId: n.data.call_id,
+          callerId: n.data.caller_id,
+          callerName: n.data.caller_name,
+          callType: n.data.call_type,
+        });
         return;
       }
       // Task reminder from push — dispatch event + schedule task call notification
@@ -133,13 +138,24 @@ if (Capacitor.isNativePlatform()) {
     },
   });
 
-  // Setup notification channels + actions (local notifications)
+  // Setup notification channels + actions, then request mic/camera
+  // IMPORTANT: permissions must be sequential — Android only shows one dialog at a time
   requestLocalNotificationPermission().then(function () {
     createDefaultNotificationChannel();
     createBuddyCallChannel();
     createTaskCallChannel();
     registerTaskCallActions();
     registerBuddyCallActions();
+
+    // After notification permission is granted, request mic+camera
+    import('@capacitor/core').then(function (cap) {
+      var MediaPermissions = cap.registerPlugin('MediaPermissions');
+      MediaPermissions.request().then(function (result) {
+        console.log("[Permissions] Mic + camera granted:", result.granted);
+      }).catch(function (err) {
+        console.warn("[Permissions] MediaPermissions plugin error:", err);
+      });
+    });
   });
 }
 

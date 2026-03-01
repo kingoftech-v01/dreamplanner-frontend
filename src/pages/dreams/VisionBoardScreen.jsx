@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Heart, Sparkles, RefreshCw, X, Maximize2,
-  Briefcase, Palette, Heart as HeartIcon, Wallet, Brain, Users, ImageOff, Loader2
+  Briefcase, Palette, Heart as HeartIcon, Wallet, Brain, Users, ImageOff, Loader2,
+  ImagePlus, Upload
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
@@ -11,9 +12,10 @@ import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
-import { apiPost } from "../../services/api";
+import { apiPost, getToken } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
+import { useT } from "../../context/I18nContext";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Vision Board Screen
@@ -40,7 +42,7 @@ var CATS = {
 var DEFAULT_CAT = { Icon: Sparkles, color: "#8B5CF6", gradient: "linear-gradient(135deg, #8B5CF6, #7C3AED)" };
 
 // Vary card heights for visual interest based on index
-var HEIGHTS = [200, 160, 180, 220, 170, 190, 200, 160];
+var HEIGHTS = [240, 200, 220, 260, 210, 230, 240, 200];
 
 var glass = {
   background: "var(--dp-glass-bg)",
@@ -53,6 +55,7 @@ var glass = {
 
 export default function VisionBoardScreen() {
   var navigate = useNavigate();
+  var { t } = useT();
   var { resolved } = useTheme(); var isLight = resolved === "light";
   var { showToast } = useToast();
   var { hasSubscription } = useAuth();
@@ -120,14 +123,17 @@ export default function VisionBoardScreen() {
   var quote = QUOTES[quoteIdx];
 
   var handleGenerateVision = function () {
-    if (!hasSubscription("pro")) {
-      showToast("Upgrade to Pro for AI-generated vision images", "info");
-      return;
-    }
     setShowGenModal(true);
   };
 
+  var [uploading, setUploading] = useState(null);
+  var fileInputRef = useState(null);
+
   var generateForDream = function (dreamId) {
+    if (!hasSubscription("pro")) {
+      showToast(t("vision.proRequired"), "info");
+      return;
+    }
     setGenerating(dreamId);
     apiPost(DREAMS.GENERATE_VISION(dreamId)).then(function (data) {
       showToast("Vision image generated!", "success");
@@ -135,9 +141,42 @@ export default function VisionBoardScreen() {
       setShowGenModal(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
     }).catch(function (err) {
-      showToast(err.message || "Failed to generate vision image", "error");
+      showToast(err.message || t("vision.uploadFailed"), "error");
       setGenerating(null);
     });
+  };
+
+  var uploadForDream = function (dreamId) {
+    var input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.onchange = function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      setUploading(dreamId);
+      var formData = new FormData();
+      formData.append("image", file);
+      formData.append("caption", "");
+      fetch((import.meta.env.VITE_API_BASE || "") + DREAMS.VISION_BOARD_ADD(dreamId), {
+        method: "POST",
+        headers: {
+          "Authorization": "Token " + getToken(),
+        },
+        body: formData,
+      }).then(function (resp) {
+        if (!resp.ok) throw new Error("Upload failed");
+        return resp.json();
+      }).then(function (data) {
+        showToast(t("vision.imageUploaded"), "success");
+        setUploading(null);
+        setShowGenModal(false);
+        queryClient.invalidateQueries({ queryKey: ["dreams"] });
+      }).catch(function (err) {
+        showToast(err.message || t("vision.uploadFailed"), "error");
+        setUploading(null);
+      });
+    };
+    input.click();
   };
 
   // ── Loading state ──
@@ -371,14 +410,14 @@ export default function VisionBoardScreen() {
               fontSize: 18, fontWeight: 700, color: "var(--dp-text)",
               fontFamily: "Inter, sans-serif", margin: "0 0 8px",
             }}>
-              Your vision board is empty
+              {t("vision.empty")}
             </h3>
             <p style={{
               fontSize: 14, color: "var(--dp-text-tertiary)",
               fontFamily: "Inter, sans-serif", lineHeight: 1.6,
               maxWidth: 280, margin: "0 0 24px",
             }}>
-              Create your first dream and it will appear here as a vision card.
+              {t("vision.emptyDesc")}
             </p>
             <button
               onClick={function () { navigate("/dream/create"); }}
@@ -393,7 +432,7 @@ export default function VisionBoardScreen() {
               }}
             >
               <Sparkles size={16} />
-              Create a Dream
+              {t("dreams.createDream")}
             </button>
           </div>
         )}
@@ -634,7 +673,7 @@ export default function VisionBoardScreen() {
             transform: mounted ? "scale(1)" : "scale(0.5)",
           }}
         >
-          <Sparkles size={24} strokeWidth={2} />
+          <ImagePlus size={24} strokeWidth={2} />
         </button>
 
         {/* Full-Screen Modal */}
@@ -695,7 +734,8 @@ export default function VisionBoardScreen() {
               <div
                 style={{
                   width: "100%",
-                  height: 360,
+                  minHeight: 300,
+                  maxHeight: "60vh",
                   borderRadius: 24,
                   background: fullscreen.visionImageUrl ? "var(--dp-glass-bg)" : fullscreen.gradient,
                   display: "flex",
@@ -711,11 +751,9 @@ export default function VisionBoardScreen() {
                     src={fullscreen.visionImageUrl}
                     alt={fullscreen.title}
                     style={{
-                      position: "absolute",
-                      inset: 0,
                       width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
+                      maxHeight: "60vh",
+                      objectFit: "contain",
                     }}
                   />
                 ) : (
@@ -883,14 +921,14 @@ export default function VisionBoardScreen() {
                 borderBottom: "none",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <Sparkles size={18} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
+                  <ImagePlus size={18} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
                   <span style={{
                     fontSize: 16,
                     fontWeight: 700,
                     color: "var(--dp-text)",
                     fontFamily: "Inter, sans-serif",
                   }}>
-                    Generate AI Vision
+                    {t("vision.addImage")}
                   </span>
                 </div>
                 <button
@@ -997,47 +1035,86 @@ export default function VisionBoardScreen() {
                         </div>
                       </div>
 
-                      {/* Generate button */}
-                      <button
-                        onClick={function (e) {
-                          e.stopPropagation();
-                          if (!generating) generateForDream(dream.id);
-                        }}
-                        disabled={!!generating}
-                        style={{
-                          height: 34,
-                          borderRadius: 10,
-                          padding: "0 14px",
-                          border: "none",
-                          background: isGenerating
-                            ? "linear-gradient(135deg, #6D28D9, #5B21B6)"
-                            : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                          color: "#fff",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          fontFamily: "Inter, sans-serif",
-                          cursor: generating ? "not-allowed" : "pointer",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          flexShrink: 0,
-                          opacity: generating && !isGenerating ? 0.5 : 1,
-                          boxShadow: isGenerating ? "0 4px 16px rgba(139,92,246,0.3)" : "none",
-                          transition: "all 0.2s",
-                        }}
-                      >
-                        {isGenerating ? (
-                          <>
-                            <Loader2 size={14} strokeWidth={2} style={{ animation: "vbSpin 1s linear infinite" }} />
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles size={14} strokeWidth={2} />
-                            Generate
-                          </>
-                        )}
-                      </button>
+                      {/* Action buttons */}
+                      <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                        {/* Upload from gallery */}
+                        <button
+                          onClick={function (e) {
+                            e.stopPropagation();
+                            if (!generating && !uploading) uploadForDream(dream.id);
+                          }}
+                          disabled={!!generating || !!uploading}
+                          style={{
+                            width: 34,
+                            height: 34,
+                            borderRadius: 10,
+                            padding: 0,
+                            border: "1px solid " + (isLight ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.3)"),
+                            background: uploading === dream.id
+                              ? "linear-gradient(135deg, #6D28D9, #5B21B6)"
+                              : (isLight ? "rgba(139,92,246,0.06)" : "rgba(139,92,246,0.1)"),
+                            color: uploading === dream.id ? "#fff" : (isLight ? "#7C3AED" : "#C4B5FD"),
+                            fontSize: 12,
+                            fontWeight: 600,
+                            fontFamily: "Inter, sans-serif",
+                            cursor: (generating || uploading) ? "not-allowed" : "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            opacity: (generating || uploading) && uploading !== dream.id ? 0.5 : 1,
+                            transition: "all 0.2s",
+                          }}
+                          title={t("vision.uploadFromGallery")}
+                        >
+                          {uploading === dream.id ? (
+                            <Loader2 size={15} strokeWidth={2} style={{ animation: "vbSpin 1s linear infinite" }} />
+                          ) : (
+                            <Upload size={15} strokeWidth={2} />
+                          )}
+                        </button>
+                        {/* Generate AI */}
+                        <button
+                          onClick={function (e) {
+                            e.stopPropagation();
+                            if (!generating && !uploading) generateForDream(dream.id);
+                          }}
+                          disabled={!!generating || !!uploading}
+                          style={{
+                            height: 34,
+                            borderRadius: 10,
+                            padding: "0 12px",
+                            border: "none",
+                            background: isGenerating
+                              ? "linear-gradient(135deg, #6D28D9, #5B21B6)"
+                              : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                            color: "#fff",
+                            fontSize: 12,
+                            fontWeight: 600,
+                            fontFamily: "Inter, sans-serif",
+                            cursor: (generating || uploading) ? "not-allowed" : "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 5,
+                            flexShrink: 0,
+                            opacity: (generating || uploading) && !isGenerating ? 0.5 : 1,
+                            boxShadow: isGenerating ? "0 4px 16px rgba(139,92,246,0.3)" : "none",
+                            transition: "all 0.2s",
+                          }}
+                        >
+                          {isGenerating ? (
+                            <>
+                              <Loader2 size={13} strokeWidth={2} style={{ animation: "vbSpin 1s linear infinite" }} />
+                              <span>{t("vision.generating")}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={13} strokeWidth={2} />
+                              <span>{t("vision.generateAI")}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

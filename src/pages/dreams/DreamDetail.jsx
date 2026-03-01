@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { StatsSkeleton, SkeletonCard, SkeletonLine } from "../../components/shared/Skeleton";
@@ -24,6 +25,41 @@ import {
 
 const STATUS_COLORS={active:"#5DE5A8",paused:"#FCD34D",completed:"#C4B5FD",archived:"rgba(255,255,255,0.4)"};
 
+/* ── Reusable truncated text with "Read more" ── */
+function TruncText({ text, maxLen, isLight, style, t }) {
+  var [exp, setExp] = useState(false);
+  if (!text) return null;
+  var need = text.length > maxLen;
+  return (
+    <div style={Object.assign({ fontSize: 12, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)", lineHeight: 1.5 }, style || {})}>
+      {need && !exp ? text.slice(0, maxLen) + "..." : text}
+      {need && (
+        <span onClick={function (e) { e.stopPropagation(); setExp(!exp); }} style={{ color: isLight ? "#7C3AED" : "#C4B5FD", fontWeight: 600, cursor: "pointer", marginLeft: 4, fontSize: 11 }}>
+          {exp ? t("dreams.showLess") : t("dreams.readMore")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ── "See More" / "Show Less" button ── */
+function SeeMoreBtn({ shown, total, onToggle, isLight, expanded, t }) {
+  if (!expanded && total <= shown) return null;
+  var isExpanded = expanded || shown >= total;
+  return (
+    <button onClick={onToggle} style={{
+      width: "100%", padding: "10px 0", marginTop: 4, borderRadius: 12,
+      border: "1px solid " + (isLight ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.2)"),
+      background: isLight ? "rgba(139,92,246,0.04)" : "rgba(139,92,246,0.06)",
+      color: isLight ? "#7C3AED" : "#C4B5FD", fontSize: 13, fontWeight: 600,
+      cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center",
+      justifyContent: "center", gap: 6, transition: "all 0.2s ease",
+    }}>
+      {isExpanded ? t("dreams.showLess") : t("dreams.seeAll") + " (" + total + ")"}
+      <ChevronDown size={14} strokeWidth={2.5} style={{ transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
+    </button>
+  );
+}
 
 export default function DreamDetailScreen(){
   const navigate=useNavigate();
@@ -31,6 +67,7 @@ export default function DreamDetailScreen(){
   var queryClient = useQueryClient();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
   var { showToast } = useToast();
+  var { t } = useT();
 
   var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet(DREAMS.DETAIL(id)); } });
   var DREAM = dreamQuery.data || {};
@@ -160,13 +197,41 @@ export default function DreamDetailScreen(){
   var [showTagInput, setShowTagInput] = useState(false);
   var [newTag, setNewTag] = useState("");
 
+  // ── "See More" state ──
+  var [showAllMilestones, setShowAllMilestones] = useState(false);
+  var [showAllGoals, setShowAllGoals] = useState(false);
+  var [showAllObstacles, setShowAllObstacles] = useState(false);
+  var [showAllCollabs, setShowAllCollabs] = useState(false);
+  var [showAllProgress, setShowAllProgress] = useState(false);
+  var [expandedDescs, setExpandedDescs] = useState({});
+  var toggleDesc = function (key) { setExpandedDescs(function (p) { var n = {}; n[key] = !p[key]; return Object.assign({}, p, n); }); };
+
   // ── Sharing / Collaborators state ──
   var [showShareModal, setShowShareModal] = useState(false);
   var [shareUserId, setShareUserId] = useState("");
 
   useEffect(function () {
     if (dreamQuery.data && !goalsInitialized) {
-      var initGoals = (dreamQuery.data.goals || []).map(function (g, i) { return { ...g, order: g.order !== undefined ? g.order : i, completed: g.completed || false, tasks: (g.tasks || []).map(function (t) { return { ...t, completed: t.completed || false }; }) }; });
+      // Prefer milestone-nested goals (properly ordered by milestone) over flat top-level goals
+      var allGoals = [];
+      var milestones = dreamQuery.data.milestones || [];
+      if (milestones.length > 0) {
+        // Extract goals from milestones in order — preserves milestone→goal hierarchy
+        milestones
+          .slice()
+          .sort(function (a, b) { return (a.order || 0) - (b.order || 0); })
+          .forEach(function (ms) {
+            (ms.goals || [])
+              .slice()
+              .sort(function (a, b) { return (a.order || 0) - (b.order || 0); })
+              .forEach(function (g) { allGoals.push(g); });
+          });
+      }
+      // Fall back to top-level goals if no milestones
+      if (allGoals.length === 0) {
+        allGoals = dreamQuery.data.goals || [];
+      }
+      var initGoals = allGoals.map(function (g, i) { return { ...g, order: g.order !== undefined ? g.order : i, completed: g.completed || false, tasks: (g.tasks || []).map(function (t) { return { ...t, completed: t.completed || false }; }) }; });
       setGoals(initGoals);
       var first = initGoals.find(function (g) { return !g.completed; });
       setExpanded(first ? { [first.id]: true } : {});
@@ -293,7 +358,7 @@ export default function DreamDetailScreen(){
           <div style={{position:"relative"}}>
             <button className="dp-ib" aria-label="More options" onClick={()=>setMenu(!menu)}><MoreVertical size={17} strokeWidth={2}/></button>
             {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
-              {[{icon:Edit3,label:"Edit Dream",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:"Generate Plan",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:"Share Dream",action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:"Generate Vision",action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:"Export PDF",action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Copy,label:"Duplicate",action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:"Delete",danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
+              {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
                 <button key={i} onClick={action||(()=>setMenu(false))} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"),transition:"background 0.15s"}}
                   onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
@@ -326,7 +391,7 @@ export default function DreamDetailScreen(){
                 </div>
                 <div style={{flex:1}}>
                   <span style={{padding:"3px 9px",borderRadius:8,background:`${STATUS_COLORS[DREAM.status]}15`,fontSize:12,fontWeight:700,color:isLight?(STATUS_COLORS[DREAM.status]==="#5DE5A8"?"#059669":STATUS_COLORS[DREAM.status]==="#FCD34D"?"#B45309":STATUS_COLORS[DREAM.status]==="#C4B5FD"?"#6D28D9":STATUS_COLORS[DREAM.status]):STATUS_COLORS[DREAM.status],textTransform:"uppercase"}}>{DREAM.status}</span>
-                  <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:8,lineHeight:1.5}}>{DREAM.description}</div>
+                  <TruncText text={DREAM.description} maxLen={120} isLight={isLight} style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:8}} t={t} />
                   <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
                     <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:isLight?"#7C3AED":"#C4B5FD"}}>{DREAM.category}</span>
                     {DREAM.expectedDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"#2563EB":"#60A5FA",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Expected: {new Date(DREAM.expectedDate).toLocaleDateString()}</span>}
@@ -380,9 +445,9 @@ export default function DreamDetailScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"80ms"}}>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
               {[
-                {Icon:Target,val:totalTasks,label:"Tasks",color:isLight?"#7C3AED":"#C4B5FD"},
-                {Icon:CheckCircle,val:doneTasks,label:"Done",color:isLight?"#059669":"#5DE5A8"},
-                {Icon:Zap,val:0,label:"XP",color:isLight?"#B45309":"#FCD34D"},
+                {Icon:Target,val:totalTasks,label:t("dreams.tasks"),color:isLight?"#7C3AED":"#C4B5FD"},
+                {Icon:CheckCircle,val:doneTasks,label:t("dreams.done"),color:isLight?"#059669":"#5DE5A8"},
+                {Icon:Zap,val:0,label:t("profile.xp"),color:isLight?"#B45309":"#FCD34D"},
               ].map(({Icon:I,val,label,color},i)=>(
                 <div key={i} className="dp-g" style={{flex:1,padding:"12px 8px",textAlign:"center"}}>
                   <I size={16} color={color} strokeWidth={2} style={{marginBottom:4}}/>
@@ -398,7 +463,7 @@ export default function DreamDetailScreen(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <Flag size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Milestones ({MILESTONES.length})</span>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.milestones")} ({MILESTONES.length})</span>
               </div>
               {DREAM.milestonesCount > 0 && <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{DREAM.completedMilestonesCount || 0}/{DREAM.milestonesCount} done</span>}
             </div>
@@ -417,19 +482,22 @@ export default function DreamDetailScreen(){
                       boxShadow:"0 2px 12px rgba(139,92,246,0.3)",
                     }}
                   >
-                    <Sparkles size={14} /> {DREAM.calibrationStatus === "completed" ? "Generate Plan" : "Start Calibration"}
+                    <Sparkles size={14} /> {DREAM.calibrationStatus === "completed" ? t("dreams.generatePlan") : t("dreams.startCalibration")}
                   </button>
                 </div>
-              ) : MILESTONES.map(function (m, i) {
+              ) : (function () {
+                var MILESTONE_LIMIT = 3;
+                var visibleMs = showAllMilestones ? MILESTONES : MILESTONES.slice(0, MILESTONE_LIMIT);
+                return visibleMs.map(function (m, i) {
                 return (
                 <div key={m.id || i} style={{display:"flex",gap:12,position:"relative"}}>
-                  {i<MILESTONES.length-1&&<div style={{position:"absolute",left:11,top:24,bottom:-4,width:2,background:m.done?"rgba(93,229,168,0.2)":(isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)")}}/>}
+                  {i<visibleMs.length-1&&<div style={{position:"absolute",left:11,top:24,bottom:-4,width:2,background:m.done?"rgba(93,229,168,0.2)":(isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)")}}/>}
                   <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:!m.done&&m.active?"pointer":"default",background:m.done?"rgba(93,229,168,0.15)":m.active?"rgba(252,211,77,0.12)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),border:m.done?"2px solid rgba(93,229,168,0.3)":m.active?"2px solid rgba(252,211,77,0.3)":(isLight?"2px solid rgba(139,92,246,0.15)":"2px solid rgba(255,255,255,0.08)")}} onClick={function () { if (!m.done && m.active && m.id) milestoneCompleteMut.mutate(m.id); }}>
                     {m.done?<Check size={12} color={isLight?"#059669":"#5DE5A8"} strokeWidth={3}/>:m.active?<div style={{width:6,height:6,borderRadius:3,background:"#FCD34D"}}/>:null}
                   </div>
-                  <div style={{flex:1,paddingBottom:i<MILESTONES.length-1?16:0}}>
+                  <div style={{flex:1,paddingBottom:i<visibleMs.length-1?16:0}}>
                     <div style={{fontSize:13,fontWeight:m.active?600:m.done?500:400,color:m.done?(isLight?"#059669":"#5DE5A8"):m.active?(isLight?"#B45309":"#FCD34D"):(isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)")}}>{m.label}</div>
-                    {m.description && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",marginTop:2}}>{m.description}</div>}
+                    {m.description && <TruncText text={m.description} maxLen={80} isLight={isLight} style={{marginTop:2,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}} t={t} />}
                     <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
                       {m.expectedDate && <span style={{fontSize:11,color:isLight?"#2563EB":"#60A5FA",fontWeight:500}}>Expected: {new Date(m.expectedDate).toLocaleDateString()}</span>}
                       {m.deadlineDate && <span style={{fontSize:11,color:isLight?"#DC2626":"#F87171",fontWeight:500}}>Deadline: {new Date(m.deadlineDate).toLocaleDateString()}</span>}
@@ -446,7 +514,8 @@ export default function DreamDetailScreen(){
                   </div>
                 </div>
                 );
-              })}
+              }); })()}
+              <SeeMoreBtn expanded={showAllMilestones} shown={showAllMilestones ? MILESTONES.length : Math.min(3, MILESTONES.length)} total={MILESTONES.length} onToggle={function () { setShowAllMilestones(!showAllMilestones); }} isLight={isLight} t={t} />
             </div>
           </div>
 
@@ -455,7 +524,7 @@ export default function DreamDetailScreen(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <Star size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Goals ({goals.length})</span>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.goals")} ({goals.length})</span>
               </div>
               <button onClick={()=>{setNewTitle("");setNewDesc("");setAddGoal(true);}} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
                 <Plus size={13} strokeWidth={2.5}/>Add Goal
@@ -463,17 +532,23 @@ export default function DreamDetailScreen(){
             </div>
           </div>
 
-          {goals.map((g,gi)=>{
-            const isExp=expanded[g.id];
-            const gDone=g.tasks.filter(t=>t.completed).length;
-            const gTotal=g.tasks.length;
-            const gProg=gTotal?gDone/gTotal:0;
-            const allDone=gDone===gTotal&&gTotal>0;
+          {(function () {
+            var GOAL_LIMIT = 4;
+            var visibleGoals = showAllGoals ? goals : goals.slice(0, GOAL_LIMIT);
+            return visibleGoals.map(function (g, gi) {
+            var isExp=expanded[g.id];
+            var gDone=g.tasks.filter(function(t){return t.completed;}).length;
+            var gTotal=g.tasks.length;
+            var gProg=gTotal?gDone/gTotal:0;
+            var allDone=gDone===gTotal&&gTotal>0;
+            var TASK_LIMIT = 5;
+            var showAllTasks = expanded["tasks_" + g.id];
+            var visibleTasks = showAllTasks ? g.tasks : g.tasks.slice(0, TASK_LIMIT);
             return(
-              <div key={g.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${320+gi*60}ms`}}>
+              <div key={g.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(320+gi*60)+"ms"}}>
                 <div className="dp-g" style={{marginBottom:8,overflow:"hidden"}}>
                   {/* Goal header */}
-                  <div onClick={()=>toggleExpand(g.id)} style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                  <div onClick={function(){toggleExpand(g.id);}} style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
                     <div style={{width:30,height:30,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:allDone?"rgba(93,229,168,0.15)":"rgba(139,92,246,0.1)",border:allDone?"1px solid rgba(93,229,168,0.25)":"1px solid rgba(139,92,246,0.15)"}}>
                       {allDone?<Check size={14} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/>:<span style={{fontSize:12,fontWeight:700,color:isLight?"#7C3AED":"#C4B5FD"}}>{gi+1}</span>}
                     </div>
@@ -482,7 +557,7 @@ export default function DreamDetailScreen(){
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
                         <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{gDone}/{gTotal} tasks</span>
                         <div style={{flex:1,maxWidth:80,height:3,borderRadius:2,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}}>
-                          <div style={{height:"100%",borderRadius:2,background:allDone?"#5DE5A8":"#C4B5FD",width:`${gProg*100}%`,transition:"width 0.5s ease"}}/>
+                          <div style={{height:"100%",borderRadius:2,background:allDone?"#5DE5A8":"#C4B5FD",width:(gProg*100)+"%",transition:"width 0.5s ease"}}/>
                         </div>
                       </div>
                     </div>
@@ -490,18 +565,23 @@ export default function DreamDetailScreen(){
                   </div>
 
                   {/* Tasks */}
-                  <div style={{maxHeight:isExp?1000:0,opacity:isExp?1:0,transition:"all 0.35s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden"}}>
+                  <div style={{maxHeight:isExp?5000:0,opacity:isExp?1:0,transition:"all 0.35s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden"}}>
                     <div style={{padding:"0 14px 12px",borderTop:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-                      {g.tasks.map((t,ti)=>(
-                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:ti<g.tasks.length-1?(isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)"):"none"}}>
-                          <button onClick={()=>toggleTask(g.id,t.id)} style={{width:22,height:22,borderRadius:7,border:t.completed?"none":(isLight?"2px solid rgba(139,92,246,0.2)":"2px solid rgba(255,255,255,0.15)"),background:t.completed?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.2s",flexShrink:0}}>
+                      {visibleTasks.map(function(t,ti){return(
+                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:ti<visibleTasks.length-1?(isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)"):"none"}}>
+                          <button onClick={function(){toggleTask(g.id,t.id);}} style={{width:22,height:22,borderRadius:7,border:t.completed?"none":(isLight?"2px solid rgba(139,92,246,0.2)":"2px solid rgba(255,255,255,0.15)"),background:t.completed?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.2s",flexShrink:0}}>
                             {t.completed&&<Check size={12} color={isLight?"#059669":"#5DE5A8"} strokeWidth={3}/>}
                           </button>
                           <span style={{flex:1,fontSize:13,color:t.completed?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"),textDecoration:t.completed?"line-through":"none",transition:"all 0.2s"}}>{t.title}</span>
                           <span style={{fontSize:12,color:t.completed?"rgba(93,229,168,0.5)":"rgba(252,211,77,0.6)",fontWeight:600}}>+{t.xp}</span>
                         </div>
-                      ))}
-                      <button onClick={()=>{setNewTitle("");setNewDesc("");setAddTask(g.id);}} style={{width:"100%",marginTop:8,padding:"8px",borderRadius:10,border:"1px dashed rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.04)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                      );})}
+                      {g.tasks.length > TASK_LIMIT && (
+                        <button onClick={function(e){e.stopPropagation();setExpanded(function(p){var n={};n["tasks_"+g.id]=!p["tasks_"+g.id];return Object.assign({},p,n);});}} style={{width:"100%",padding:"8px",marginTop:4,borderRadius:10,border:"none",background:"transparent",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                          {showAllTasks ? t("dreams.showFewerTasks") : t("dreams.seeAllTasks") + " (" + g.tasks.length + ")"}
+                        </button>
+                      )}
+                      <button onClick={function(){setNewTitle("");setNewDesc("");setAddTask(g.id);}} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:10,border:"1px dashed rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.04)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
                         <Plus size={13} strokeWidth={2}/>Add Task
                       </button>
                     </div>
@@ -509,14 +589,19 @@ export default function DreamDetailScreen(){
                 </div>
               </div>
             );
-          })}
+          }); })()}
+          {goals.length > 4 && (
+            <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"380ms"}}>
+              <SeeMoreBtn expanded={showAllGoals} shown={showAllGoals ? goals.length : Math.min(4, goals.length)} total={goals.length} onToggle={function () { setShowAllGoals(!showAllGoals); }} isLight={isLight} t={t} />
+            </div>
+          )}
 
           {/* ── Obstacles ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"400ms",marginTop:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <AlertTriangle size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Obstacles ({obstacles.length})</span>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.obstacles")} ({obstacles.length})</span>
               </div>
               <button onClick={function () { setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
                 <Plus size={13} strokeWidth={2.5}/>Add
@@ -524,7 +609,10 @@ export default function DreamDetailScreen(){
             </div>
           </div>
 
-          {obstacles.map(function (ob, oi) {
+          {(function () {
+            var OBS_LIMIT = 3;
+            var visibleObs = showAllObstacles ? obstacles : obstacles.slice(0, OBS_LIMIT);
+            return visibleObs.map(function (ob, oi) {
             var isResolved = ob.resolved || ob.status === "resolved";
             return (
               <div key={ob.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(420 + oi * 60) + "ms"}}>
@@ -534,11 +622,11 @@ export default function DreamDetailScreen(){
                       {isResolved ? <Check size={14} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/> : <AlertTriangle size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2}/>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:14,fontWeight:600,color:isResolved?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),textDecoration:isResolved?"line-through":"none"}}>{ob.title}</span>
-                        <span style={{padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:700,textTransform:"uppercase",background:isResolved?"rgba(93,229,168,0.12)":"rgba(252,211,77,0.12)",color:isResolved?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D")}}>{isResolved?"Resolved":"Active"}</span>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontSize:14,fontWeight:600,color:isResolved?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),textDecoration:isResolved?"line-through":"none",wordBreak:"break-word"}}>{ob.title}</span>
+                        <span style={{padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:700,textTransform:"uppercase",background:isResolved?"rgba(93,229,168,0.12)":"rgba(252,211,77,0.12)",color:isResolved?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D"),flexShrink:0}}>{isResolved?"Resolved":"Active"}</span>
                       </div>
-                      {ob.description && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:4,lineHeight:1.4}}>{ob.description}</div>}
+                      {ob.description && <TruncText text={ob.description} maxLen={100} isLight={isLight} style={{marginTop:4}} t={t} />}
                     </div>
                     <div style={{display:"flex",gap:4,flexShrink:0}}>
                       {!isResolved && (
@@ -554,14 +642,19 @@ export default function DreamDetailScreen(){
                 </div>
               </div>
             );
-          })}
+          }); })()}
+          {obstacles.length > 3 && (
+            <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"480ms"}}>
+              <SeeMoreBtn expanded={showAllObstacles} shown={showAllObstacles ? obstacles.length : Math.min(3, obstacles.length)} total={obstacles.length} onToggle={function () { setShowAllObstacles(!showAllObstacles); }} isLight={isLight} t={t} />
+            </div>
+          )}
 
           {/* ── Collaborators ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"480ms",marginTop:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <UserPlus size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Collaborators ({collaborators.length})</span>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.collaborators")} ({collaborators.length})</span>
               </div>
               <button onClick={function () { setShareUserId(""); setShowShareModal(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
                 <Plus size={13} strokeWidth={2.5}/>Invite
@@ -572,9 +665,12 @@ export default function DreamDetailScreen(){
                 <div style={{textAlign:"center",padding:"8px 0"}}>
                   <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No collaborators yet</span>
                 </div>
-              ) : collaborators.map(function (c, ci) {
+              ) : (function () {
+                var COLLAB_LIMIT = 5;
+                var visibleCollabs = showAllCollabs ? collaborators : collaborators.slice(0, COLLAB_LIMIT);
+                return visibleCollabs.map(function (c, ci) {
                 return (
-                  <div key={c.id || ci} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:ci < collaborators.length - 1 ? (isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)") : "none"}}>
+                  <div key={c.id || ci} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:ci < visibleCollabs.length - 1 ? (isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)") : "none"}}>
                     <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                       <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>{(c.username || c.email || "U").charAt(0).toUpperCase()}</span>
                     </div>
@@ -587,7 +683,8 @@ export default function DreamDetailScreen(){
                     </button>
                   </div>
                 );
-              })}
+              }); })()}
+              <SeeMoreBtn expanded={showAllCollabs} shown={showAllCollabs ? collaborators.length : Math.min(5, collaborators.length)} total={collaborators.length} onToggle={function () { setShowAllCollabs(!showAllCollabs); }} isLight={isLight} t={t} />
             </div>
           </div>
 
@@ -596,7 +693,7 @@ export default function DreamDetailScreen(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <TrendingUp size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Progress History</span>
+                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.progressHistory")}</span>
               </div>
             </div>
             <div className="dp-g" style={{padding:16,marginBottom:16}}>
@@ -606,7 +703,10 @@ export default function DreamDetailScreen(){
                 </div>
               ) : (
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {progressHistory.slice(0, 10).map(function (entry, ei) {
+                  {(function () {
+                    var PROG_LIMIT = 5;
+                    var visibleProg = showAllProgress ? progressHistory : progressHistory.slice(0, PROG_LIMIT);
+                    return visibleProg.map(function (entry, ei) {
                     return (
                       <div key={entry.id || ei} style={{display:"flex",alignItems:"center",gap:12}}>
                         <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,background:"linear-gradient(135deg,#5DE5A8,#14B8A6)"}}/>
@@ -619,7 +719,8 @@ export default function DreamDetailScreen(){
                         </div>
                       </div>
                     );
-                  })}
+                  }); })()}
+                  <SeeMoreBtn expanded={showAllProgress} shown={showAllProgress ? progressHistory.length : Math.min(5, progressHistory.length)} total={progressHistory.length} onToggle={function () { setShowAllProgress(!showAllProgress); }} isLight={isLight} t={t} />
                 </div>
               )}
             </div>
@@ -758,13 +859,13 @@ export default function DreamDetailScreen(){
               fontSize: 24, fontWeight: 800, margin: "0 0 8px",
               color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)",
             }}>
-              {celebration.milestone === 100 ? "Dream Complete!" : "Milestone Reached!"}
+              {celebration.milestone === 100 ? t("dreams.dreamComplete") : t("dreams.milestoneReached")}
             </h2>
             <p style={{
               fontSize: 16, margin: "0 0 16px",
               color: isLight ? "rgba(26,21,53,0.6)" : "rgba(255,255,255,0.6)",
             }}>
-              {celebration.milestone}% of your dream achieved
+              {celebration.milestone}% {t("dreams.ofDreamAchieved")}
             </p>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: 6,
@@ -824,7 +925,7 @@ export default function DreamDetailScreen(){
                       fontFamily: "Inter, sans-serif",
                     }}>Download</button>
                   <button onClick={function () {
-                      nativeShare({ title: "My Dream Progress", text: "Check out my progress on DreamPlanner!" }).catch(function () {});
+                      nativeShare({ title: t("dreams.myDreamProgress"), text: t("dreams.checkProgress") }).catch(function () {});
                     }} style={{
                       flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       background: isLight ? "rgba(139,92,246,0.1)" : "rgba(139,92,246,0.2)",

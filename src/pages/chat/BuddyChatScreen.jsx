@@ -7,6 +7,7 @@ import { CONVERSATIONS, BUDDIES, USERS } from "../../services/endpoints";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import { clipboardWrite } from "../../services/native";
 import { sanitizeText } from "../../utils/sanitize";
 import ErrorState from "../../components/shared/ErrorState";
@@ -34,7 +35,7 @@ import {
 // ─── HELPERS ─────────────────────────────────────────────────────
 function formatTime(d){return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
 function fmtMd(t,isLight){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\*\*(.*?)\*\*/g,`<strong style="color:${isLight?'#1a1535':'#fff'};font-weight:600">$1</strong>`).replace(/\n/g,"<br/>");}
-function dateLabel(d){const now=new Date(),td=new Date(now.getFullYear(),now.getMonth(),now.getDate()),md=new Date(d.getFullYear(),d.getMonth(),d.getDate()),diff=Math.floor((td-md)/(864e5));if(!diff)return"Today";if(diff===1)return"Yesterday";if(diff<7)return d.toLocaleDateString([],{weekday:'long'});return d.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'});}
+function dateLabel(d,t){const now=new Date(),td=new Date(now.getFullYear(),now.getMonth(),now.getDate()),md=new Date(d.getFullYear(),d.getMonth(),d.getDate()),diff=Math.floor((td-md)/(864e5));if(!diff)return t("chat.today");if(diff===1)return t("chat.yesterday");if(diff<7)return d.toLocaleDateString([],{weekday:'long'});return d.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'});}
 function showDate(msgs,i){if(!i)return true;return msgs[i-1].time.toDateString()!==msgs[i].time.toDateString();}
 
 // ═══════════════════════════════════════════════════════════════════
@@ -44,6 +45,7 @@ export default function BuddyChatScreen(){
   var{id}=useParams();
   var{user}=useAuth();
   var{showToast}=useToast();
+  var{t}=useT();
   var queryClient=useQueryClient();
   var userInitial=(user?.displayName||user?.username||"?")[0].toUpperCase();
 
@@ -55,7 +57,7 @@ export default function BuddyChatScreen(){
 
   useEffect(function () {
     if (!id || id === "undefined") {
-      setInitError("No buddy selected");
+      setInitError(t("chat.noBuddySelected"));
       setInitLoading(false);
       return;
     }
@@ -78,14 +80,14 @@ export default function BuddyChatScreen(){
         var b = d && d.buddy;
         var p = b && b.partner;
         if (p) {
-          setBuddyInfo({ id: p.id, displayName: p.username || p.displayName || "Buddy", isOnline: false, level: p.currentLevel, streak: p.currentStreak });
+          setBuddyInfo({ id: p.id, displayName: p.username || p.displayName || t("chat.buddy"), isOnline: false, level: p.currentLevel, streak: p.currentStreak });
         }
       }).catch(function () {});
       // Also try to fetch the user profile
       apiGet(USERS.PROFILE(id)).then(function (u) {
         if (cancelled) return;
         if (u && u.displayName) {
-          setBuddyInfo(function (prev) { return prev || { id: u.id, displayName: u.displayName || u.name || "Buddy", isOnline: u.isOnline || false }; });
+          setBuddyInfo(function (prev) { return prev || { id: u.id, displayName: u.displayName || u.name || t("chat.buddy"), isOnline: u.isOnline || false }; });
         }
       }).catch(function () {});
       setInitLoading(false);
@@ -93,7 +95,7 @@ export default function BuddyChatScreen(){
     return function () { cancelled = true; };
   }, [id]);
 
-  var buddyName = (buddyInfo && buddyInfo.displayName) || "Buddy";
+  var buddyName = (buddyInfo && buddyInfo.displayName) || t("chat.buddy");
   var buddyInitial = (buddyName[0] || "B").toUpperCase();
   var buddyOnline = !!(buddyInfo && buddyInfo.isOnline);
   var mutualDream = (buddyInfo && buddyInfo.mutualDream) || "";
@@ -247,7 +249,7 @@ export default function BuddyChatScreen(){
         // Catch up on any messages missed while disconnected
         queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
       }).catch(function(err){
-        console.error("RTM channel join failed:",err);
+        console.error("RTM channel join failed:",err.message||err.code||"unknown");
         rtmChannelRef.current=null;
         // Auto-retry with exponential backoff (max 30s)
         if(!cancelled){
@@ -309,7 +311,7 @@ export default function BuddyChatScreen(){
       rtmChannelRef.current.sendMessage(text).catch(function(){});
     }
     apiPost(BUDDIES.SEND_MESSAGE,{conversationId:convId,content:text})
-      .catch(function(err){showToast(err.message||"Failed to send","error");});
+      .catch(function(err){showToast(err.message||t("chat.failedSend"),"error");});
   };
 
   // ─── Pin / Like mutations ─────────────────────────────────────
@@ -382,28 +384,28 @@ export default function BuddyChatScreen(){
             </div>
             <div>
               <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{BUDDY.displayName}</div>
-              <div style={{fontSize:12,color:BUDDY.online?(isLight?"#059669":"#5DE5A8"):isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{BUDDY.online?"Online":"Offline"}</div>
+              <div style={{fontSize:12,color:BUDDY.online?(isLight?"#059669":"#5DE5A8"):isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{BUDDY.online?t("chat.online"):t("chat.offline")}</div>
             </div>
           </div>
           <div style={{display:"flex",gap:6}}>
             <button className="dp-ib" aria-label="Call" onClick={function(){
               apiPost(CONVERSATIONS.CALLS.INITIATE,{calleeId:buddyInfo&&buddyInfo.id||id,callType:"voice"}).then(function(data){
                 navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-              }).catch(function(err){showToast(err.message||"Failed to start call","error");});
+              }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
             }}><Phone size={17} strokeWidth={2}/></button>
             <button className="dp-ib" aria-label="Video call" onClick={function(){
               apiPost(CONVERSATIONS.CALLS.INITIATE,{calleeId:buddyInfo&&buddyInfo.id||id,callType:"video"}).then(function(data){
                 navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-              }).catch(function(err){showToast(err.message||"Failed to start call","error");});
+              }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
             }}><Video size={17} strokeWidth={2}/></button>
             <div style={{position:"relative"}}>
               <button className="dp-ib" onClick={()=>setMenuOpen(!menuOpen)} aria-label="More options"><MoreVertical size={18} strokeWidth={2}/></button>
               {menuOpen&&(
                 <div style={{position:"absolute",top:44,right:0,zIndex:200,background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
                   {[
-                    {icon:Pin,label:"Pinned Messages",count:pinnedMsgs.length,act:()=>{setPanel("pinned");setMenuOpen(false);}},
-                    {icon:Heart,label:"Liked Messages",count:likedMsgs.length,act:()=>{setPanel("liked");setMenuOpen(false);}},
-                    {icon:Search,label:"Search Messages",count:null,act:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
+                    {icon:Pin,label:t("chat.pinnedMessages"),count:pinnedMsgs.length,act:()=>{setPanel("pinned");setMenuOpen(false);}},
+                    {icon:Heart,label:t("chat.likedMessages"),count:likedMsgs.length,act:()=>{setPanel("liked");setMenuOpen(false);}},
+                    {icon:Search,label:t("chat.searchMessages"),count:null,act:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
                   ].map(({icon:I,label,count,act},i)=>(
                     <button key={i} onClick={act} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",borderRadius:10,cursor:"pointer",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"background 0.15s"}}
                       onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}
@@ -422,7 +424,7 @@ export default function BuddyChatScreen(){
         <div style={{padding:"0 16px 10px",display:"flex",alignItems:"center",gap:8}}>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"6px 12px",borderRadius:10,background:"rgba(20,184,166,0.06)",border:"1px solid rgba(20,184,166,0.1)"}}>
             <Target size={13} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2.5}/>
-            <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>Shared dream:</span>
+            <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{t("chat.sharedDream")}</span>
             <span style={{fontSize:12,fontWeight:600,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.mutualDream}</span>
           </div>
         </div>
@@ -437,22 +439,22 @@ export default function BuddyChatScreen(){
               <div style={{width:80,height:80,borderRadius:24,margin:"0 auto 24px",background:"rgba(20,184,166,0.08)",border:"1px solid rgba(20,184,166,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <Users size={36} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={1.5}/>
               </div>
-              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>Start chatting with {BUDDY.displayName}!</div>
-              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>{BUDDY.mutualDream ? "You're both working towards \"" + BUDDY.mutualDream + "\"" : "Encourage each other on your journey!"}</div>
+              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>{t("chat.startChatWith")}</div>
+              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>{BUDDY.mutualDream ? t("chat.workingTowards") : t("chat.encourageEachOther")}</div>
             </div>
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
               {hasMore && (
                 <div style={{textAlign:"center",padding:"8px 0 12px"}}>
-                  <button onClick={loadOlderBuddyMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?"Loading...":"Load older messages"}</button>
+                  <button onClick={loadOlderBuddyMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?t("chat.loading"):t("chat.loadOlder")}</button>
                 </div>
               )}
               {messages.map((msg,i)=>(
                 <div key={msg.id}>
                   {showDate(messages,i)&&(
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"16px 0 12px"}}>
-                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{dateLabel(msg.time)}</div>
+                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{dateLabel(msg.time,t)}</div>
                     </div>
                   )}
                   <BuddyBubble msg={msg} showActions={activeMsg===msg.id} copiedId={copiedId}
@@ -468,7 +470,7 @@ export default function BuddyChatScreen(){
                   <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(20,184,166,0.12)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.initial}</div>
                   <div style={{padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:"rgba(20,184,166,0.06)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:"1px solid rgba(20,184,166,0.1)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontStyle:"italic"}}>{BUDDY.displayName} is typing</span>
+                      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontStyle:"italic"}}>{BUDDY.displayName + " " + t("chat.isTyping")}</span>
                       <span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/>
                     </div>
                   </div>
@@ -501,7 +503,7 @@ export default function BuddyChatScreen(){
           <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInput}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
-              placeholder="Type a message..." rows={1}
+              placeholder={t("chat.typeMessage")} rows={1}
               style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
           </div>
           <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:42,height:42,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"linear-gradient(135deg,#14B8A6,#0D9488)":isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(20,184,166,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
@@ -518,9 +520,9 @@ export default function BuddyChatScreen(){
           <div style={{position:"absolute",top:0,right:0,bottom:0,width:"100%",maxWidth:420,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderLeft:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",flexDirection:"column",animation:"dpSI 0.3s cubic-bezier(0.16,1,0.3,1)"}}>
             <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Pinned Messages</span></>}
-                {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Liked Messages</span></>}
-                {panel==="search"&&<><Search size={18} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Search</span></>}
+                {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.pinnedMessages")}</span></>}
+                {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.likedMessages")}</span></>}
+                {panel==="search"&&<><Search size={18} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.search")}</span></>}
               </div>
               <button className="dp-ib" onClick={()=>{setPanel(null);setSearchQ("");}} aria-label="Close"><X size={18} strokeWidth={2}/></button>
             </div>
@@ -528,14 +530,14 @@ export default function BuddyChatScreen(){
               <div style={{padding:"12px 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.04)"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:14,background:"var(--dp-surface)",border:"1px solid var(--dp-input-border)"}}>
                   <Search size={16} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>
-                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search messages..." autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit"}}/>
+                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("chat.searchPlaceholder")} autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit"}}/>
                 </div>
               </div>
             )}
             <div style={{flex:1,overflowY:"auto",padding:16}}>
-              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyP icon={Pin} text="No pinned messages"/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
-              {panel==="liked"&&(likedMsgs.length===0?<EmptyP icon={Heart} text="No liked messages"/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
-              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyP icon={Search} text="No results"/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>Type to search</div>)}
+              {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyP icon={Pin} text={t("chat.noPinned")}/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
+              {panel==="liked"&&(likedMsgs.length===0?<EmptyP icon={Heart} text={t("chat.noLiked")}/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
+              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyP icon={Search} text={t("chat.noResults")}/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>{t("chat.typeToSearch")}</div>)}
             </div>
           </div>
         </div>
@@ -643,7 +645,7 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
                 ))}
               </div>
             )}
-            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:6}}>
               {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
               {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
@@ -701,7 +703,7 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
               ))}
             </div>
           )}
-          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
           <div style={{display:"flex",alignItems:"center",gap:5,marginTop:6}}>
             {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
             {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
@@ -727,6 +729,7 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
 // ─── PANEL MSG ───────────────────────────────────────────────────
 function PanelMsg({msg,meInitial,buddyInitial,buddyName}){
   const{resolved}=useTheme();const isLight=resolved==="light";
+  var{t}=useT();
   return(
     <div style={{padding:12,marginBottom:8,borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
@@ -735,7 +738,7 @@ function PanelMsg({msg,meInitial,buddyInitial,buddyName}){
         ):(
           <div style={{width:22,height:22,borderRadius:7,background:"rgba(20,184,166,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{buddyInitial}</div>
         )}
-        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?"You":buddyName}</span>
+        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?t("chat.you"):buddyName}</span>
         <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
       </div>
       <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content}</div>

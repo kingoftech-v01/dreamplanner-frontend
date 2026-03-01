@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from "rea
 import { useNavigate } from "react-router-dom";
 import { apiGet, apiPost, apiDelete, setToken, getToken, clearAuth } from "../services/api";
 import { AUTH, USERS } from "../services/endpoints";
+import { subscribeToPush } from "../services/pushNotifications";
 
 var AuthContext = createContext(null);
 
@@ -19,6 +20,12 @@ export function AuthProvider({ children }) {
     return apiGet(USERS.ME).then(function (data) {
       setUser(data);
       setIsAuthenticated(true);
+      // Register for push notifications after auth
+      try {
+        subscribeToPush().catch(function () {});
+      } catch (e) {
+        // Push registration is non-critical — silent fallback
+      }
       return data;
     });
   }, []);

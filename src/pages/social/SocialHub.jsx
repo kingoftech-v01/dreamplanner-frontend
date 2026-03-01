@@ -7,6 +7,7 @@ import useInfiniteList from "../../hooks/useInfiniteList";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { FeedItemSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
@@ -42,10 +43,10 @@ var LB_COLORS = ["#EC4899","#F59E0B","#8B5CF6","#14B8A6","#14B8A6","#3B82F6","#1
 var FRIEND_COLORS = ["#14B8A6","#EC4899","#F59E0B","#8B5CF6","#3B82F6","#10B981","#6366F1"];
 
 const FEED_CONFIG = {
-  level_up:    { Icon:ArrowUpCircle, color:"#C4B5FD", text:(d)=>`Reached level ${(d&&d.level)||"?"}` },
-  task_completed:{ Icon:CheckCircle, color:"#5DE5A8", text:(d)=>(d&&d.task)||"Completed a task" },
-  dream_created: { Icon:Sparkles,    color:"#FCD34D", text:(d)=>`Created dream "${(d&&d.dream)||"a dream"}"` },
-  streak:      { Icon:Flame,         color:"#F69A9A", text:(d)=>`${(d&&d.days)||0} day streak! 🔥` },
+  level_up:    { Icon:ArrowUpCircle, color:"#C4B5FD", text:(d,t)=>`${t("social.reachedLevel")} ${(d&&d.level)||"?"}` },
+  task_completed:{ Icon:CheckCircle, color:"#5DE5A8", text:(d,t)=>(d&&d.task)||t("social.completedTask") },
+  dream_created: { Icon:Sparkles,    color:"#FCD34D", text:(d,t)=>`${t("social.createdDream")} "${(d&&d.dream)||"a dream"}"` },
+  streak:      { Icon:Flame,         color:"#F69A9A", text:(d,t)=>`${(d&&d.days)||0} ${t("social.dayStreak")}! 🔥` },
 };
 
 
@@ -54,6 +55,7 @@ function timeAgo(d){const s=Math.floor((Date.now()-d.getTime())/1000);if(s<60)re
 // ═══════════════════════════════════════════════════════════════════
 export default function SocialHubScreen(){
   const navigate=useNavigate();
+  const { t } = useT();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
   var { user } = useAuth();
   var { showToast } = useToast();
@@ -150,7 +152,7 @@ export default function SocialHubScreen(){
   const acceptReq=function(id){
     apiPost(SOCIAL.FRIENDS.ACCEPT(id)).then(function () {
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-      showToast("Friend request accepted!", "success");
+      showToast(t("social.requestAccepted"), "success");
     }).catch(function (err) { showToast(err.message || "Failed", "error"); });
   };
   const declineReq=function(id){
@@ -197,7 +199,7 @@ export default function SocialHubScreen(){
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <button className="dp-ib" onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2}/></button>
           <Users size={20} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-          <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>Social Hub</span>
+          <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>{t("social.title")}</span>
         </div>
         <div style={{display:"flex",gap:6}}>
           <div style={{position:"relative"}}>
@@ -221,10 +223,10 @@ export default function SocialHubScreen(){
             <div className="dp-g" style={{padding:16,marginBottom:16}}>
               <div style={{display:"flex",justifyContent:"space-around"}}>
                 {[
-                  {Icon:Trophy,value:`#${ME.rank}`,label:"Rank",color:"#FCD34D"},
-                  {Icon:Users,value:ME.friends,label:"Friends",color:"#C4B5FD"},
-                  {Icon:Flame,value:ME.streak,label:"Streak",color:"#F69A9A"},
-                  {Icon:Zap,value:ME.xp.toLocaleString(),label:"XP",color:"#8B5CF6"},
+                  {Icon:Trophy,value:`#${ME.rank}`,label:t("social.rank"),color:"#FCD34D"},
+                  {Icon:Users,value:ME.friends,label:t("social.friends"),color:"#C4B5FD"},
+                  {Icon:Flame,value:ME.streak,label:t("social.streak"),color:"#F69A9A"},
+                  {Icon:Zap,value:ME.xp.toLocaleString(),label:t("social.xp"),color:"#8B5CF6"},
                 ].map(({Icon:I,value,label,color},i)=>{
                   const iconColor=color==="#FCD34D"?(isLight?"#B45309":"#FCD34D"):color==="#C4B5FD"?(isLight?"#6D28D9":"#C4B5FD"):color==="#F69A9A"?(isLight?"#DC2626":"#F69A9A"):color;
                   return(
@@ -242,12 +244,12 @@ export default function SocialHubScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"50ms"}}>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
               {[
-                {Icon:CircleDot,label:"Circles",color:"#8B5CF6",path:"/circles"},
-                {Icon:Trophy,label:"Leaderboard",color:"#FCD34D",path:"/leaderboard"},
-                {Icon:Calendar,label:"Seasons",color:"#14B8A6",path:"/seasons"},
-                {Icon:Sparkles,label:"Dream Feed",color:"#EC4899",path:"/social/feed"},
-                {Icon:Handshake,label:"Buddy Requests",color:"#F59E0B",path:"/buddy-requests"},
-                {Icon:Target,label:"Find Buddy",color:"#10B981",path:"/find-buddy"},
+                {Icon:CircleDot,label:t("social.circles"),color:"#8B5CF6",path:"/circles"},
+                {Icon:Trophy,label:t("social.leaderboard"),color:"#FCD34D",path:"/leaderboard"},
+                {Icon:Calendar,label:t("social.seasons"),color:"#14B8A6",path:"/seasons"},
+                {Icon:Sparkles,label:t("social.dreamFeed"),color:"#EC4899",path:"/social/feed"},
+                {Icon:Handshake,label:t("social.buddyRequests"),color:"#F59E0B",path:"/buddy-requests"},
+                {Icon:Target,label:t("social.findBuddy"),color:"#10B981",path:"/find-buddy"},
               ].map(function(item,i){
                 var iconColor = item.color === "#FCD34D" ? (isLight?"#B45309":"#FCD34D") : item.color;
                 return(
@@ -268,7 +270,7 @@ export default function SocialHubScreen(){
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <UserPlus size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                  <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>Friend Requests</span>
+                  <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>{t("social.friendRequests")}</span>
                   <span style={{fontSize:12,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD",background:"rgba(139,92,246,0.12)",padding:"2px 7px",borderRadius:8}}>{requests.length}</span>
                 </div>
                 <span onClick={()=>navigate("/friend-requests")} style={{fontSize:12,color:isLight?"#7C3AED":"#C4B5FD",cursor:"pointer",fontWeight:500}}>See All</span>
@@ -303,7 +305,7 @@ export default function SocialHubScreen(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <div style={{width:7,height:7,borderRadius:"50%",background:"#5DE5A8",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
-                <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>Online Now</span>
+                <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>{t("social.onlineNow")}</span>
               </div>
               <button onClick={()=>navigate("/online-friends")} style={{fontSize:12,color:isLight?"#7C3AED":"#C4B5FD",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>See All</button>
             </div>
@@ -325,12 +327,12 @@ export default function SocialHubScreen(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
                 <Trophy size={15} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-                <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Leaderboard</span>
+                <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("social.leaderboard")}</span>
               </div>
               <div style={{display:"flex",gap:4}}>
                 {["weekly","monthly","all"].map(tab=>(
                   <button key={tab} onClick={()=>setLbTab(tab)} style={{padding:"4px 10px",borderRadius:12,border:"none",fontSize:12,fontWeight:lbTab===tab?600:500,background:lbTab===tab?"rgba(139,92,246,0.15)":"transparent",color:lbTab===tab?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"),cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",outline:lbTab===tab?"1px solid rgba(139,92,246,0.2)":"1px solid transparent"}}>
-                    {tab==="all"?"All":tab[0].toUpperCase()+tab.slice(1)}
+                    {tab==="all"?t("social.allTime"):tab==="weekly"?t("social.weekly"):t("social.monthly")}
                   </button>
                 ))}
               </div>
@@ -379,7 +381,7 @@ export default function SocialHubScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"320ms"}}>
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
               <Sparkles size={15} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-              <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Activity</span>
+              <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("social.activity")}</span>
             </div>
           </div>
 
@@ -400,7 +402,7 @@ export default function SocialHubScreen(){
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <FIcon size={14} color={cfg.color==="#C4B5FD"?(isLight?"#6D28D9":"#C4B5FD"):cfg.color==="#5DE5A8"?(isLight?"#059669":"#5DE5A8"):cfg.color==="#FCD34D"?(isLight?"#B45309":"#FCD34D"):cfg.color==="#F69A9A"?(isLight?"#DC2626":"#F69A9A"):cfg.color} strokeWidth={2}/>
-                        <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.4}}>{cfg.text(item.data)}</span>
+                        <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.4,wordBreak:"break-word"}}>{cfg.text(item.data,t)}</span>
                       </div>
                     </div>
                     {/* Actions — right side, same row */}
@@ -431,7 +433,7 @@ export default function SocialHubScreen(){
                                 <span style={{fontSize:12,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{c.user.name}</span>
                                 <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{timeAgo(c.time)}</span>
                               </div>
-                              <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.4}}>{c.text}</div>
+                              <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.4,wordBreak:"break-word"}}>{c.text}</div>
                             </div>
                           </div>
                         ))}
@@ -465,12 +467,12 @@ export default function SocialHubScreen(){
               <div style={{width:56,height:56,borderRadius:18,margin:"0 auto 12px",background:"rgba(20,184,166,0.1)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <Target size={26} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={1.5}/>
               </div>
-              <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:4}}>Find a Dream Buddy</div>
-              <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:14,lineHeight:1.5}}>Get matched with someone who shares your dream</div>
+              <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:4}}>{t("social.findBuddy")}</div>
+              <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:14,lineHeight:1.5}}>{t("social.findBuddyDesc")}</div>
               <button onClick={()=>navigate("/find-buddy")} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#14B8A6,#0D9488)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(20,184,166,0.3)",transition:"all 0.2s"}}
                 onMouseEnter={e=>e.currentTarget.style.transform="scale(1.03)"}
                 onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-                Find My Buddy
+                {t("social.findMyBuddy")}
               </button>
             </div>
           </div>
@@ -489,12 +491,12 @@ export default function SocialHubScreen(){
             <div style={{background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:18,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",overflow:"hidden"}}>
               <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
                 <Search size={18} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>
-                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search people, dreams..." autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:15,fontFamily:"inherit"}}/>
+                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("social.searchPeople")} autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:15,fontFamily:"inherit"}}/>
                 <button onClick={()=>{setShowSearch(false);setSearchQ("");}} aria-label="Close search" style={{background:"none",border:"none",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",cursor:"pointer"}}><X size={18}/></button>
               </div>
               {searchQ&&searchQ.length>=2&&(
                 <div style={{padding:12,maxHeight:300,overflowY:"auto"}}>
-                  {searchLoading&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>Searching...</div>}
+                  {searchLoading&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>{t("social.searching")}</div>}
                   {!searchLoading&&searchResults.map(f=>(
                     <div key={f.id} onClick={()=>{setShowSearch(false);setSearchQ("");navigate("/user/"+f.id);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 8px",borderRadius:10,cursor:"pointer",transition:"background 0.15s"}}
                       onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)"}
@@ -503,15 +505,15 @@ export default function SocialHubScreen(){
                       <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{f.name}</div><div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{f.title} · Level {f.level}{f.isFriend?" · Friend":""}</div></div>
                       {!f.isFriend&&f.friendshipStatus!=="pending"&&(
                         <button onClick={function(e){e.stopPropagation();apiPost(SOCIAL.FRIENDS.REQUEST,{targetUserId:f.id}).then(function(){showToast("Friend request sent!","success");setSearchResults(function(prev){return prev.map(function(s){return s.id===f.id?Object.assign({},s,{friendshipStatus:"pending"}):s;});});}).catch(function(err){showToast(err.message||"Failed to send request","error");});}} style={{padding:"6px 12px",borderRadius:10,border:"none",background:"rgba(139,92,246,0.15)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
-                          <UserPlus size={14} style={{verticalAlign:"middle",marginRight:4}} strokeWidth={2.5}/>Add
+                          <UserPlus size={14} style={{verticalAlign:"middle",marginRight:4}} strokeWidth={2.5}/>{t("social.add")}
                         </button>
                       )}
                       {f.friendshipStatus==="pending"&&(
-                        <span style={{padding:"6px 12px",borderRadius:10,background:"rgba(93,229,168,0.1)",color:isLight?"#059669":"#5DE5A8",fontSize:12,fontWeight:500,flexShrink:0}}>Pending</span>
+                        <span style={{padding:"6px 12px",borderRadius:10,background:"rgba(93,229,168,0.1)",color:isLight?"#059669":"#5DE5A8",fontSize:12,fontWeight:500,flexShrink:0}}>{t("social.pending")}</span>
                       )}
                     </div>
                   ))}
-                  {!searchLoading&&searchResults.length===0&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>No results found</div>}
+                  {!searchLoading&&searchResults.length===0&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>{t("social.noResults")}</div>}
                 </div>
               )}
             </div>

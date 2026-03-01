@@ -48,31 +48,38 @@ export default function IncomingCallOverlay() {
     };
   }, []);
 
-  // ─── One-time check on mount — catch calls missed while WS was disconnected
+  // ─── Poll for incoming calls every 3s (fallback when FCM is slow) ───
   useEffect(function () {
     if (!isAuthenticated) return;
-    var hash = window.location.hash || "";
-    if (hash.indexOf("/voice-call/") !== -1 || hash.indexOf("/video-call/") !== -1) return;
 
-    apiGet(CONVERSATIONS.CALLS.INCOMING).then(function (data) {
-      var list = data || [];
-      if (list.length === 0) return;
-      var incoming = null;
-      for (var i = 0; i < list.length; i++) {
-        if (!seenCallIds.current[list[i].callId]) {
-          incoming = list[i];
-          break;
+    function poll() {
+      var hash = window.location.hash || "";
+      if (hash.indexOf("/voice-call/") !== -1 || hash.indexOf("/video-call/") !== -1) return;
+
+      apiGet(CONVERSATIONS.CALLS.INCOMING).then(function (data) {
+        var list = data || [];
+        if (list.length === 0) return;
+        var incoming = null;
+        for (var i = 0; i < list.length; i++) {
+          if (!seenCallIds.current[list[i].callId]) {
+            incoming = list[i];
+            break;
+          }
         }
-      }
-      if (!incoming) return;
-      seenCallIds.current[incoming.callId] = true;
-      setCall({
-        callId: incoming.callId,
-        callerName: incoming.callerName || "Unknown",
-        callType: incoming.callType || "voice",
-        callerId: incoming.callerId,
-      });
-    }).catch(function () {});
+        if (!incoming) return;
+        seenCallIds.current[incoming.callId] = true;
+        setCall({
+          callId: incoming.callId,
+          callerName: incoming.callerName || "Unknown",
+          callType: incoming.callType || "voice",
+          callerId: incoming.callerId,
+        });
+      }).catch(function () {});
+    }
+
+    poll(); // immediate first check
+    var interval = setInterval(poll, 3000);
+    return function () { clearInterval(interval); };
   }, [isAuthenticated]);
 
   // Clear stale seen IDs periodically (avoid memory leak)

@@ -15,37 +15,62 @@ var isNative = Capacitor.isNativePlatform();
  * Register for native push notifications.
  * Requests permission, registers with FCM/APNS, and sends the
  * device token to the backend.
+ *
+ * On native (Android/iOS): uses Capacitor PushNotifications plugin.
+ * On web: returns null (web push is handled by pushNotifications.js via VAPID).
  */
 export function registerNativePush() {
-  if (!isNative) return Promise.resolve(null);
+  if (isNative) {
+    return capacitorPushRegister();
+  }
 
+  // Web push is handled separately by pushNotifications.js
+  return Promise.resolve(null);
+}
+
+function capacitorPushRegister() {
   return import("@capacitor/push-notifications").then(function (mod) {
     var PushNotifications = mod.PushNotifications;
+    PushNotifications.removeAllListeners();
 
-    return PushNotifications.requestPermissions().then(function (result) {
-      if (result.receive !== "granted") {
-        return null;
-      }
-      return PushNotifications.register().then(function () {
-        return new Promise(function (resolve) {
-          // Listen for the registration token
-          PushNotifications.addListener("registration", function (token) {
-            sendTokenToBackend(token.value).then(function () {
-              resolve(token.value);
-            }).catch(function () {
-              resolve(token.value);
-            });
-          });
+    return new Promise(function (resolve) {
+      var resolved = false;
 
-          PushNotifications.addListener("registrationError", function (err) {
-            console.warn("Push registration failed:", err);
-            resolve(null);
-          });
+      PushNotifications.addListener("registration", function (token) {
+        console.log("[Push] Capacitor token received");
+        if (resolved) return;
+        resolved = true;
+        sendTokenToBackend(token.value).then(function () {
+          resolve(token.value);
+        }).catch(function () {
+          resolve(token.value);
         });
+      });
+
+      PushNotifications.addListener("registrationError", function (err) {
+        console.warn("[Push] Capacitor registrationError:", JSON.stringify(err));
+        if (!resolved) { resolved = true; resolve(null); }
+      });
+
+      // Short timeout — fallback to Firebase JS SDK
+      setTimeout(function () {
+        if (!resolved) { resolved = true; resolve(null); }
+      }, 8000);
+
+      PushNotifications.requestPermissions().then(function (result) {
+        console.log("[Push] Capacitor permission:", result.receive);
+        if (result.receive !== "granted") {
+          if (!resolved) { resolved = true; resolve(null); }
+          return;
+        }
+        return PushNotifications.register();
+      }).catch(function (err) {
+        console.warn("[Push] Capacitor error:", err);
+        if (!resolved) { resolved = true; resolve(null); }
       });
     });
   }).catch(function (err) {
-    console.warn("Native push setup failed:", err);
+    console.warn("[Push] Capacitor import failed:", err);
     return null;
   });
 }
@@ -406,7 +431,7 @@ function hashCode(str) {
 
 function sendTokenToBackend(fcmToken) {
   return apiPost(NOTIFICATIONS.DEVICES, {
-    fcmToken: fcmToken,
+    fcm_token: fcmToken,
     platform: Capacitor.getPlatform(), // "android" or "ios"
   });
 }

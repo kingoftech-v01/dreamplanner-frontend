@@ -208,7 +208,7 @@ export default function CircleChatScreen(){
           if(list.length>0)setMessages(list.map(mapCircleMsg));
         }).catch(function(){});
       }).catch(function(err){
-        console.error("Circle RTM join failed:",err);
+        console.error("Circle RTM join failed:",err.message||err.code||"unknown");
         rtmChannelRef.current=null;
         // Auto-retry with exponential backoff
         if(!cancelled){

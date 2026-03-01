@@ -108,8 +108,20 @@ async function request(url, options) {
       headers: headers,
     });
   } catch (fetchError) {
+    // AbortError — caller explicitly cancelled, don't enqueue
+    if (fetchError && fetchError.name === "AbortError") {
+      throw fetchError;
+    }
     // Network error — enqueue mutation if it's a write operation
+    // Skip enqueue if caller provided a signal (long-running requests like plan generation)
     if (method !== "GET" && method !== "HEAD") {
+      if (options.signal) {
+        // Caller manages this request — don't enqueue, just surface the error
+        var longRunError = new Error("The server took too long to respond. Please try again.");
+        longRunError.status = 0;
+        longRunError.offline = true;
+        throw longRunError;
+      }
       enqueueOfflineMutation(url, { method: method, body: options.body ? options.body : null });
       var offlineError = new Error("You're offline. Your change has been saved and will sync when you reconnect.");
       offlineError.status = 0;

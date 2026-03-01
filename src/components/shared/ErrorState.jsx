@@ -1,6 +1,6 @@
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
-export default function ErrorState({ message, onRetry }) {
+export default function ErrorState({ message }) {
   return (
     <div style={{
       display: "flex", flexDirection: "column", alignItems: "center",
@@ -32,23 +32,21 @@ export default function ErrorState({ message, onRetry }) {
         {message || "An unexpected error occurred. Please try again."}
       </p>
 
-      {onRetry && (
-        <button
-          onClick={onRetry}
-          style={{
-            height: 40, borderRadius: 12, padding: "0 20px",
-            background: "var(--dp-surface)",
-            border: "1px solid var(--dp-input-border)",
-            cursor: "pointer",
-            color: "var(--dp-text)", fontSize: 13, fontWeight: 500,
-            fontFamily: "Inter, sans-serif",
-            display: "flex", alignItems: "center", gap: 8,
-          }}
-        >
-          <RefreshCw size={14} />
-          Try again
-        </button>
-      )}
+      <button
+        onClick={function () { window.location.reload(); }}
+        style={{
+          height: 40, borderRadius: 12, padding: "0 20px",
+          background: "var(--dp-surface)",
+          border: "1px solid var(--dp-input-border)",
+          cursor: "pointer",
+          color: "var(--dp-text)", fontSize: 13, fontWeight: 500,
+          fontFamily: "Inter, sans-serif",
+          display: "flex", alignItems: "center", gap: 8,
+        }}
+      >
+        <RefreshCw size={14} />
+        Reload
+      </button>
     </div>
   );
 }

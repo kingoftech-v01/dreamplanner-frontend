@@ -36,6 +36,7 @@
     "agora-rtc-sdk-ng": "^4.21.0",
     "agora-rtm-sdk": "^1.5.1",
     "dompurify": "^3.3.1",
+    "firebase": "^12.10.0",
     "lucide-react": "^0.468.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

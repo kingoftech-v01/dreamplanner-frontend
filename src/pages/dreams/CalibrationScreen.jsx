@@ -7,7 +7,7 @@ import {
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
-import { apiPost } from "../../services/api";
+import { apiGet, apiPost } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 
 // ═══════════════════════════════════════════════════════════════
@@ -82,6 +82,7 @@ export default function CalibrationScreen() {
   const [cardAnim, setCardAnim] = useState(true);
   var [questions, setQuestions] = useState([]);
   var [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [submittingAnswer, setSubmittingAnswer] = useState(false);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [planResult, setPlanResult] = useState(null);
 
@@ -150,15 +151,20 @@ export default function CalibrationScreen() {
       answer = selectedOption;
     }
 
-    // Submit this answer to the backend — may return more questions
+    var isLastQuestion = currentQ >= questions.length - 1;
+
+    // Submit this answer to the backend
     if (answer) {
+      if (isLastQuestion) setSubmittingAnswer(true);
       apiPost(DREAMS.ANSWER_CALIBRATION(id), {
         question: question.text,
         answer: answer,
         questionNumber: currentQ + 1,
       }).then(function (res) {
-        // If backend returns additional questions, append them
-        if (res && Array.isArray(res.questions) && res.questions.length > 0) {
+        setSubmittingAnswer(false);
+        // Only append follow-up questions when we're on the last question
+        // This prevents duplicates from each individual answer triggering follow-ups
+        if (isLastQuestion && res && Array.isArray(res.questions) && res.questions.length > 0) {
           var newQs = res.questions.map(function (q, i) {
             return {
               id: q.id || "extra-" + Date.now() + "-" + i,
@@ -168,20 +174,40 @@ export default function CalibrationScreen() {
               category: q.category || "",
             };
           });
-          setQuestions(function (prev) { return prev.concat(newQs); });
+          // Deduplicate: only add questions whose text doesn't already exist
+          setQuestions(function (prev) {
+            var existingTexts = new Set(prev.map(function (p) { return p.text.toLowerCase().trim(); }));
+            var unique = newQs.filter(function (nq) { return !existingTexts.has(nq.text.toLowerCase().trim()); });
+            if (unique.length > 0) {
+              // Move to the first new question
+              setCardAnim(false);
+              setTimeout(function () {
+                setCurrentQ(prev.length);
+                setCardAnim(true);
+              }, 200);
+              return prev.concat(unique);
+            }
+            // No new unique questions — calibration is done
+            handleCalibrationComplete();
+            return prev;
+          });
+        } else if (isLastQuestion) {
+          // No more follow-ups or backend says complete
+          handleCalibrationComplete();
         }
       }).catch(function () {
-        // Silently ignore — answers are also stored locally
+        setSubmittingAnswer(false);
+        if (isLastQuestion) handleCalibrationComplete();
       });
     }
 
-    if (currentQ < questions.length - 1) {
+    if (!isLastQuestion) {
       setCardAnim(false);
       setTimeout(() => {
         setCurrentQ((prev) => prev + 1);
         setCardAnim(true);
       }, 200);
-    } else {
+    } else if (!answer) {
       handleCalibrationComplete();
     }
   };
@@ -200,18 +226,75 @@ export default function CalibrationScreen() {
     }
   };
 
+  const [planError, setPlanError] = useState(null);
+  const [calibrationCount, setCalibrationCount] = useState(0);
+  const [planMessage, setPlanMessage] = useState("");
+
   const handleCalibrationComplete = async () => {
     setCompleted(true);
     setGeneratingPlan(true);
+    setPlanError(null);
+    setPlanMessage("Starting plan generation...");
+
+    // Fetch the dream detail to get calibration response count for the stats display
     try {
-      var result = await apiPost(DREAMS.GENERATE_PLAN(id));
-      setPlanResult(result);
-      showToast("Your personalized plan is ready!", "success");
+      var dreamData = await apiGet(DREAMS.DETAIL(id));
+      if (dreamData && Array.isArray(dreamData.calibrationResponses)) {
+        setCalibrationCount(dreamData.calibrationResponses.length);
+      }
+    } catch (e) { /* ignore — stats are cosmetic */ }
+
+    // Dispatch plan generation (returns 202 immediately)
+    try {
+      await apiPost(DREAMS.GENERATE_PLAN(id));
     } catch (err) {
-      showToast("Plan generation failed. You can retry from the dream page.", "error");
-    } finally {
-      setGeneratingPlan(false);
+      var errStatus = err && err.status;
+      if (errStatus === 429) {
+        setPlanError("You've reached the plan generation limit. Please wait and try again.");
+        setGeneratingPlan(false);
+        return;
+      }
+      // If the plan is already generating (202 from a previous attempt), continue polling
+      if (errStatus !== 202) {
+        setPlanError(err.message || "Failed to start plan generation.");
+        setGeneratingPlan(false);
+        return;
+      }
     }
+
+    // Poll for completion every 5 seconds
+    var maxPolls = 120; // 10 minutes max
+    var pollCount = 0;
+    var pollInterval = setInterval(async function () {
+      pollCount++;
+      if (pollCount > maxPolls) {
+        clearInterval(pollInterval);
+        setPlanError("Plan generation is taking longer than expected. Please check back later.");
+        setGeneratingPlan(false);
+        return;
+      }
+      try {
+        var statusData = await apiGet(DREAMS.PLAN_STATUS(id));
+        if (statusData.message) setPlanMessage(statusData.message);
+
+        if (statusData.status === "completed") {
+          clearInterval(pollInterval);
+          setPlanResult({
+            goals: Array(statusData.goals || 0).fill({}),
+            milestones: statusData.milestones || 0,
+            tasks: statusData.tasks || 0,
+          });
+          setGeneratingPlan(false);
+          showToast("Your personalized plan is ready!", "success");
+        } else if (statusData.status === "failed") {
+          clearInterval(pollInterval);
+          setPlanError(statusData.error || "Plan generation failed. Please try again.");
+          setGeneratingPlan(false);
+        }
+      } catch (pollErr) {
+        // Ignore poll errors — keep trying
+      }
+    }, 5000);
   };
 
   const canProceed =
@@ -383,12 +466,12 @@ export default function CalibrationScreen() {
                 textAlign: "center",
               }}
             >
-              {generatingPlan ? "Generating Your Plan..." : "Calibration Complete!"}
+              {generatingPlan ? "Generating Your Plan..." : planError ? "Plan Generation Failed" : "Calibration Complete!"}
             </h2>
             <p
               style={{
                 fontSize: 14,
-                color: "var(--dp-text-secondary)",
+                color: planError ? "#EF4444" : "var(--dp-text-secondary)",
                 textAlign: "center",
                 lineHeight: 1.6,
                 maxWidth: 300,
@@ -396,7 +479,9 @@ export default function CalibrationScreen() {
               }}
             >
               {generatingPlan
-                ? "Your AI coach is analyzing your answers and building a personalized action plan. This may take a moment."
+                ? (planMessage || "Your AI coach is building a personalized action plan. This may take a few minutes.")
+                : planError
+                ? planError
                 : "Your AI coach has analyzed your answers and built a personalized action plan tailored to your goals, schedule, and confidence level."}
             </p>
 
@@ -411,9 +496,9 @@ export default function CalibrationScreen() {
               }}
             >
               {[
-                { icon: Target, label: "Goals", value: planResult && planResult.goals ? String(planResult.goals.length) : "--", color: "#8B5CF6" },
-                { icon: Zap, label: "Tasks", value: planResult && planResult.goals ? String(planResult.goals.reduce(function (s, g) { return s + (g.tasks ? g.tasks.length : 0); }, 0)) : "--", color: isLight ? "#B45309" : "#FCD34D" },
-                { icon: Star, label: "Questions", value: String(Object.keys(answers).length) + "/" + String(questions.length), color: "#10B981" },
+                { icon: Target, label: "Goals", value: planResult ? String(planResult.goals ? (planResult.goals.length || planResult.goals) : "--") : "--", color: "#8B5CF6" },
+                { icon: Zap, label: "Tasks", value: planResult && planResult.tasks ? String(planResult.tasks) : "--", color: isLight ? "#B45309" : "#FCD34D" },
+                { icon: Star, label: "Questions", value: String(Object.keys(answers).length || calibrationCount) + "/" + String(questions.length || calibrationCount), color: "#10B981" },
               ].map(({ icon: Icon, label, value, color }, i) => (
                 <div
                   key={i}
@@ -449,7 +534,45 @@ export default function CalibrationScreen() {
               ))}
             </div>
 
-            {/* View Your Plan button */}
+            {/* Retry / View Plan button */}
+            {planError ? (
+              <button
+                onClick={handleCalibrationComplete}
+                disabled={generatingPlan}
+                style={{
+                  width: "100%",
+                  maxWidth: 360,
+                  padding: "16px 0",
+                  borderRadius: 16,
+                  border: "none",
+                  background: generatingPlan ? "var(--dp-glass-bg)" : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                  color: generatingPlan ? "var(--dp-text-muted)" : "#fff",
+                  fontSize: 16,
+                  fontWeight: 700,
+                  cursor: generatingPlan ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  boxShadow: generatingPlan ? "none" : "0 4px 20px rgba(139,92,246,0.35)",
+                  transition: "all 0.2s",
+                  marginBottom: 12,
+                }}
+              >
+                {generatingPlan ? (
+                  <>
+                    <Loader2 size={18} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
+                    Generating Plan...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={18} strokeWidth={2} />
+                    Retry Plan Generation
+                  </>
+                )}
+              </button>
+            ) : null}
             <button
               onClick={() => navigate(id ? `/dream/${id}` : "/")}
               disabled={generatingPlan}
@@ -458,11 +581,15 @@ export default function CalibrationScreen() {
                 maxWidth: 360,
                 padding: "16px 0",
                 borderRadius: 16,
-                border: "none",
-                background: generatingPlan
+                border: planError ? "1px solid var(--dp-input-border)" : "none",
+                background: planError
+                  ? "var(--dp-surface)"
+                  : generatingPlan
                   ? "var(--dp-glass-bg)"
                   : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                color: generatingPlan ? "var(--dp-text-muted)" : "#fff",
+                color: planError
+                  ? "var(--dp-text)"
+                  : generatingPlan ? "var(--dp-text-muted)" : "#fff",
                 fontSize: 16,
                 fontWeight: 700,
                 cursor: generatingPlan ? "not-allowed" : "pointer",
@@ -471,7 +598,7 @@ export default function CalibrationScreen() {
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
-                boxShadow: generatingPlan ? "none" : "0 4px 20px rgba(139,92,246,0.35)",
+                boxShadow: (planError || generatingPlan) ? "none" : "0 4px 20px rgba(139,92,246,0.35)",
                 transition: "all 0.2s",
               }}
             >
@@ -480,6 +607,8 @@ export default function CalibrationScreen() {
                   <Loader2 size={18} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
                   Generating Plan...
                 </>
+              ) : planError ? (
+                "Go to Dream"
               ) : (
                 <>
                   <Sparkles size={18} strokeWidth={2} />
@@ -686,7 +815,7 @@ export default function CalibrationScreen() {
 
               <button
                 onClick={handleNext}
-                disabled={!canProceed}
+                disabled={!canProceed || submittingAnswer}
                 style={{
                   padding: "12px 28px",
                   borderRadius: 14,
@@ -708,7 +837,7 @@ export default function CalibrationScreen() {
                   transition: "all 0.25s",
                 }}
               >
-                {currentQ === questions.length - 1 ? "Complete" : "Next"}
+                {submittingAnswer ? "Analyzing..." : currentQ === questions.length - 1 ? "Complete" : "Next"}
                 <ChevronRight size={18} strokeWidth={2} />
               </button>
             </div>

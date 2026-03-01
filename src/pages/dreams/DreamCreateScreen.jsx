@@ -120,7 +120,7 @@ export default function DreamCreateScreen() {
       title: cleanTitle,
       description: cleanDescription,
       category: cleanCategory,
-      targetDate: targetDate,
+      target_date: targetDate,
     }).then(function (dream) {
       setSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });

@@ -2,8 +2,9 @@ import { createContext, useContext, useState, useEffect, useCallback } from "rea
 import { Capacitor } from "@capacitor/core";
 import en from "../i18n/en.json";
 import fr from "../i18n/fr.json";
+import es from "../i18n/es.json";
 
-const translations = { en, fr };
+const translations = { en, fr, es };
 
 const I18nContext = createContext();
 

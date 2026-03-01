@@ -101,7 +101,7 @@ export default function ConversationListScreen() {
     queryKey: ["call-history"],
     queryFn: function () { return apiGet(CONVERSATIONS.CALLS.HISTORY); },
   });
-  var missedCallCount = ((callHistoryQuery.data) || []).filter(function (c) {
+  var missedCallCount = ((callHistoryQuery.data && callHistoryQuery.data.results) || callHistoryQuery.data || []).filter(function (c) {
     return c.status === "missed" && c.calleeId === (user && user.id);
   }).length;
 

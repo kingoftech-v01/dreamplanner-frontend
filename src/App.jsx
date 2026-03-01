@@ -154,71 +154,8 @@ function AgoraRTMBridge() {
   return null;
 }
 
-// Wire native push notifications to dispatch incoming call events + task reminders + route navigation
+// Wire native push notifications — handled entirely by main.jsx setupPushListeners
 function NativePushBridge() {
-  var { isAuthenticated } = useAuth();
-  var { triggerTaskCall } = useTaskCall();
-
-  useEffect(function () {
-    if (!isAuthenticated) return;
-    var cleanupRef = null;
-
-    import("./services/nativeNotifications").then(function (mod) {
-      mod.setupPushListeners({
-        onNotification: function (notification) {
-          var data = notification.data || {};
-          // Incoming call from push notification
-          if (data.type === "incoming_call") {
-            window.dispatchEvent(new CustomEvent("dp-incoming-call", {
-              detail: {
-                callId: data.callId || data.call_id,
-                callerName: data.callerName || data.caller_name || notification.title || "Unknown",
-                callType: data.callType || data.call_type || "voice",
-                callerId: data.callerId || data.caller_id,
-              },
-            }));
-          }
-          // Task reminder from push notification
-          var nType = data.notification_type || data.type || "";
-          if (nType === "reminder" || nType === "task_due" || nType === "overdue_tasks" || nType === "task_reminder") {
-            triggerTaskCall({
-              id: data.task_id || data.goal_id || data.notification_id || "",
-              title: notification.title || data.title || "Task Due",
-              dream: data.dream || data.dream_title || "",
-              priority: data.priority || "medium",
-              category: data.category || "personal",
-              duration: data.duration || "",
-            });
-          }
-        },
-        onAction: function (action) {
-          var data = action.data || {};
-          // Notification tap — navigate to route if specified
-          if (data.route) {
-            window.location.hash = "#" + data.route;
-          }
-          // Incoming call accepted from notification tray
-          if (data.type === "incoming_call") {
-            window.dispatchEvent(new CustomEvent("dp-incoming-call", {
-              detail: {
-                callId: data.callId || data.call_id,
-                callerName: data.callerName || data.caller_name || "Unknown",
-                callType: data.callType || data.call_type || "voice",
-                callerId: data.callerId || data.caller_id,
-              },
-            }));
-          }
-        },
-      }).then(function (cleanup) {
-        cleanupRef = cleanup;
-      });
-    }).catch(function () {});
-
-    return function () {
-      if (cleanupRef && cleanupRef.remove) cleanupRef.remove();
-    };
-  }, [isAuthenticated, triggerTaskCall]);
-
   return null;
 }
 

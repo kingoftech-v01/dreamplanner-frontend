@@ -24,7 +24,7 @@ import {
  * ═══════════════════════════════════════════════════════════════════ */
 
 const LANGUAGES = [
-  {code:"en",label:"English"},{code:"fr",label:"Français"},
+  {code:"en",label:"English"},{code:"fr",label:"Français"},{code:"es",label:"Español"},
 ];
 
 const TIMEZONES = [
@@ -203,9 +203,9 @@ export default function SettingsScreen(){
               <div style={{fontSize:14,fontWeight:500,color:isLight?"#1a1535":"#fff",marginBottom:12}}>{t("settings.visualTheme")}</div>
               <div style={{display:"flex",gap:10}}>
                 {[
-                  {id:"default",label:"Default",sub:"Day & Night",icons:[Sun,Moon]},
-                  {id:"cosmos",label:"Cosmos",sub:"Space",icons:[Sparkles]},
-                  {id:"saturn",label:"Saturn",sub:"Planets",icons:[Globe]},
+                  {id:"default",label:t("settings.default"),sub:t("settings.dayNight"),icons:[Sun,Moon]},
+                  {id:"cosmos",label:t("settings.cosmos"),sub:t("settings.space"),icons:[Sparkles]},
+                  {id:"saturn",label:t("settings.saturn"),sub:t("settings.planets"),icons:[Globe]},
                 ].map(th=>{const active=theme===th.id;return(
                   <button key={th.id} onClick={()=>setTheme(th.id)} style={{
                     flex:1,padding:"16px 12px",borderRadius:16,border:active?"1px solid rgba(139,92,246,0.4)":(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"),
@@ -253,24 +253,24 @@ export default function SettingsScreen(){
             <Tile icon={BellRing} title={t("settings.pushNotifications")} right={<Toggle on={notifs.push} onToggle={function(){var next={...notifs,push:!notifs.push};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>}/>
             <Tile icon={Mail} title={t("settings.emailNotifications")} right={<Toggle on={notifs.email} onToggle={function(){var next={...notifs,email:!notifs.email};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>}/>
             <Tile icon={User} title={t("settings.buddyReminders")} right={<Toggle on={notifs.buddy} onToggle={function(){var next={...notifs,buddy:!notifs.buddy};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>} color="#5EEAD4"/>
-            <Tile icon={BellOff} title="Do Not Disturb" sub={dndEnabled?(dndStart+" - "+dndEnd):undefined} right={<Toggle on={dndEnabled} onToggle={function(){var next=!dndEnabled;setDndEnabled(next);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:next,dndStart:dndStart,dndEnd:dndEnd});}}/>}/>
+            <Tile icon={BellOff} title={t("settings.doNotDisturb")} sub={dndEnabled?(dndStart+" - "+dndEnd):undefined} right={<Toggle on={dndEnabled} onToggle={function(){var next=!dndEnabled;setDndEnabled(next);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:next,dndStart:dndStart,dndEnd:dndEnd});}}/>}/>
             {dndEnabled&&(
               <div className="dp-g" style={{padding:14,marginBottom:6}}>
                 <div style={{display:"flex",gap:12}}>
                   <div style={{flex:1}}>
-                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>From</label>
+                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>{t("settings.from")}</label>
                     <input type="time" value={dndStart} onChange={function(e){setDndStart(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:e.target.value,dndEnd:dndEnd});}}
                       style={{width:"100%",padding:"10px 12px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
                   </div>
                   <div style={{flex:1}}>
-                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>To</label>
+                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>{t("settings.to")}</label>
                     <input type="time" value={dndEnd} onChange={function(e){setDndEnd(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:dndStart,dndEnd:e.target.value});}}
                       style={{width:"100%",padding:"10px 12px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
                   </div>
                 </div>
               </div>
             )}
-            <Tile icon={Calendar} title={t("settings.googleCalendar")} sub="Sync your events" color="#93C5FD" onClick={()=>navigate("/calendar-connect")}/>
+            <Tile icon={Calendar} title={t("settings.googleCalendar")} sub={t("settings.syncEvents")} color="#93C5FD" onClick={()=>navigate("/calendar-connect")}/>
           </Section>
 
           <Section title={t("settings.subscription")} delay={300}>
@@ -306,7 +306,7 @@ export default function SettingsScreen(){
           <div onClick={()=>setShowLang(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
           <div style={{position:"relative",width:"100%",maxWidth:420,maxHeight:"70vh",background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:"22px 22px 0 0",border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",borderBottom:"none",animation:"dpSlideUp 0.3s cubic-bezier(0.16,1,0.3,1)",display:"flex",flexDirection:"column"}}>
             <div style={{padding:"16px 20px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Choose Language</span>
+              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.chooseLanguage")}</span>
               <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={()=>setShowLang(false)}><X size={16} strokeWidth={2}/></button>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 12px 20px"}}>
@@ -334,11 +334,11 @@ export default function SettingsScreen(){
           <div onClick={()=>{setShowTz(false);setTzSearch("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
           <div style={{position:"relative",width:"100%",maxWidth:420,maxHeight:"70vh",background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:"22px 22px 0 0",border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",borderBottom:"none",animation:"dpSlideUp 0.3s cubic-bezier(0.16,1,0.3,1)",display:"flex",flexDirection:"column"}}>
             <div style={{padding:"16px 20px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Choose Timezone</span>
+              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.chooseTimezone")}</span>
               <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={()=>{setShowTz(false);setTzSearch("");}}><X size={16} strokeWidth={2}/></button>
             </div>
             <div style={{padding:"8px 12px 0",flexShrink:0}}>
-              <input value={tzSearch} onChange={e=>setTzSearch(e.target.value)} placeholder="Search timezones..." autoFocus style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+              <input value={tzSearch} onChange={e=>setTzSearch(e.target.value)} placeholder={t("settings.searchTimezones")} autoFocus style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
             </div>
             <div style={{flex:1,overflowY:"auto",padding:"8px 12px 20px"}}>
               {TIMEZONES.filter(tz_item=>!tzSearch||tz_item.label.toLowerCase().includes(tzSearch.toLowerCase())||tz_item.value.toLowerCase().includes(tzSearch.toLowerCase())).map(tz_item=>(
@@ -372,14 +372,14 @@ export default function SettingsScreen(){
                 <Mail size={20} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
               </div>
               <div>
-                <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Change Email</div>
-                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>A verification email will be sent</div>
+                <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.changeEmail")}</div>
+                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{t("settings.verificationSent")}</div>
               </div>
             </div>
             <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:12}}>
-              Current: <strong>{(user&&user.email)||""}</strong>
+              {t("settings.current")} <strong>{(user&&user.email)||""}</strong>
             </div>
-            <input value={newEmail} onChange={function(e){setNewEmail(e.target.value);}} placeholder="New email address" type="email" autoFocus
+            <input value={newEmail} onChange={function(e){setNewEmail(e.target.value);}} placeholder={t("settings.newEmail")} type="email" autoFocus
               style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
             <div style={{display:"flex",gap:8}}>
               <button onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")||"Cancel"}</button>
@@ -400,15 +400,15 @@ export default function SettingsScreen(){
               </div>
               <div>
                 <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.deleteAccount")}</div>
-                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>This cannot be undone</div>
+                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{t("settings.cannotBeUndone")}</div>
               </div>
             </div>
             <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:16}}>
-              This will permanently delete your account, all dreams, progress, and data. Type <strong style={{color:"rgba(239,68,68,0.9)"}}>DELETE</strong> to confirm.
+              {t("settings.deleteWarning")} <strong style={{color:"rgba(239,68,68,0.9)"}}>DELETE</strong>
             </div>
-            <input value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder="Type DELETE"
+            <input value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder={t("settings.typeDelete")}
               style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:10}}/>
-            <input value={deletePassword} onChange={function(e){setDeletePassword(e.target.value);}} placeholder="Enter your password" type="password"
+            <input value={deletePassword} onChange={function(e){setDeletePassword(e.target.value);}} placeholder={t("settings.enterPassword")} type="password"
               style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>setShowDelete(false)} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")}</button>

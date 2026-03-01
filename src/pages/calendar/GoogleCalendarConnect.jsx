@@ -5,6 +5,7 @@ import { ArrowLeft, Calendar, Check, RefreshCw, LogOut, ChevronRight } from "luc
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import { apiGet, apiPost } from "../../services/api";
 import { CALENDAR } from "../../services/endpoints";
 import { openBrowser, isNative } from "../../services/native";
@@ -31,6 +32,7 @@ export default function GoogleCalendarConnect() {
   var { resolved } = useTheme();
   var isLight = resolved === "light";
   var { showToast } = useToast();
+  var { t } = useT();
   var queryClient = useQueryClient();
 
   var [connected, setConnected] = useState(false);
@@ -68,13 +70,13 @@ export default function GoogleCalendarConnect() {
     onSuccess: function () {
       setConnecting(false);
       queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
-      showToast("Google Calendar connected!", "success");
+      showToast(t("calendar.connectedToast"), "success");
       // Clean up URL
       window.history.replaceState({}, document.title, window.location.pathname);
     },
     onError: function (err) {
       setConnecting(false);
-      showToast(err.message || "Failed to connect Google Calendar", "error");
+      showToast(err.message || t("calendar.connectFailed"), "error");
     },
   });
 
@@ -101,10 +103,10 @@ export default function GoogleCalendarConnect() {
     onSuccess: function () {
       setLastSync(new Date());
       queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
-      showToast("Calendar synced!", "success");
+      showToast(t("calendar.syncedToast"), "success");
     },
     onError: function (err) {
-      showToast(err.message || "Sync failed", "error");
+      showToast(err.message || t("calendar.syncFailed"), "error");
     },
   });
 
@@ -116,10 +118,10 @@ export default function GoogleCalendarConnect() {
       setLastSync(null);
       setCalendars([]);
       queryClient.invalidateQueries({ queryKey: ["google-calendar-status"] });
-      showToast("Google Calendar disconnected", "info");
+      showToast(t("calendar.disconnectedToast"), "info");
     },
     onError: function (err) {
-      showToast(err.message || "Failed to disconnect", "error");
+      showToast(err.message || t("calendar.disconnectFailed"), "error");
     },
   });
 
@@ -142,12 +144,15 @@ export default function GoogleCalendarConnect() {
           }
         } else {
           setConnecting(false);
-          showToast("Failed to get authorization URL", "error");
+          showToast(t("calendar.authFailed"), "error");
         }
       })
       .catch(function (err) {
         setConnecting(false);
-        showToast(err.message || "Failed to start Google connection", "error");
+        var msg = (err.message || "").toLowerCase().includes("501")
+          ? t("calendar.notAvailable")
+          : (err.message || t("calendar.authFailed"));
+        showToast(msg, "error");
       });
   };
 
@@ -186,7 +191,7 @@ export default function GoogleCalendarConnect() {
           <button className="dp-ib" onClick={function () { navigate(-1); }}>
             <ArrowLeft size={20} strokeWidth={2} />
           </button>
-          <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Google Calendar</span>
+          <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>{t("calendar.googleCalendar")}</span>
         </div>
 
         {/* Calendar Icon */}
@@ -202,12 +207,12 @@ export default function GoogleCalendarConnect() {
             <Calendar size={36} color={isLight ? "#4285F4" : "#8AB4F8"} strokeWidth={1.5} />
           </div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 6px" }}>
-            {connected ? "Calendar Connected" : "Sync Your Calendar"}
+            {connected ? t("calendar.calendarConnected") : t("calendar.syncCalendar")}
           </h2>
           <p style={{ fontSize: 13, color: "var(--dp-text-tertiary)", margin: 0, lineHeight: 1.5, maxWidth: 280, marginLeft: "auto", marginRight: "auto" }}>
             {connected
-              ? "Your Google Calendar is synced with DreamPlanner"
-              : "Connect your Google account to sync events and deadlines with your dreams"}
+              ? t("calendar.connectedDesc")
+              : t("calendar.connectDesc")}
           </p>
         </div>
 
@@ -217,9 +222,9 @@ export default function GoogleCalendarConnect() {
             {/* Features list */}
             <div style={{ ...tile, padding: 18, marginBottom: 16 }}>
               {[
-                { text: "Sync dream deadlines to your calendar", color: "#8B5CF6" },
-                { text: "See tasks and milestones as events", color: "#10B981" },
-                { text: "Get reminders for upcoming goals", color: "#F59E0B" },
+                { text: t("calendar.syncDeadlines"), color: "#8B5CF6" },
+                { text: t("calendar.seeTasks"), color: "#10B981" },
+                { text: t("calendar.getReminders"), color: "#F59E0B" },
               ].map(function (f, i) {
                 return (
                   <div key={i} style={{
@@ -258,12 +263,12 @@ export default function GoogleCalendarConnect() {
               {connecting ? (
                 <>
                   <RefreshCw size={18} style={{ animation: "gcSpin 1s linear infinite" }} />
-                  Connecting...
+                  {t("calendar.connecting")}
                 </>
               ) : (
                 <>
                   <svg width={18} height={18} viewBox="0 0 24 24"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/><path fill="#fff" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#fff" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
-                  Connect with Google
+                  {t("calendar.connectWithGoogle")}
                 </>
               )}
             </button>
@@ -280,9 +285,9 @@ export default function GoogleCalendarConnect() {
                 fontSize: 18, fontWeight: 700, color: "#fff",
               }}>{(statusQuery.data?.email || "G")[0].toUpperCase()}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)" }}>{statusQuery.data?.email || "Google Account"}</div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)" }}>{statusQuery.data?.email || t("calendar.googleAccount")}</div>
                 <div style={{ fontSize: 12, color: isLight ? "#059669" : "#5DE5A8", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
-                  <Check size={12} strokeWidth={3} /> Connected
+                  <Check size={12} strokeWidth={3} /> {t("calendar.connected")}
                 </div>
               </div>
             </div>
@@ -293,7 +298,7 @@ export default function GoogleCalendarConnect() {
                 padding: "14px 18px",
                 borderBottom: isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)",
               }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-secondary)" }}>Sync Calendars</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-secondary)" }}>{t("calendar.syncCalendars")}</span>
               </div>
               {calendars.map(function (cal, i) {
                 return (
@@ -326,13 +331,13 @@ export default function GoogleCalendarConnect() {
               }}
             >
               <RefreshCw size={16} style={syncing ? { animation: "gcSpin 1s linear infinite" } : {}} />
-              {syncing ? "Syncing..." : "Sync Now"}
+              {syncing ? t("calendar.syncing") : t("calendar.syncNow")}
             </button>
 
             {lastSync && (
               <div style={{ textAlign: "center", marginBottom: 24 }}>
                 <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>
-                  Last synced: {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {t("calendar.lastSynced")} {lastSync.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                 </span>
               </div>
             )}
@@ -357,11 +362,11 @@ export default function GoogleCalendarConnect() {
               {disconnecting ? (
                 <>
                   <RefreshCw size={14} style={{ animation: "gcSpin 1s linear infinite" }} />
-                  Disconnecting...
+                  {t("calendar.disconnecting")}
                 </>
               ) : (
                 <>
-                  <LogOut size={14} strokeWidth={2} /> Disconnect Account
+                  <LogOut size={14} strokeWidth={2} /> {t("calendar.disconnect")}
                 </>
               )}
             </button>

@@ -8,6 +8,7 @@ import PageLayout from "../../components/shared/PageLayout";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import { sanitizeText, sanitizeUrl } from "../../utils/sanitize";
 import { Heart, MessageCircle, Send, Plus, Sparkles, Share2, ArrowLeft, MoreVertical, Pencil, Trash2, Flame, Star, Zap, ArrowRight, ThumbsUp } from "lucide-react";
 
@@ -37,14 +38,12 @@ function timeAgo(ds) {
   if (s < 86400) return Math.floor(s/3600)+"h"; return Math.floor(s/86400)+"d";
 }
 
-var VIS = [{value:"public",label:"Public"},{value:"friends",label:"Friends"},{value:"private",label:"Private"}];
-
-var ENCOURAGE_TYPES = [
-  { type: "you_got_this", icon: ThumbsUp, label: "You got this!", color: "#3B82F6" },
-  { type: "keep_going", icon: ArrowRight, label: "Keep going!", color: "#10B981" },
-  { type: "inspired", icon: Sparkles, label: "Inspired!", color: "#A855F7" },
-  { type: "proud", icon: Star, label: "Proud!", color: "#FCD34D" },
-  { type: "fire", icon: Flame, label: "Fire!", color: "#EF4444" },
+var ENCOURAGE_TYPES_BASE = [
+  { type: "you_got_this", icon: ThumbsUp, color: "#3B82F6" },
+  { type: "keep_going", icon: ArrowRight, color: "#10B981" },
+  { type: "inspired", icon: Sparkles, color: "#A855F7" },
+  { type: "proud", icon: Star, color: "#FCD34D" },
+  { type: "fire", icon: Flame, color: "#EF4444" },
 ];
 
 // ── Action button helper ────────────────────────────────────────
@@ -70,6 +69,24 @@ export default function DreamPostsFeedScreen() {
   var qc = useQueryClient();
   var { user } = useAuth();
   var { showToast } = useToast();
+  var { t } = useT();
+
+  var VIS = [
+    {value:"public",label:t("feed.public")},
+    {value:"friends",label:t("feed.friends")},
+    {value:"private",label:t("feed.private")},
+  ];
+  var ENCOURAGE_TYPES = ENCOURAGE_TYPES_BASE.map(function(et) {
+    var labels = {
+      you_got_this: t("feed.youGotThis"),
+      keep_going: t("feed.keepGoing"),
+      inspired: t("feed.inspired"),
+      proud: t("feed.proud"),
+      fire: t("feed.fire"),
+    };
+    return Object.assign({}, et, { label: labels[et.type] });
+  });
+
   var [mounted, setMounted] = useState(false);
   var [showCreate, setShowCreate] = useState(false);
   var [postMenu, setPostMenu] = useState(null);
@@ -101,7 +118,7 @@ export default function DreamPostsFeedScreen() {
   var createMut = useMutation({
     mutationFn: function (b) { return apiPost(SOCIAL.POSTS.LIST, b); },
     onSuccess: function () {
-      showToast("Post published!", "success");
+      showToast(t("feed.postPublished"), "success");
       setShowCreate(false); setContent(""); setDreamId(""); setVisibility("public");
       qc.invalidateQueries({ queryKey: ["dream-posts-feed"] });
     },
@@ -115,7 +132,7 @@ export default function DreamPostsFeedScreen() {
 
   var encourageMut = useMutation({
     mutationFn: function (d) { return apiPost(SOCIAL.POSTS.ENCOURAGE(d.id), { encouragementType: d.type, message: "" }); },
-    onSuccess: function () { showToast("Encouragement sent!", "success"); setEncouragePickerFor(null); qc.invalidateQueries({ queryKey: ["dream-posts-feed"] }); },
+    onSuccess: function () { showToast(t("feed.encouragementSent"), "success"); setEncouragePickerFor(null); qc.invalidateQueries({ queryKey: ["dream-posts-feed"] }); },
     onError: function (e) { showToast(e.message || "Failed to encourage", "error"); },
   });
 
@@ -141,7 +158,7 @@ export default function DreamPostsFeedScreen() {
   var editMut = useMutation({
     mutationFn: function (d) { return apiPut(SOCIAL.POSTS.DETAIL(d.id), { content: d.content }); },
     onSuccess: function () {
-      showToast("Post updated", "success");
+      showToast(t("feed.postUpdated"), "success");
       setEditingPost(null);
       qc.invalidateQueries({ queryKey: ["dream-posts-feed"] });
     },
@@ -169,7 +186,7 @@ export default function DreamPostsFeedScreen() {
     if (navigator.share) {
       navigator.share({ title: "Dream Post", text: post.content, url: window.location.href }).catch(function () {});
     } else {
-      navigator.clipboard.writeText(post.content || "").then(function () { showToast("Copied to clipboard", "success"); });
+      navigator.clipboard.writeText(post.content || "").then(function () { showToast(t("feed.copiedClipboard"), "success"); });
     }
   };
 
@@ -185,7 +202,7 @@ export default function DreamPostsFeedScreen() {
 
   var handleDeletePost = function (postId) {
     setPostMenu(null);
-    if (!confirm("Delete this post?")) return;
+    if (!confirm(t("feed.deletePost"))) return;
     deleteMut.mutate(postId);
   };
 
@@ -197,7 +214,7 @@ export default function DreamPostsFeedScreen() {
         <button className="dp-ib" onClick={function(){navigate(-1);}}><ArrowLeft size={20} strokeWidth={2}/></button>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <Sparkles size={20} color="#C4B5FD" strokeWidth={2}/>
-          <h1 style={{fontSize:24,fontWeight:700,color:"var(--dp-text)",fontFamily:F,margin:0}}>Dream Feed</h1>
+          <h1 style={{fontSize:24,fontWeight:700,color:"var(--dp-text)",fontFamily:F,margin:0}}>{t("feed.title")}</h1>
         </div>
       </div>
 
@@ -208,8 +225,8 @@ export default function DreamPostsFeedScreen() {
       {/* Error */}
       {feedInf.isError && (
         <div style={{textAlign:"center",padding:"60px 20px",opacity:mounted?1:0,transition:"opacity 0.5s ease 0.2s"}}>
-          <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text-tertiary)",fontFamily:F,marginBottom:8}}>Failed to load feed</div>
-          <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:16}}>{(feedInf.error&&feedInf.error.message)||"Something went wrong"}</div>
+          <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text-tertiary)",fontFamily:F,marginBottom:8}}>{t("feed.failedLoad")}</div>
+          <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:16}}>{(feedInf.error&&feedInf.error.message)||t("feed.somethingWrong")}</div>
           <button onClick={function(){feedInf.refetch();}} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:F}}>Try Again</button>
         </div>
       )}
@@ -220,8 +237,8 @@ export default function DreamPostsFeedScreen() {
           <div style={{width:72,height:72,borderRadius:20,background:"var(--dp-glass-bg)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
             <Sparkles size={32} color="var(--dp-text-secondary)"/>
           </div>
-          <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text-tertiary)",fontFamily:F,marginBottom:6}}>No dream posts yet</div>
-          <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F}}>Be the first to share your dream journey</div>
+          <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text-tertiary)",fontFamily:F,marginBottom:6}}>{t("feed.noPosts")}</div>
+          <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F}}>{t("feed.beFirst")}</div>
         </div>
       )}
 
@@ -263,11 +280,11 @@ export default function DreamPostsFeedScreen() {
                     <div style={{position:"absolute",right:0,top:28,zIndex:20,background:"var(--dp-body-bg)",border:"1px solid var(--dp-input-border)",borderRadius:12,padding:4,minWidth:120,boxShadow:"0 8px 24px rgba(0,0,0,0.3)"}}>
                       <button onClick={function(){setEditingPost(post.id);setEditText(post.content||"");setPostMenu(null);}}
                         style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",border:"none",background:"transparent",color:"var(--dp-text)",fontSize:13,fontWeight:500,textAlign:"left",cursor:"pointer",borderRadius:8}}>
-                        <Pencil size={14} strokeWidth={2}/>Edit
+                        <Pencil size={14} strokeWidth={2}/>{t("common.edit")}
                       </button>
                       <button onClick={function(){handleDeletePost(post.id);}}
                         style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 12px",border:"none",background:"transparent",color:"#EF4444",fontSize:13,fontWeight:500,textAlign:"left",cursor:"pointer",borderRadius:8}}>
-                        <Trash2 size={14} strokeWidth={2}/>Delete
+                        <Trash2 size={14} strokeWidth={2}/>{t("common.delete")}
                       </button>
                     </div>
                   )}
@@ -282,9 +299,9 @@ export default function DreamPostsFeedScreen() {
                   style={{width:"100%",padding:"10px 12px",borderRadius:12,background:"var(--dp-glass-bg)",border:"1px solid var(--dp-input-border)",color:"var(--dp-text)",fontSize:14,lineHeight:1.5,fontFamily:F,outline:"none",resize:"vertical"}}/>
                 <div style={{display:"flex",gap:8,marginTop:8,justifyContent:"flex-end"}}>
                   <button onClick={function(){setEditingPost(null);}}
-                    style={{padding:"6px 14px",borderRadius:10,border:"1px solid var(--dp-input-border)",background:"transparent",color:"var(--dp-text-secondary)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F}}>Cancel</button>
+                    style={{padding:"6px 14px",borderRadius:10,border:"1px solid var(--dp-input-border)",background:"transparent",color:"var(--dp-text-secondary)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F}}>{t("common.cancel")}</button>
                   <button onClick={function(){handleEditPost(post.id);}} disabled={editMut.isPending}
-                    style={{padding:"6px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F}}>{editMut.isPending?"Saving...":"Save"}</button>
+                    style={{padding:"6px 14px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:F}}>{editMut.isPending?t("feed.saving"):t("common.save")}</button>
                 </div>
               </div>
             ) : (
@@ -348,7 +365,7 @@ export default function DreamPostsFeedScreen() {
             {/* Comments panel */}
             {isOpen && (
               <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid var(--dp-input-border)"}}>
-                {commQ.isLoading && <div style={{padding:"12px 0",textAlign:"center",fontSize:13,color:"var(--dp-text-tertiary)",fontFamily:F}}>Loading comments...</div>}
+                {commQ.isLoading && <div style={{padding:"12px 0",textAlign:"center",fontSize:13,color:"var(--dp-text-tertiary)",fontFamily:F}}>{t("feed.loadingComments")}</div>}
                 {!commQ.isLoading && comments.map(function(c) {
                   var ca = c.author||c.user||{}; var cn = ca.displayName||ca.username||"User";
                   var ci = (cn[0]||"U").toUpperCase(); var cc2 = avatarColor(cn);
@@ -360,7 +377,7 @@ export default function DreamPostsFeedScreen() {
                           <span style={{fontSize:12,fontWeight:600,color:"var(--dp-text)",fontFamily:F}}>{cn}</span>
                           <span style={{fontSize:11,color:"var(--dp-text-tertiary)",fontFamily:F}}>{timeAgo(c.createdAt||c.created||Date.now())}</span>
                         </div>
-                        <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F,lineHeight:1.4}}>{c.content||c.text}</div>
+                        <div style={{fontSize:13,color:"var(--dp-text-secondary)",fontFamily:F,lineHeight:1.4,wordBreak:"break-word"}}>{c.content||c.text}</div>
                       </div>
                     </div>
                   );
@@ -369,7 +386,7 @@ export default function DreamPostsFeedScreen() {
                 <div style={{display:"flex",gap:8,alignItems:"center",marginTop:comments.length>0?4:0}}>
                   <input value={cInputs[post.id]||""} onChange={function(e){setCInputs(function(p){return Object.assign({},p,{[post.id]:e.target.value});});}}
                     onKeyDown={function(e){if(e.key==="Enter"){e.preventDefault();handleAddComment(post.id);}}}
-                    placeholder="Write a comment..." style={{flex:1,padding:"9px 14px",borderRadius:14,background:"var(--dp-glass-bg)",border:"1px solid var(--dp-input-border)",color:"var(--dp-text)",fontSize:13,fontFamily:F,outline:"none"}}/>
+                    placeholder={t("feed.writeComment")} style={{flex:1,padding:"9px 14px",borderRadius:14,background:"var(--dp-glass-bg)",border:"1px solid var(--dp-input-border)",color:"var(--dp-text)",fontSize:13,fontFamily:F,outline:"none"}}/>
                   <button onClick={function(){handleAddComment(post.id);}} disabled={!(cInputs[post.id]||"").trim()}
                     style={{width:36,height:36,borderRadius:12,border:"none",background:(cInputs[post.id]||"").trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":"var(--dp-glass-bg)",color:(cInputs[post.id]||"").trim()?"#fff":"var(--dp-text-tertiary)",display:"flex",alignItems:"center",justifyContent:"center",cursor:(cInputs[post.id]||"").trim()?"pointer":"default",transition:"all 0.2s",flexShrink:0}}>
                     <Send size={16} strokeWidth={2}/>
@@ -402,29 +419,29 @@ export default function DreamPostsFeedScreen() {
             <div style={{...glass,background:"var(--dp-body-bg)",borderRadius:24,padding:24,overflow:"hidden",boxShadow:"0 16px 48px rgba(0,0,0,0.4)"}}>
               {/* Header */}
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
-                <h2 style={{fontSize:18,fontWeight:700,color:"var(--dp-text)",fontFamily:F,margin:0}}>New Post</h2>
+                <h2 style={{fontSize:18,fontWeight:700,color:"var(--dp-text)",fontFamily:F,margin:0}}>{t("feed.newPost")}</h2>
                 <button onClick={function(){setShowCreate(false);}} className="dp-ib" style={{width:32,height:32}}>
                   <Plus size={18} strokeWidth={2} style={{transform:"rotate(45deg)"}}/>
                 </button>
               </div>
 
               {/* Textarea */}
-              <textarea value={content} onChange={function(e){setContent(e.target.value);}} placeholder="Share your dream journey..." rows={4}
+              <textarea value={content} onChange={function(e){setContent(e.target.value);}} placeholder={t("feed.shareDreamJourney")} rows={4}
                 style={{width:"100%",padding:"12px 14px",borderRadius:16,background:"var(--dp-glass-bg)",border:"1px solid var(--dp-input-border)",color:"var(--dp-text)",fontSize:14,lineHeight:1.5,fontFamily:F,outline:"none",resize:"vertical",minHeight:100}}/>
 
               {/* Dream selector */}
               <div style={{marginTop:14}}>
-                <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:6,display:"block"}}>Link a dream (optional)</label>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:6,display:"block"}}>{t("feed.linkDream")}</label>
                 <select value={dreamId} onChange={function(e){setDreamId(e.target.value);}}
                   style={{width:"100%",padding:"10px 14px",borderRadius:14,background:"var(--dp-glass-bg)",border:"1px solid var(--dp-input-border)",color:"var(--dp-text)",fontSize:13,fontFamily:F,outline:"none",appearance:"none",WebkitAppearance:"none"}}>
-                  <option value="">No dream linked</option>
+                  <option value="">{t("feed.noDreamLinked")}</option>
                   {myDreams.map(function(d){return <option key={d.id} value={d.id}>{d.title||d.name||"Untitled Dream"}</option>;})}
                 </select>
               </div>
 
               {/* Visibility */}
               <div style={{marginTop:14}}>
-                <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:6,display:"block"}}>Visibility</label>
+                <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",fontFamily:F,marginBottom:6,display:"block"}}>{t("feed.visibility")}</label>
                 <div style={{display:"flex",gap:8}}>
                   {VIS.map(function(o){var act=visibility===o.value;return(
                     <button key={o.value} onClick={function(){setVisibility(o.value);}} style={{flex:1,padding:"9px 0",borderRadius:12,border:act?"1px solid rgba(139,92,246,0.4)":"1px solid var(--dp-input-border)",background:act?"rgba(139,92,246,0.15)":"transparent",color:act?"#C4B5FD":"var(--dp-text-secondary)",fontSize:13,fontWeight:600,fontFamily:F,cursor:"pointer",transition:"all 0.2s"}}>{o.label}</button>
@@ -435,7 +452,7 @@ export default function DreamPostsFeedScreen() {
               {/* Submit */}
               <button onClick={handleCreate} disabled={!content.trim()||createMut.isPending}
                 style={{width:"100%",marginTop:20,padding:"13px 0",borderRadius:16,border:"none",background:content.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":"var(--dp-glass-bg)",color:content.trim()?"#fff":"var(--dp-text-tertiary)",fontSize:15,fontWeight:700,fontFamily:F,cursor:content.trim()?"pointer":"default",transition:"all 0.25s ease",boxShadow:content.trim()?"0 4px 16px rgba(139,92,246,0.3)":"none"}}>
-                {createMut.isPending ? "Publishing..." : "Publish Post"}
+                {createMut.isPending ? t("feed.publishing") : t("feed.publishPost")}
               </button>
             </div>
           </div>

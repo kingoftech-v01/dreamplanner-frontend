@@ -15,6 +15,7 @@ import {
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
+import { useT } from "../../context/I18nContext";
 import { sanitizeText } from "../../utils/sanitize";
 
 // ═══════════════════════════════════════════════════════════════
@@ -31,13 +32,13 @@ const CATEGORY_COLORS = {
 
 var MEMBER_COLORS = ["#8B5CF6","#14B8A6","#EC4899","#3B82F6","#F59E0B","#10B981","#6366F1"];
 
-function timeAgo(dateStr) {
+function timeAgo(dateStr, t) {
   if (!dateStr) return "";
   var s = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return Math.floor(s / 60) + "m ago";
-  if (s < 86400) return Math.floor(s / 3600) + "h ago";
-  return Math.floor(s / 86400) + "d ago";
+  if (s < 60) return t("circles.justNow");
+  if (s < 3600) return Math.floor(s / 60) + t("circles.minAgo");
+  if (s < 86400) return Math.floor(s / 3600) + t("circles.hourAgo");
+  return Math.floor(s / 86400) + t("circles.dayAgo");
 }
 
 const ROLE_CONFIG = {
@@ -59,6 +60,7 @@ export default function CircleDetailScreen() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { resolved } = useTheme(); const isLight = resolved === "light";
+  var { t } = useT();
   var { user } = useAuth();
   var { showToast } = useToast();
   var queryClient = useQueryClient();
@@ -100,7 +102,7 @@ export default function CircleDetailScreen() {
         color: (item.user && item.user.color) || MEMBER_COLORS[i % MEMBER_COLORS.length],
       },
       content: item.content || item.text || "",
-      timeAgo: timeAgo(item.createdAt || item.created),
+      timeAgo: timeAgo(item.createdAt || item.created, t),
       likes: item.reactionsCount || item.likesCount || item.likes || 0,
       comments: item.commentsCount || item.comments || 0,
       liked: !!item.liked || !!item.hasReacted,
@@ -157,12 +159,12 @@ export default function CircleDetailScreen() {
     if (!composerText.trim()) return;
     var cleanContent = sanitizeText(composerText, 2000);
     if (!cleanContent) return;
-    var displayName = (user && (user.displayName || user.username)) || "You";
+    var displayName = (user && (user.displayName || user.username)) || t("circles.you");
     var newPost = {
       id: "p" + Date.now(),
       user: { name: displayName, initial: displayName[0].toUpperCase(), color: "#8B5CF6" },
       content: cleanContent,
-      timeAgo: "just now",
+      timeAgo: t("circles.justNow"),
       likes: 0,
       comments: 0,
       liked: false,
@@ -174,22 +176,22 @@ export default function CircleDetailScreen() {
         queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
       })
       .catch(function (err) {
-        showToast(err.message || "Failed to post", "error");
+        showToast(err.message || t("circles.failedToPost"), "error");
       });
   };
 
   // ─── Delete Post ────────────────────────────────────────────
   var handleDeletePost = function (postId) {
     setPostMenu(null);
-    if (!confirm("Delete this post?")) return;
+    if (!confirm(t("circles.deletePostConfirm"))) return;
     setPosts(function (prev) { return prev.filter(function (p) { return p.id !== postId; }); });
     apiDelete(CIRCLES.POST_DELETE(id, postId))
       .then(function () {
-        showToast("Post deleted", "success");
+        showToast(t("circles.postDeleted"), "success");
         queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
       })
       .catch(function (err) {
-        showToast(err.message || "Failed to delete post", "error");
+        showToast(err.message || t("circles.failedToDeletePost"), "error");
         queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
       });
   };
@@ -206,11 +208,11 @@ export default function CircleDetailScreen() {
     });
     apiPut(CIRCLES.POST_EDIT(id, postId), { content: cleanContent })
       .then(function () {
-        showToast("Post updated", "success");
+        showToast(t("circles.postUpdated"), "success");
         queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
       })
       .catch(function (err) {
-        showToast(err.message || "Failed to update post", "error");
+        showToast(err.message || t("circles.failedToUpdatePost"), "error");
         queryClient.invalidateQueries({ queryKey: ["circle-feed", id] });
       });
   };
@@ -219,36 +221,36 @@ export default function CircleDetailScreen() {
     setMemberMenu(null);
     apiPost(CIRCLES.MEMBER_PROMOTE(id, memberId))
       .then(function () {
-        showToast("Member promoted", "success");
+        showToast(t("circles.memberPromoted"), "success");
         queryClient.invalidateQueries({ queryKey: ["circle", id] });
       })
-      .catch(function (err) { showToast(err.message || "Failed to promote", "error"); });
+      .catch(function (err) { showToast(err.message || t("circles.failedToPromote"), "error"); });
   };
 
   var handleDemote = function (memberId) {
     setMemberMenu(null);
     apiPost(CIRCLES.MEMBER_DEMOTE(id, memberId))
       .then(function () {
-        showToast("Member demoted", "success");
+        showToast(t("circles.memberDemoted"), "success");
         queryClient.invalidateQueries({ queryKey: ["circle", id] });
       })
-      .catch(function (err) { showToast(err.message || "Failed to demote", "error"); });
+      .catch(function (err) { showToast(err.message || t("circles.failedToDemote"), "error"); });
   };
 
   var handleRemoveMember = function (memberId) {
     setMemberMenu(null);
     apiPost(CIRCLES.MEMBER_REMOVE(id, memberId))
       .then(function () {
-        showToast("Member removed", "success");
+        showToast(t("circles.memberRemoved"), "success");
         queryClient.invalidateQueries({ queryKey: ["circle", id] });
       })
-      .catch(function (err) { showToast(err.message || "Failed to remove", "error"); });
+      .catch(function (err) { showToast(err.message || t("circles.failedToRemove"), "error"); });
   };
 
   const tabs = [
-    { key: "posts", label: "Posts", icon: MessageSquare },
-    { key: "members", label: "Members", icon: Users },
-    { key: "challenges", label: "Challenges", icon: Trophy },
+    { key: "posts", label: t("circles.posts"), icon: MessageSquare },
+    { key: "members", label: t("circles.members"), icon: Users },
+    { key: "challenges", label: t("circles.challenges"), icon: Trophy },
   ];
 
   if (loading) {
@@ -272,7 +274,7 @@ export default function CircleDetailScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(circleQuery.error && circleQuery.error.message) || "Failed to load circle details"}
+          message={(circleQuery.error && circleQuery.error.message) || t("circles.failedToLoad")}
           onRetry={function () { circleQuery.refetch(); }}
         />
       </PageLayout>
@@ -358,6 +360,11 @@ export default function CircleDetailScreen() {
                     fontSize: 13,
                     color: "var(--dp-text-secondary)",
                     lineHeight: 1.5,
+                    wordBreak: "break-word",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
                   }}
                 >
                   {circle.description}
@@ -383,7 +390,7 @@ export default function CircleDetailScreen() {
                 }}
               >
                 <Users size={14} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-                {circle.memberCount || circle.membersCount || 0} members
+                {circle.memberCount || circle.membersCount || 0} {t("circles.membersCount")}
               </span>
               <span
                 style={{
@@ -395,7 +402,7 @@ export default function CircleDetailScreen() {
                 }}
               >
                 <MessageSquare size={14} color="#14B8A6" strokeWidth={2} />
-                {circle.postsCount || circle.posts || 0} posts
+                {circle.postsCount || circle.posts || 0} {t("circles.postsCount")}
               </span>
             </div>
 
@@ -412,7 +419,7 @@ export default function CircleDetailScreen() {
                   color: isLight ? ({ "#FCD34D": "#B45309", "#C4B5FD": "#6D28D9" }[categoryColor] || categoryColor) : categoryColor,
                 }}
               >
-                {circle.category}
+                {t("circles." + (circle.category || "").toLowerCase()) || circle.category}
               </span>
               <button
                 onClick={() => navigate("/circle-chat/" + id)}
@@ -437,7 +444,7 @@ export default function CircleDetailScreen() {
                 onMouseLeave={e => { e.currentTarget.style.transform = "scale(1)"; }}
               >
                 <MessageCircle size={14} strokeWidth={2} />
-                Group Chat
+                {t("circles.groupChat")}
               </button>
             </div>
 
@@ -464,7 +471,7 @@ export default function CircleDetailScreen() {
                       color: "#FB923C",
                     }}
                   >
-                    Active Challenge
+                    {t("circles.activeChallenge")}
                   </div>
                   <div
                     style={{
@@ -616,9 +623,9 @@ export default function CircleDetailScreen() {
                         {postMenu === post.id && (
                           <div style={{ position: "absolute", right: 0, top: 28, zIndex: 20, background: "var(--dp-body-bg)", border: "1px solid var(--dp-input-border)", borderRadius: 12, padding: 4, minWidth: 120, boxShadow: "0 8px 24px rgba(0,0,0,0.3)" }}>
                             <button onClick={function () { setEditingPost(post.id); setEditText(post.content); setPostMenu(null); }}
-                              style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", color: "var(--dp-text)", fontSize: 13, fontWeight: 500, textAlign: "left", cursor: "pointer", borderRadius: 8 }}>Edit</button>
+                              style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", color: "var(--dp-text)", fontSize: 13, fontWeight: 500, textAlign: "left", cursor: "pointer", borderRadius: 8 }}>{t("common.edit")}</button>
                             <button onClick={function () { handleDeletePost(post.id); }}
-                              style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", color: "#EF4444", fontSize: 13, fontWeight: 500, textAlign: "left", cursor: "pointer", borderRadius: 8 }}>Delete</button>
+                              style={{ display: "block", width: "100%", padding: "8px 12px", border: "none", background: "transparent", color: "#EF4444", fontSize: 13, fontWeight: 500, textAlign: "left", cursor: "pointer", borderRadius: 8 }}>{t("common.delete")}</button>
                           </div>
                         )}
                       </div>
@@ -632,9 +639,9 @@ export default function CircleDetailScreen() {
                         style={{ width: "100%", padding: "10px 12px", borderRadius: 12, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 13, lineHeight: 1.6, fontFamily: "inherit", outline: "none", resize: "vertical" }} />
                       <div style={{ display: "flex", gap: 8, marginTop: 8, justifyContent: "flex-end" }}>
                         <button onClick={function () { setEditingPost(null); }}
-                          style={{ padding: "6px 14px", borderRadius: 10, border: "1px solid var(--dp-input-border)", background: "transparent", color: "var(--dp-text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+                          style={{ padding: "6px 14px", borderRadius: 10, border: "1px solid var(--dp-input-border)", background: "transparent", color: "var(--dp-text-secondary)", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("common.cancel")}</button>
                         <button onClick={function () { handleEditPost(post.id); }}
-                          style={{ padding: "6px 14px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#8B5CF6,#6D28D9)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Save</button>
+                          style={{ padding: "6px 14px", borderRadius: 10, border: "none", background: "linear-gradient(135deg,#8B5CF6,#6D28D9)", color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>{t("common.save")}</button>
                       </div>
                     </div>
                   ) : (
@@ -644,6 +651,8 @@ export default function CircleDetailScreen() {
                       color: "var(--dp-text-primary)",
                       lineHeight: 1.6,
                       marginBottom: 14,
+                      wordBreak: "break-word",
+                      whiteSpace: "pre-wrap",
                     }}
                   >
                     {post.content}
@@ -710,7 +719,7 @@ export default function CircleDetailScreen() {
             );
             })}
             <div ref={feedInf.sentinelRef} style={{height:1}} />
-            {feedInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+            {feedInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>{t("circles.loadingMore")}</div>}
           </div>
         )}
 
@@ -814,7 +823,7 @@ export default function CircleDetailScreen() {
                       }}
                     >
                       <RoleIcon size={12} strokeWidth={2.5} />
-                      {member.role}
+                      {t("circles.role" + member.role)}
                     </span>
                     {isAdmin && member.role !== "Admin" && (
                       <div style={{ position: "relative" }}>
@@ -846,7 +855,7 @@ export default function CircleDetailScreen() {
                                 cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 500,
                                 color: isLight ? "rgba(26,21,53,0.85)" : "rgba(255,255,255,0.85)",
                               }}>
-                                <ArrowUp size={14} strokeWidth={2} /> Promote
+                                <ArrowUp size={14} strokeWidth={2} /> {t("circles.promote")}
                               </button>
                             )}
                             {member.role === "Moderator" && (
@@ -856,7 +865,7 @@ export default function CircleDetailScreen() {
                                 cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 500,
                                 color: isLight ? "rgba(26,21,53,0.85)" : "rgba(255,255,255,0.85)",
                               }}>
-                                <ArrowDown size={14} strokeWidth={2} /> Demote
+                                <ArrowDown size={14} strokeWidth={2} /> {t("circles.demote")}
                               </button>
                             )}
                             <button onClick={function () { handleRemoveMember(member.id); }} style={{
@@ -865,7 +874,7 @@ export default function CircleDetailScreen() {
                               cursor: "pointer", fontFamily: "inherit", fontSize: 13, fontWeight: 500,
                               color: "rgba(239,68,68,0.8)",
                             }}>
-                              <UserMinus size={14} strokeWidth={2} /> Remove
+                              <UserMinus size={14} strokeWidth={2} /> {t("circles.remove")}
                             </button>
                           </div>
                         )}
@@ -884,7 +893,7 @@ export default function CircleDetailScreen() {
             {!activeChallenge && (
               <div style={{ textAlign: "center", padding: "60px 20px" }}>
                 <Trophy size={40} color="var(--dp-text-muted)" strokeWidth={1.5} style={{ marginBottom: 16 }} />
-                <p style={{ fontSize: 15, color: "var(--dp-text-tertiary)" }}>No active challenges</p>
+                <p style={{ fontSize: 15, color: "var(--dp-text-tertiary)" }}>{t("circles.noChallenges")}</p>
               </div>
             )}
             {activeChallenge && (<>
@@ -942,8 +951,8 @@ export default function CircleDetailScreen() {
                         marginTop: 2,
                       }}
                     >
-                      {activeChallenge.daysLeft || activeChallenge.daysRemaining || 0} days left
-                      &middot; {activeChallenge.participantsCount || activeChallenge.participants || 0} participants
+                      {activeChallenge.daysLeft || activeChallenge.daysRemaining || 0} {t("circles.daysLeft")}
+                      &middot; {activeChallenge.participantsCount || activeChallenge.participants || 0} {t("circles.participants")}
                     </div>
                   </div>
                 </div>
@@ -954,6 +963,7 @@ export default function CircleDetailScreen() {
                     color: "var(--dp-text-secondary)",
                     lineHeight: 1.5,
                     marginBottom: 16,
+                    wordBreak: "break-word",
                   }}
                 >
                   {activeChallenge.description}
@@ -976,7 +986,7 @@ export default function CircleDetailScreen() {
                         color: "var(--dp-text-secondary)",
                       }}
                     >
-                      Progress
+                      {t("circles.progress")}
                     </span>
                     <span
                       style={{
@@ -1019,12 +1029,12 @@ export default function CircleDetailScreen() {
                     setChallengeJoined(true);
                     apiPost(CIRCLES.CHALLENGE_JOIN(activeChallenge.id))
                       .then(function () {
-                        showToast("Challenge joined!", "success");
+                        showToast(t("circles.challengeJoined"), "success");
                         queryClient.invalidateQueries({ queryKey: ["circle-challenges", id] });
                       })
                       .catch(function (err) {
                         setChallengeJoined(false);
-                        showToast(err.message || "Failed to join", "error");
+                        showToast(err.message || t("circles.failedToJoin"), "error");
                       });
                   }}
                   disabled={challengeJoined || !!activeChallenge.hasJoined}
@@ -1056,12 +1066,12 @@ export default function CircleDetailScreen() {
                   {(challengeJoined || activeChallenge.hasJoined) ? (
                     <>
                       <Target size={16} strokeWidth={2.5} />
-                      Joined!
+                      {t("circles.joined")}
                     </>
                   ) : (
                     <>
                       <Flame size={16} strokeWidth={2} />
-                      Join Challenge
+                      {t("circles.joinChallenge")}
                     </>
                   )}
                 </button>
@@ -1088,7 +1098,7 @@ export default function CircleDetailScreen() {
                 <span
                   style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}
                 >
-                  Leaderboard
+                  {t("circles.leaderboard")}
                 </span>
               </div>
 
@@ -1237,7 +1247,7 @@ export default function CircleDetailScreen() {
                 value={composerText}
                 onChange={(e) => setComposerText(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handlePost()}
-                placeholder="Share with the circle..."
+                placeholder={t("circles.sharePlaceholder")}
                 style={{
                   flex: 1,
                   padding: "11px 16px",

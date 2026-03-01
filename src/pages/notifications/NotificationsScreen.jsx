@@ -7,6 +7,7 @@ import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Bell, CheckCheck, Star, Users, Target, Clock, Zap, MessageCircle, Shield } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { useT } from "../../context/I18nContext";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
@@ -32,35 +33,51 @@ var TYPE_ICONS = {
 };
 
 const FILTER_TABS = [
-  { id: "all", label: "All" },
-  { id: "dreams", label: "Dreams", types: ["dream_progress", "reminder"] },
-  { id: "social", label: "Social", types: ["friend_request", "buddy", "social"] },
-  { id: "system", label: "System", types: ["system", "achievement"] },
+  { id: "all", labelKey: "notifications.all", types: undefined },
+  { id: "dreams", labelKey: "notifications.dreams", types: ["dream_progress", "reminder"] },
+  { id: "social", labelKey: "notifications.social", types: ["friend_request", "buddy", "social"] },
+  { id: "system", labelKey: "notifications.system", types: ["system", "achievement"] },
 ];
 
-function relativeTime(dateStr) {
+function relativeTime(dateStr, t) {
   if (!dateStr) return "";
   var now = Date.now();
   var then = new Date(dateStr).getTime();
   var diffMs = now - then;
-  if (diffMs < 0) return "just now";
+  if (diffMs < 0) return t("notifications.justNow");
   var mins = Math.floor(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return mins + " min ago";
+  if (mins < 1) return t("notifications.justNow");
+  if (mins < 60) return mins + " " + t("notifications.minAgo");
   var hours = Math.floor(mins / 60);
-  if (hours < 24) return hours + " hour" + (hours > 1 ? "s" : "") + " ago";
+  if (hours < 24) return hours + " " + t("notifications.hourAgo");
   var days = Math.floor(hours / 24);
-  if (days === 1) return "1 day ago";
-  if (days < 30) return days + " days ago";
+  if (days < 30) return days + " " + t("notifications.daysAgo");
   var months = Math.floor(days / 30);
-  return months + " month" + (months > 1 ? "s" : "") + " ago";
+  return months + " " + t("notifications.monthsAgo");
+}
+
+function timeCategory(dateStr) {
+  if (!dateStr) return "earlier";
+  var now = Date.now();
+  var then = new Date(dateStr).getTime();
+  var diffMs = now - then;
+  if (diffMs < 0) return "today";
+  var mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return "today";
+  if (mins < 60) return "today";
+  var hours = Math.floor(mins / 60);
+  if (hours < 24) return "today";
+  var days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days <= 6) return "thisWeek";
+  return "earlier";
 }
 
 const DATE_SECTIONS = [
-  { label: "Today", filter: function (t) { return t.includes("min") || t.includes("hour") || t === "just now"; } },
-  { label: "Yesterday", filter: function (t) { return t === "1 day ago"; } },
-  { label: "This Week", filter: function (t) { return t.includes("day") && t !== "1 day ago" && parseInt(t) <= 6; } },
-  { label: "Earlier", filter: function (t) { return !t.includes("min") && !t.includes("hour") && t !== "just now" && !(t.includes("day") && parseInt(t) <= 6); } },
+  { labelKey: "notifications.today", category: "today" },
+  { labelKey: "notifications.yesterday", category: "yesterday" },
+  { labelKey: "notifications.thisWeek", category: "thisWeek" },
+  { labelKey: "notifications.earlier", category: "earlier" },
 ];
 
 const glassStyle = {
@@ -76,6 +93,7 @@ export default function NotificationsScreen() {
   const navigate = useNavigate();
   const { resolved } = useTheme(); const isLight = resolved === "light";
   var { showToast } = useToast();
+  var { t } = useT();
   var queryClient = useQueryClient();
   const [mounted, setMounted] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
@@ -84,13 +102,15 @@ export default function NotificationsScreen() {
 
   var notifsInf = useInfiniteList({ queryKey: ["notifications"], url: NOTIFICATIONS.LIST, limit: 30 });
   var notifications = (notifsInf.items || []).map(function (n) {
+    var dateField = n.createdAt || n.created_at;
     return {
       id: n.id,
       type: n.notificationType || n.type || "system",
       title: n.title || "",
       message: n.body || n.message || "",
       read: n.isRead != null ? n.isRead : (n.read != null ? n.read : (n.readAt != null)),
-      time: relativeTime(n.createdAt || n.created_at),
+      time: relativeTime(dateField, t),
+      category: timeCategory(dateField),
       data: n.data,
     };
   });
@@ -103,7 +123,7 @@ export default function NotificationsScreen() {
   useEffect(function () {
     if (notifsInf.isError) {
       showToast(
-        (notifsInf.error && notifsInf.error.message) || "Failed to load notifications",
+        (notifsInf.error && notifsInf.error.message) || t("notifications.failedLoad"),
         "error"
       );
     }
@@ -115,7 +135,7 @@ export default function NotificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["unread"] });
     },
-    onError: function (err) { showToast(err.message || "Failed to mark all read", "error"); },
+    onError: function (err) { showToast(err.message || t("notifications.failedMarkAll"), "error"); },
   });
 
   var handleMarkAllRead = function () {
@@ -128,7 +148,7 @@ export default function NotificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["unread"] });
     },
-    onError: function (err) { showToast(err.message || "Failed to mark as read", "error"); },
+    onError: function (err) { showToast(err.message || t("notifications.failedMarkRead"), "error"); },
   });
 
   var handleDismiss = function (id) {
@@ -155,10 +175,10 @@ export default function NotificationsScreen() {
     var sections = [];
     DATE_SECTIONS.forEach(function (section) {
       var items = filteredNotifications.filter(function (n) {
-        return n.time && section.filter(n.time);
+        return n.category === section.category;
       });
       if (items.length > 0) {
-        sections.push({ label: section.label, items: items });
+        sections.push({ label: t(section.labelKey), items: items });
       }
     });
     return sections;
@@ -171,7 +191,7 @@ export default function NotificationsScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(notifsInf.error && notifsInf.error.message) || "Failed to load notifications"}
+          message={(notifsInf.error && notifsInf.error.message) || t("notifications.failedLoad")}
           onRetry={function () { notifsInf.refetch(); }}
         />
       </PageLayout>
@@ -207,7 +227,7 @@ export default function NotificationsScreen() {
               fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
               fontFamily: "Inter, sans-serif", margin: 0,
             }}>
-              Notifications
+              {t("notifications.title")}
             </h1>
             {unreadCount > 0 && (
               <span style={{
@@ -236,7 +256,7 @@ export default function NotificationsScreen() {
               fontSize: 12, fontWeight: 600, color: isLight ? "#6D28D9" : "#8B5CF6",
               fontFamily: "Inter, sans-serif",
             }}>
-              Mark All Read
+              {t("notifications.markAllRead")}
             </span>
           </button>
         )}
@@ -266,7 +286,7 @@ export default function NotificationsScreen() {
                 cursor: "pointer", transition: "all 0.25s ease",
               }}
             >
-              {tab.label}
+              {t(tab.labelKey)}
             </button>
           );
         })}
@@ -315,12 +335,12 @@ export default function NotificationsScreen() {
                         cursor: "pointer",
                         position: "relative",
                         overflow: "hidden",
-                        background: "var(--dp-glass-bg)",
+                        background: notification.read ? "transparent" : "var(--dp-glass-bg)",
                         border: notification.read
-                          ? "1px solid var(--dp-glass-border)"
+                          ? "1px solid transparent"
                           : "1px solid var(--dp-surface-hover)",
                         transition: "all 0.3s ease",
-                        opacity: mounted && !isDismissing ? 1 : 0,
+                        opacity: isDismissing ? 0 : !mounted ? 0 : notification.read ? 0.45 : 1,
                         transform: isDismissing
                           ? "translateX(100%)"
                           : mounted
@@ -363,6 +383,11 @@ export default function NotificationsScreen() {
                           fontSize: 13,
                           color: notification.read ? "var(--dp-text-muted)" : "var(--dp-text-secondary)",
                           fontFamily: "Inter, sans-serif", lineHeight: 1.4,
+                          wordBreak: "break-word",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: "vertical",
+                          overflow: "hidden",
                         }}>
                           {notification.message}
                         </div>
@@ -382,7 +407,7 @@ export default function NotificationsScreen() {
         })
       )}
       <div ref={notifsInf.sentinelRef} style={{height:1}} />
-      {notifsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+      {notifsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>{t("notifications.loadingMore")}</div>}
 
       {/* Empty state */}
       {!notifsInf.isLoading && sections.length === 0 && (
@@ -403,13 +428,13 @@ export default function NotificationsScreen() {
             fontSize: 18, fontWeight: 700, color: "var(--dp-text-secondary)",
             fontFamily: "Inter, sans-serif", marginBottom: 8,
           }}>
-            All caught up!
+            {t("notifications.allCaughtUp")}
           </div>
           <div style={{
             fontSize: 14, color: "var(--dp-text-muted)",
             fontFamily: "Inter, sans-serif",
           }}>
-            You have no new notifications
+            {t("notifications.noNew")}
           </div>
         </div>
       )}

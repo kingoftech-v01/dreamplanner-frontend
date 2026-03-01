@@ -31,18 +31,24 @@ function urlBase64ToUint8Array(base64String) {
  * Sends the subscription to the backend.
  */
 export function subscribeToPush() {
-  // Native: use FCM/APNS via Capacitor PushNotifications
-  if (isNative) {
-    return registerNativePush();
-  }
+  // Always try native/FCM registration first
+  return registerNativePush().then(function (token) {
+    if (token) return token;
 
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    return Promise.resolve(null);
-  }
+    // Fallback to VAPID web push if FCM didn't work
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      return null;
+    }
+    if (!VAPID_PUBLIC_KEY) {
+      return null;
+    }
+    return webPushSubscribe();
+  }).catch(function () {
+    return null;
+  });
+}
 
-  if (!VAPID_PUBLIC_KEY) {
-    return Promise.resolve(null);
-  }
+function webPushSubscribe() {
 
   return Notification.requestPermission().then(function (permission) {
     if (permission !== "granted") {
@@ -88,8 +94,8 @@ export function subscribeToPush() {
         });
       });
     });
-  }).catch(function (err) {
-    console.warn("Push subscription failed:", err);
+  }).catch(function () {
+    // Web Push may fail if push service is blocked (ad blocker) or unavailable — silent fallback
     return null;
   });
 }

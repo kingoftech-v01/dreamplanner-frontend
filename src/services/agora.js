@@ -15,6 +15,8 @@ var _appId = null;
 var _rtmClient = null;
 var _rtmUid = null;
 var _rtmTokenRefreshTimer = null;
+var _rtmInitPromise = null;          // guards against concurrent initRTM() calls
+var _rtmChannels = {};               // tracks joined channels by name
 
 /**
  * Fetch Agora App ID from backend (cached).
@@ -36,19 +38,34 @@ async function getAppId() {
  */
 export async function initRTM() {
   if (_rtmClient) return _rtmClient;
+  // Prevent concurrent calls (React StrictMode double-mount)
+  if (_rtmInitPromise) return _rtmInitPromise;
 
-  var appId = await getAppId();
-  var tokenRes = await apiPost(CONVERSATIONS.AGORA.RTM_TOKEN);
+  _rtmInitPromise = (async function () {
+    try {
+      var appId = await getAppId();
+      var tokenRes = await apiPost(CONVERSATIONS.AGORA.RTM_TOKEN);
 
-  _rtmClient = AgoraRTM.createInstance(appId);
-  _rtmUid = tokenRes.uid;
+      var client = AgoraRTM.createInstance(appId);
+      _rtmUid = tokenRes.uid;
 
-  await _rtmClient.login({ uid: _rtmUid, token: tokenRes.token });
+      await client.login({ uid: _rtmUid, token: tokenRes.token });
 
-  // Schedule token renewal 1 hour before expiry (token is 24h)
-  _scheduleRTMTokenRenewal(tokenRes.expiresIn);
+      // Only set _rtmClient AFTER login succeeds (prevents Error 102 race)
+      _rtmClient = client;
 
-  return _rtmClient;
+      // Schedule token renewal 1 hour before expiry (token is 24h)
+      _scheduleRTMTokenRenewal(tokenRes.expiresIn);
+
+      return _rtmClient;
+    } catch (e) {
+      _rtmClient = null;
+      _rtmInitPromise = null;
+      throw e;
+    }
+  })();
+
+  return _rtmInitPromise;
 }
 
 function _scheduleRTMTokenRenewal(expiresInSec) {
@@ -63,7 +80,7 @@ function _scheduleRTMTokenRenewal(expiresInSec) {
         _scheduleRTMTokenRenewal(tokenRes.expiresIn);
       }
     } catch (e) {
-      console.error("RTM token renewal failed:", e);
+      console.error("RTM token renewal failed:", e.message || e.code || "unknown");
       // Retry in 5 minutes
       _scheduleRTMTokenRenewal(300);
     }
@@ -74,10 +91,16 @@ function _scheduleRTMTokenRenewal(expiresInSec) {
  * Logout and cleanup RTM. Call on app logout.
  */
 export async function cleanupRTM() {
+  _rtmInitPromise = null;
   if (_rtmTokenRefreshTimer) {
     clearTimeout(_rtmTokenRefreshTimer);
     _rtmTokenRefreshTimer = null;
   }
+  // Leave all joined channels first
+  for (var name in _rtmChannels) {
+    try { _rtmChannels[name].leave(); } catch (_) {}
+  }
+  _rtmChannels = {};
   if (_rtmClient) {
     try { await _rtmClient.logout(); } catch (_) {}
     _rtmClient = null;
@@ -100,11 +123,22 @@ export async function joinRTMChannel(channelName, handlers) {
   var h = handlers || {};
   var onMessage = h.onMessage || function () {};
   var onTyping = h.onTyping || function () {};
+  var onMarkRead = h.onMarkRead || function () {};
   var onMemberJoined = h.onMemberJoined || function () {};
   var onMemberLeft = h.onMemberLeft || function () {};
 
+  // Always await initRTM to ensure login is complete (prevents Error 102)
+  if (_rtmInitPromise) {
+    await _rtmInitPromise;
+  }
   if (!_rtmClient) {
     await initRTM();
+  }
+
+  // If already joined this channel, leave it first to avoid Error 202
+  if (_rtmChannels[channelName]) {
+    try { await _rtmChannels[channelName].leave(); } catch (_) {}
+    delete _rtmChannels[channelName];
   }
 
   var channel = _rtmClient.createChannel(channelName);
@@ -114,6 +148,8 @@ export async function joinRTMChannel(channelName, handlers) {
       var parsed = JSON.parse(message.text);
       if (parsed._type === "typing") {
         onTyping(memberId, parsed.isTyping);
+      } else if (parsed._type === "mark_read") {
+        onMarkRead(memberId, parsed.ts);
       } else {
         onMessage(parsed, memberId);
       }
@@ -132,6 +168,7 @@ export async function joinRTMChannel(channelName, handlers) {
   });
 
   await channel.join();
+  _rtmChannels[channelName] = channel;
 
   function sendMessage(text, extra) {
     var data = { content: text, ts: Date.now() };
@@ -153,14 +190,21 @@ export async function joinRTMChannel(channelName, handlers) {
     }
   }
 
+  function sendMarkRead() {
+    var payload = JSON.stringify({ _type: "mark_read", ts: Date.now() });
+    channel.sendMessage({ text: payload }).catch(function () {});
+  }
+
   function leave() {
     if (_typingTimer) clearTimeout(_typingTimer);
+    delete _rtmChannels[channelName];
     return channel.leave().catch(function () {});
   }
 
   return {
     sendMessage: sendMessage,
     sendTyping: sendTyping,
+    sendMarkRead: sendMarkRead,
     leave: leave,
   };
 }

@@ -150,9 +150,9 @@ export default function DreamPlannerHome() {
 
   if (dreamsInf.isError || dashboardQuery.isError) {
     return (
-      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <ErrorState
-          message={(dreamsInf.error && dreamsInf.error.message) || (dashboardQuery.error && dashboardQuery.error.message) || "Failed to load home screen"}
+          message={(dreamsInf.error && (dreamsInf.error.userMessage || dreamsInf.error.message)) || (dashboardQuery.error && (dashboardQuery.error.userMessage || dashboardQuery.error.message)) || "Failed to load home screen"}
           onRetry={function () { dreamsInf.refetch(); dashboardQuery.refetch(); }}
         />
         <BottomNav />
@@ -161,10 +161,11 @@ export default function DreamPlannerHome() {
   }
 
   return (
-    <div style={{ position:"fixed", inset:0, overflow:"hidden" }}>
+    <div className="dp-desktop-main" style={{ position:"absolute", inset:0, overflow:"hidden" }}>
 
       {/* ═══ APP BAR ═══ */}
       <GlassAppBar
+        className="dp-desktop-header"
         style={{position:"fixed",top:0,left:0,right:0}}
         left={
           <div onClick={()=>navigate("/")} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
@@ -182,7 +183,7 @@ export default function DreamPlannerHome() {
 
       {/* ═══ CONTENT ═══ */}
       <main id="main-content" style={{position:"absolute",inset:0,overflowY:"auto",overflowX:"hidden",zIndex:10,paddingTop:80,paddingBottom:140,opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
-        <div style={{width:"100%",padding:"0 16px"}}>
+        <div className="dp-content-area" style={{padding:"0 16px"}}>
 
           {/* ── Welcome Card ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>

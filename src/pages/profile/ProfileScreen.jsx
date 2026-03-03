@@ -178,10 +178,10 @@ export default function ProfileScreen() {
 
   if (isErrorData) {
     return (
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
-            message={(gamifQuery.error && gamifQuery.error.message) || (statsQuery.error && statsQuery.error.message) || t("profile.failedLoad")}
+            message={(gamifQuery.error && (gamifQuery.error.userMessage || gamifQuery.error.message)) || (statsQuery.error && (statsQuery.error.userMessage || statsQuery.error.message)) || t("profile.failedLoad")}
             onRetry={function () { gamifQuery.refetch(); statsQuery.refetch(); }}
           />
         </div>
@@ -191,17 +191,17 @@ export default function ProfileScreen() {
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
 
       {/* APPBAR */}
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Go back" size="md" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/")} label="Go back" size="md" />}
         title={t("profile.title")}
         right={<IconButton icon={Settings} onClick={() => navigate("/settings")} label="Settings" size="md" />}
       />
 
       <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "16px 16px 100px", opacity: uiOpacity, transition: "opacity 0.3s ease" }}>
-        <div style={{ width: "100%" }}>
+        <div className="dp-content-area">
 
           {/* ══ Loading skeleton while data is fetching ══ */}
           {isLoadingData ? (

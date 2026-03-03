@@ -252,7 +252,7 @@ export default function CalibrationScreen() {
       }
       // If the plan is already generating (202 from a previous attempt), continue polling
       if (errStatus !== 202) {
-        setPlanError(err.message || "Failed to start plan generation.");
+        setPlanError(err.userMessage || err.message || "Failed to start plan generation.");
         setGeneratingPlan(false);
         return;
       }
@@ -345,7 +345,7 @@ export default function CalibrationScreen() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+            <IconButton icon={ArrowLeft} onClick={() => navigate("/dream/" + id)} />
             <span
               style={{
                 fontSize: 17,

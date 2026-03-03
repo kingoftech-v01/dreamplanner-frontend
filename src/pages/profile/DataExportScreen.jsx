@@ -81,7 +81,7 @@ export default function DataExportScreen() {
         if (err.status === 429) {
           showToast("Export limit reached. Please try again later.", "error");
         } else {
-          showToast(err.message || "Failed to export data", "error");
+          showToast(err.userMessage || err.message || "Failed to export data", "error");
         }
       });
   };
@@ -89,7 +89,7 @@ export default function DataExportScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/settings"); }} />}
         title="Export Data"
       />
     }>

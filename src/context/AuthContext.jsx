@@ -73,9 +73,9 @@ export function AuthProvider({ children }) {
   var login = useCallback(function (email, password) {
     return apiPost(AUTH.LOGIN, { email: email, password: password })
       .then(function (data) {
-        // 2FA required — backend returns indicator instead of token
+        // 2FA required — backend returns challenge token instead of JWT
         if (data.tfaRequired) {
-          return { tfaRequired: true, email: email };
+          return { tfaRequired: true, challengeToken: data.challengeToken };
         }
         // JWT mode: backend returns { access: "...", refresh?: "..." }
         // Refresh token is also set as httpOnly cookie on web

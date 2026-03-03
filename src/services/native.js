@@ -75,6 +75,13 @@ export function nativeShare(options) {
 // ── Browser (OAuth, external links) ──────────────────────────
 
 export function openBrowser(url) {
+  // Guard: only allow https:// URLs to prevent open redirect/javascript injection
+  try {
+    var parsed = new URL(url);
+    if (parsed.protocol !== "https:") return Promise.reject(new Error("Insecure URL blocked"));
+  } catch (e) {
+    return Promise.reject(new Error("Invalid URL"));
+  }
   if (isNative) {
     return import("@capacitor/browser").then(function (mod) {
       return mod.Browser.open({ url: url, presentationStyle: "popover" });

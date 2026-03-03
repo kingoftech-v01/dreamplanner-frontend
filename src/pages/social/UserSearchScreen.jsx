@@ -86,7 +86,7 @@ export default function UserSearchScreen() {
     apiPost(SOCIAL.FRIENDS.REQUEST, { target_user_id: userId }).then(function () {
       showToast("Friend request sent!", "success");
     }).catch(function (err) {
-      showToast(err.message || "Failed to send request", "error");
+      showToast(err.userMessage || err.message || "Failed to send request", "error");
       setSentRequests(function (prev) { var n = new Set(prev); n.delete(userId); return n; });
     });
   };
@@ -199,7 +199,7 @@ export default function UserSearchScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/social")} label="Back" />}
         title="Find People"
       />
     }>

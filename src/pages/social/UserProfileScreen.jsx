@@ -80,7 +80,7 @@ export default function UserProfileScreen() {
       showToast("Friend request sent!", "success");
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
     }).catch(function (err) {
-      showToast(err.message || "Failed to send request", "error");
+      showToast(err.userMessage || err.message || "Failed to send request", "error");
       setRequestSent(false);
     });
   };
@@ -101,12 +101,12 @@ export default function UserProfileScreen() {
       apiDelete(SOCIAL.UNBLOCK(id)).then(function () {
         setIsBlocked(false);
         showToast("User unblocked", "info");
-      }).catch(function (err) { showToast(err.message || "Failed to unblock", "error"); });
+      }).catch(function (err) { showToast(err.userMessage || err.message || "Failed to unblock", "error"); });
     } else {
       apiPost(SOCIAL.BLOCK, { target_user_id: id }).then(function () {
         setIsBlocked(true);
         showToast("User blocked", "info");
-      }).catch(function (err) { showToast(err.message || "Failed to block", "error"); });
+      }).catch(function (err) { showToast(err.userMessage || err.message || "Failed to block", "error"); });
     }
   };
 
@@ -121,7 +121,7 @@ export default function UserProfileScreen() {
       showToast("Report submitted", "success");
       setShowReportModal(false);
       setReportReason("");
-    }).catch(function (err) { showToast(err.message || "Failed to report", "error"); });
+    }).catch(function (err) { showToast(err.userMessage || err.message || "Failed to report", "error"); });
   };
 
   var handleRemoveFriend = function () {
@@ -129,7 +129,7 @@ export default function UserProfileScreen() {
     apiDelete(SOCIAL.FRIENDS.REMOVE(id)).then(function () {
       showToast("Friend removed", "info");
       queryClient.invalidateQueries({ queryKey: ["friends"] });
-    }).catch(function (err) { showToast(err.message || "Failed to remove", "error"); });
+    }).catch(function (err) { showToast(err.userMessage || err.message || "Failed to remove", "error"); });
   };
 
   const stagger = (i) => ({
@@ -140,10 +140,11 @@ export default function UserProfileScreen() {
 
   if (profileQuery.isLoading) {
     return (
-      <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+      <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
         <GlassAppBar
+          className="dp-desktop-header"
           style={{ position: "fixed", top: 0, left: 0, right: 0 }}
-          left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+          left={<IconButton icon={ArrowLeft} onClick={() => navigate("/social")} label="Back" />}
           title="Profile"
         />
         <div style={{ textAlign: "center", padding: "120px 20px 40px" }}>
@@ -157,10 +158,11 @@ export default function UserProfileScreen() {
 
   if (!user) {
     return (
-      <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+      <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
         <GlassAppBar
+          className="dp-desktop-header"
           style={{ position: "fixed", top: 0, left: 0, right: 0 }}
-          left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+          left={<IconButton icon={ArrowLeft} onClick={() => navigate("/social")} label="Back" />}
           title="Profile"
         />
         <div style={{ textAlign: "center", padding: "120px 20px 40px" }}>
@@ -180,17 +182,18 @@ export default function UserProfileScreen() {
   }
 
   return (
-    <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+    <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
       {/* ═══ FIXED APP BAR ═══ */}
       <GlassAppBar
+        className="dp-desktop-header"
         style={{ position: "fixed", top: 0, left: 0, right: 0 }}
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/social")} label="Back" />}
         title="Profile"
       />
 
       {/* ═══ SCROLLABLE CONTENT ═══ */}
       <main style={{ position: "absolute", inset: 0, overflowY: "auto", overflowX: "hidden", zIndex: 10, paddingTop: 80, paddingBottom: 120 }}>
-        <div style={{ width: "100%", padding: "0 16px" }}>
+        <div className="dp-content-area" style={{ padding: "0 16px" }}>
 
         {/* Avatar + Name */}
         <div style={{ textAlign: "center", marginBottom: 28, ...stagger(1) }}>

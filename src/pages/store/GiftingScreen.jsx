@@ -48,7 +48,7 @@ export default function GiftingScreen() {
   var rawGifts = giftsInf.items;
 
   useEffect(function () {
-    if (giftsInf.error) showToast(giftsInf.error.message || "Failed to load gifts", "error");
+    if (giftsInf.error) showToast(giftsInf.error.userMessage || giftsInf.error.message || "Failed to load gifts", "error");
   }, [giftsInf.error]);
 
   // ── Store items query (for send gift modal) ──
@@ -89,7 +89,7 @@ export default function GiftingScreen() {
       showToast("Gift sent!", "success");
     },
     onError: function (err) {
-      showToast(err.message || "Failed to send gift", "error");
+      showToast(err.userMessage || err.message || "Failed to send gift", "error");
     },
   });
 
@@ -102,7 +102,7 @@ export default function GiftingScreen() {
       showToast("Gift claimed!", "success");
     },
     onError: function (err) {
-      showToast(err.message || "Failed to claim gift", "error");
+      showToast(err.userMessage || err.message || "Failed to claim gift", "error");
     },
   });
 
@@ -143,7 +143,7 @@ export default function GiftingScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/store"); }} />}
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Gift size={18} color={"var(--dp-accent)"} strokeWidth={2} />

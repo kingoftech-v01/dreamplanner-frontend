@@ -48,9 +48,10 @@ VITE_VAPID_PUBLIC_KEY=BPxr...base64...
 
 The frontend connects to a Django REST Framework + Django Channels backend. All API calls go through `src/services/api.js` which handles:
 
-- **Token auth** — `Authorization: Token <key>` header on every request
+- **JWT auth** — `Authorization: Bearer <access_token>` header on every request
 - **Case transforms** — camelCase (JS) <-> snake_case (Python) automatic conversion
-- **Token persistence** — `@capacitor/preferences` on native, `localStorage` on web
+- **Token persistence** — `@capacitor/preferences` on native, memory-only on web (access token never touches localStorage)
+- **Refresh tokens** — httpOnly cookie on web, `@capacitor/preferences` on native. Silent refresh on page load.
 - **CSRF** — auto-attached on mutating requests
 
 ### Provider Tree (src/main.jsx)
@@ -77,7 +78,7 @@ The frontend connects to a Django REST Framework + Django Channels backend. All 
 | Voice/video calls | Agora RTC (SDK v4.24) | Cloud-relayed voice & video calls |
 | Notifications | WebSocket `ws/notifications/` | Real-time notification updates |
 
-WebSocket connections use token auth via query string (`?token=...`), auto-reconnect with exponential backoff, and heartbeat pings. Agora RTM/RTC tokens are fetched from the backend and auto-renewed before expiry.
+WebSocket connections use token auth via message body (sent after connection opens), auto-reconnect with exponential backoff, and heartbeat pings. Agora RTM/RTC tokens are fetched from the backend and auto-renewed before expiry.
 
 ### Agora Voice/Video Calls
 
@@ -186,12 +187,13 @@ dreamplanner-frontend/
 ### Auth
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| POST | `/api/auth/login/` | Email/password login, returns token |
+| POST | `/api/auth/login/` | Email/password login, returns JWT (or challenge token if 2FA enabled) |
+| POST | `/api/auth/2fa-challenge/` | Verify 2FA code with challenge token, returns JWT |
 | POST | `/api/auth/registration/` | Register new user |
 | POST | `/api/auth/google/` | Google OAuth social login |
 | POST | `/api/auth/apple/` | Apple OAuth social login |
 | POST | `/api/auth/logout/` | Invalidate token |
-| POST | `/api/auth/password/reset/` | Request password reset |
+| POST | `/api/auth/password/reset/` | Request password reset (rate limited: 5/min) |
 | POST | `/api/auth/password/change/` | Change password |
 
 ### Users
@@ -381,7 +383,7 @@ All security headers are set by the Docker-internal nginx (`nginx.docker.conf`),
 
 | Header | Value |
 | --- | --- |
-| `X-Frame-Options` | SAMEORIGIN |
+| `X-Frame-Options` | DENY |
 | `X-Content-Type-Options` | nosniff |
 | `X-XSS-Protection` | 1; mode=block |
 | `Referrer-Policy` | strict-origin-when-cross-origin |
@@ -389,7 +391,7 @@ All security headers are set by the Docker-internal nginx (`nginx.docker.conf`),
 | `Cross-Origin-Opener-Policy` | same-origin |
 | `Cross-Origin-Resource-Policy` | same-origin |
 | `Strict-Transport-Security` | max-age=31536000; includeSubDomains |
-| `Content-Security-Policy` | Full CSP with `upgrade-insecure-requests`, `frame-ancestors 'self'` |
+| `Content-Security-Policy` | Full CSP with `upgrade-insecure-requests`, `frame-ancestors 'none'` |
 
 **CSP notes:** `unsafe-eval` is required by Agora RTM SDK. `unsafe-inline` is required by Vite's style injection. Port wildcards (`:*`) allow Agora SDK WebSocket connections on non-standard ports.
 
@@ -407,9 +409,10 @@ All security headers are set by the Docker-internal nginx (`nginx.docker.conf`),
 - **Error handling** — `src/utils/errorMessages.js` maps HTTP status codes to user-friendly messages; raw API errors are never shown to users. All API errors include `error.userMessage` for safe UI display.
 - **Structured logging** — `src/utils/logger.js` auto-redacts sensitive data (tokens, passwords, secrets) from console output
 - **OAuth CSRF protection** — Google OAuth uses cryptographic `state` parameter with `sessionStorage` verification on callback. Apple Sign-In uses state param via Apple JS SDK.
-- **Token storage** — `@capacitor/preferences` on native (more secure than localStorage)
-- **Auth cleanup** — `clearAuth()` removes token from both localStorage and Capacitor Preferences
-- **WebSocket auth** — Token passed via query string, validated by backend middleware
+- **Token storage** — `@capacitor/preferences` on native; memory-only on web (access token never stored in localStorage)
+- **Auth cleanup** — `clearAuth()` removes token from memory and Capacitor Preferences
+- **WebSocket auth** — Token sent in message body after connection opens (not in URL query string), validated by backend middleware
+- **2FA enforcement** — Login returns challenge token when 2FA is enabled; JWT tokens are only issued after OTP verification via `/api/auth/2fa-challenge/`
 - **Agora auth** — RTM/RTC tokens are short-lived (24h), issued by the backend, and auto-renewed
 - **CSRF header** — `X-CSRFToken` auto-attached on all mutating API requests
 - **Log sanitization** — Console logs never include tokens, credentials, or full error stack traces

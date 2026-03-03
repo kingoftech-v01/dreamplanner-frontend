@@ -150,6 +150,14 @@ export default function SocialHubScreen() {
   var storyGroups = storiesFeedQ.data || [];
   if (!Array.isArray(storyGroups)) storyGroups = [];
 
+  var myStoryGroup = useMemo(function () {
+    return storyGroups.find(function (g) { return g.user && g.user.id === String(user?.id); });
+  }, [storyGroups, user?.id]);
+
+  var storyIndexMap = useMemo(function () {
+    return new Map(storyGroups.map(function (g, i) { return [g, i]; }));
+  }, [storyGroups]);
+
   // Story creation mutation
   var createStoryMut = useMutation({
     mutationFn: function (formData) { return apiUpload(SOCIAL.STORIES.LIST, formData); },
@@ -162,7 +170,7 @@ export default function SocialHubScreen() {
       setStoryCaption("");
       qc.invalidateQueries({ queryKey: ["stories-feed"] });
     },
-    onError: function (e) { showToast(e.message || "Failed to post story", "error"); },
+    onError: function (e) { showToast(e.userMessage || e.message || "Failed to post story", "error"); },
   });
 
   // Mark story as viewed
@@ -194,7 +202,7 @@ export default function SocialHubScreen() {
       _resetCreateForm();
       qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
     },
-    onError: function (e) { showToast(e.message || "Failed to create post", "error"); },
+    onError: function (e) { showToast(e.userMessage || e.message || "Failed to create post", "error"); },
   });
 
   function _resetCreateForm() {
@@ -253,7 +261,7 @@ export default function SocialHubScreen() {
     apiPost(SOCIAL.EVENTS.REGISTER(eventId)).then(function () {
       showToast("Registered!", "success");
       qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
-    }).catch(function (e) { showToast(e.message || "Failed", "error"); });
+    }).catch(function (e) { showToast(e.userMessage || e.message || "Failed", "error"); });
   }
   // ── Story handlers ───────────────────────────────────────────
   function openStoryViewer(groupIdx) {
@@ -453,7 +461,7 @@ export default function SocialHubScreen() {
   );
 
   if (isError) return (
-    <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <ErrorState
           message="Failed to load social feed"
@@ -466,14 +474,14 @@ export default function SocialHubScreen() {
 
   // ═══════════════════════════════════════════════════════════════
   return (
-    <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
 
       {/* ═══ APP BAR ═══ */}
       <GlassAppBar
         style={{ justifyContent: "space-between" }}
         left={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Go back" />
+            <IconButton icon={ArrowLeft} onClick={function () { navigate("/"); }} label="Go back" />
             <span style={{ fontSize: 20, fontWeight: 800, color: "var(--dp-text)", letterSpacing: "-0.5px" }}>DreamPlanner</span>
           </div>
         }
@@ -487,6 +495,7 @@ export default function SocialHubScreen() {
 
       {/* ═══ CONTENT ═══ */}
       <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "8px 0 100px", opacity: uiOpacity, transition: "opacity 0.3s ease" }}>
+       <div className="dp-content-area">
 
         {/* ── Stories Bar ── */}
         <div style={{ padding: "8px 0 12px", borderBottom: "1px solid var(--dp-divider)" }}>
@@ -494,10 +503,8 @@ export default function SocialHubScreen() {
             {/* You — create story */}
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 68, cursor: "pointer" }}
               onClick={function () {
-                // Check if user has stories — tap opens viewer, plus opens create
-                var myGroup = storyGroups.find(function (g) { return g.user && g.user.id === String(user?.id); });
-                if (myGroup && myGroup.stories && myGroup.stories.length > 0) {
-                  openStoryViewer(storyGroups.indexOf(myGroup));
+                if (myStoryGroup && myStoryGroup.stories && myStoryGroup.stories.length > 0) {
+                  openStoryViewer(storyIndexMap.get(myStoryGroup));
                 } else {
                   setShowStoryCreate(true);
                 }
@@ -505,11 +512,9 @@ export default function SocialHubScreen() {
               <div style={{ position: "relative" }}>
                 <div style={{
                   width: 68, height: 68, borderRadius: "50%",
-                  background: (function () {
-                    var myGroup = storyGroups.find(function (g) { return g.user && g.user.id === String(user?.id); });
-                    if (myGroup && myGroup.stories && myGroup.stories.length > 0) return "linear-gradient(135deg," + BRAND.purple + "," + BRAND.pink + ")";
-                    return "rgba(255,255,255,0.1)";
-                  })(),
+                  background: (myStoryGroup && myStoryGroup.stories && myStoryGroup.stories.length > 0)
+                    ? "linear-gradient(135deg," + BRAND.purple + "," + BRAND.pink + ")"
+                    : "rgba(255,255,255,0.1)",
                   display: "flex", alignItems: "center", justifyContent: "center", padding: 3,
                 }}>
                   <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--dp-body-bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: 2 }}>
@@ -525,7 +530,7 @@ export default function SocialHubScreen() {
 
             {/* Story groups (excluding self — already shown) */}
             {storyGroups.filter(function (g) { return g.user && g.user.id !== String(user?.id); }).map(function (group) {
-              var gIdx = storyGroups.indexOf(group);
+              var gIdx = storyIndexMap.get(group);
               var hasUnviewed = group.hasUnviewed;
               return (
                 <div key={group.user.id} onClick={function () { openStoryViewer(gIdx); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 68, cursor: "pointer" }}>
@@ -615,6 +620,7 @@ export default function SocialHubScreen() {
             <div style={{ textAlign: "center", padding: 16, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading more…</div>
           )}
         </div>
+       </div>
       </main>
 
       {/* ═══ CREATE POST FAB ═══ */}

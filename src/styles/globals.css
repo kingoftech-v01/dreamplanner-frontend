@@ -480,9 +480,10 @@ select:focus-visible,
     padding: 20px 12px;
   }
   .dp-desktop-main {
-    margin-left: 240px;
-    flex: 1;
-    width: auto;
+    left: 240px !important;
+  }
+  .dp-desktop-header {
+    left: 240px !important;
   }
   .dp-hide-desktop {
     display: none !important;

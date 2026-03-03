@@ -80,7 +80,7 @@ export default function GoogleCalendarConnect() {
     },
     onError: function (err) {
       setConnecting(false);
-      showToast(err.message || t("calendar.connectFailed"), "error");
+      showToast(err.userMessage || err.message || t("calendar.connectFailed"), "error");
     },
   });
 
@@ -110,7 +110,7 @@ export default function GoogleCalendarConnect() {
       showToast(t("calendar.syncedToast"), "success");
     },
     onError: function (err) {
-      showToast(err.message || t("calendar.syncFailed"), "error");
+      showToast(err.userMessage || err.message || t("calendar.syncFailed"), "error");
     },
   });
 
@@ -125,7 +125,7 @@ export default function GoogleCalendarConnect() {
       showToast(t("calendar.disconnectedToast"), "info");
     },
     onError: function (err) {
-      showToast(err.message || t("calendar.disconnectFailed"), "error");
+      showToast(err.userMessage || err.message || t("calendar.disconnectFailed"), "error");
     },
   });
 
@@ -153,9 +153,9 @@ export default function GoogleCalendarConnect() {
       })
       .catch(function (err) {
         setConnecting(false);
-        var msg = (err.message || "").toLowerCase().includes("501")
+        var msg = (err.userMessage || err.message || "").toLowerCase().includes("501")
           ? t("calendar.notAvailable")
-          : (err.message || t("calendar.authFailed"));
+          : (err.userMessage || err.message || t("calendar.authFailed"));
         showToast(msg, "error");
       });
   };
@@ -178,7 +178,7 @@ export default function GoogleCalendarConnect() {
   return (
     <PageLayout showNav={false} header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/calendar"); }} />}
         title={t("calendar.googleCalendar")}
       />
     }>

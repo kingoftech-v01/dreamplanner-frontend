@@ -43,7 +43,7 @@ export default function CircleInviteSheet({ open, onClose, circleId, members, sh
       setInvitedIds(function (p) { var n = Object.assign({}, p); n[friendId] = true; return n; });
       showToast && showToast("Invitation sent!", "success");
     }).catch(function (err) {
-      showToast && showToast(err.message || "Failed to invite", "error");
+      showToast && showToast(err.userMessage || err.message || "Failed to invite", "error");
     });
   }
 
@@ -61,7 +61,7 @@ export default function CircleInviteSheet({ open, onClose, circleId, members, sh
       }
       setLinkLoading(false);
     }).catch(function (err) {
-      showToast && showToast(err.message || "Failed to generate link", "error");
+      showToast && showToast(err.userMessage || err.message || "Failed to generate link", "error");
       setLinkLoading(false);
     });
   }

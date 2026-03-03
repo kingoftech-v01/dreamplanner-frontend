@@ -35,7 +35,7 @@ export default function SharedDreamsScreen() {
     return (
       <PageLayout header={
         <GlassAppBar
-          left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+          left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
           title="Shared With Me"
         />
       }>
@@ -52,7 +52,7 @@ export default function SharedDreamsScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title="Shared With Me"
         subtitle="Dreams others have shared with you"
       />

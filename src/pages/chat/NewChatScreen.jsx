@@ -61,7 +61,7 @@ export default function NewChatScreen() {
       var conv = await apiPost(CONVERSATIONS.LIST, { conversation_type: "general", title: msg.slice(0, 60) });
       navigate("/chat/" + conv.id, { state: { initialMessage: msg } });
     } catch (err) {
-      showToast(err.message || "Failed to start conversation", "error");
+      showToast(err.userMessage || err.message || "Failed to start conversation", "error");
       setCreating(false);
     }
   };

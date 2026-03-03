@@ -44,7 +44,7 @@ export default function ForgotPasswordScreen() {
         setSent(true);
       })
       .catch(function (err) {
-        setServerError(err.message || "Failed to send reset email. Please try again.");
+        setServerError(err.userMessage || err.message || "Failed to send reset email. Please try again.");
       })
       .finally(function () {
         setSubmitting(false);
@@ -63,7 +63,7 @@ export default function ForgotPasswordScreen() {
           alignSelf: "flex-start",
           marginBottom: 32,
         }}>
-          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+          <IconButton icon={ArrowLeft} onClick={() => navigate("/login")} />
         </div>
 
         {/* Icon */}

@@ -66,7 +66,7 @@ export default function OnlineFriendsScreen() {
   return (
     <PageLayout showNav={true} header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)" }}>

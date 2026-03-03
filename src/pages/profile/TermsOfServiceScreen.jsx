@@ -64,7 +64,7 @@ export default function TermsOfServiceScreen() {
   return (
     <PageLayout showNav={false} header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/settings")} />}
         title="Terms of Service"
       />
     }>

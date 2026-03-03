@@ -255,7 +255,7 @@ export default function AppVersionScreen() {
   return (
     <PageLayout showNav={false} header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/settings"); }} />}
         title="About"
       />
     }>

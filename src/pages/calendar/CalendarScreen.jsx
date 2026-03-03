@@ -112,11 +112,11 @@ export default function CalendarScreen(){
 
   // Show toast on query errors
   useEffect(function () {
-    if (tasksQuery.error) showToast(tasksQuery.error.message || "Failed to load calendar", "error");
+    if (tasksQuery.error) showToast(tasksQuery.error.userMessage || tasksQuery.error.message || "Failed to load calendar", "error");
   }, [tasksQuery.error]);
 
   useEffect(function () {
-    if (todayQuery.error) showToast(todayQuery.error.message || "Failed to load today's tasks", "error");
+    if (todayQuery.error) showToast(todayQuery.error.userMessage || todayQuery.error.message || "Failed to load today's tasks", "error");
   }, [todayQuery.error]);
 
   // Transform all data into keyed object by "y-m-d"
@@ -162,7 +162,7 @@ export default function CalendarScreen(){
       return apiPost(DREAMS.TASKS.COMPLETE(params.id));
     },
     onSuccess: function () { invalidateCalendar(); },
-    onError: function (err) { showToast(err.message || "Failed to update task", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to update task", "error"); },
   });
 
   // ── Toggle calendar event completion ──
@@ -171,7 +171,7 @@ export default function CalendarScreen(){
       return apiPatch(CALENDAR.EVENT_DETAIL(params.id), { status: params.completed ? "completed" : "scheduled" });
     },
     onSuccess: function () { invalidateCalendar(); },
-    onError: function (err) { showToast(err.message || "Failed to update task", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to update task", "error"); },
   });
 
   // ── Delete calendar event ──
@@ -180,7 +180,7 @@ export default function CalendarScreen(){
       return apiDelete(CALENDAR.EVENT_DETAIL(params.id));
     },
     onSuccess: function () { invalidateCalendar(); showToast("Task deleted", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to delete", "error"); },
   });
 
   // ── Create calendar event ──
@@ -189,7 +189,7 @@ export default function CalendarScreen(){
       return apiPost(CALENDAR.EVENTS, body);
     },
     onSuccess: function () { invalidateCalendar(); showToast("Task created", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to create task", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to create task", "error"); },
   });
 
   var toggleTask = function (evtKey, evtId) {
@@ -247,10 +247,10 @@ export default function CalendarScreen(){
 
   if (tasksQuery.isError && todayQuery.isError) {
     return (
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
-            message={(tasksQuery.error && tasksQuery.error.message) || (todayQuery.error && todayQuery.error.message) || "Failed to load calendar"}
+            message={(tasksQuery.error && (tasksQuery.error.userMessage || tasksQuery.error.message)) || (todayQuery.error && (todayQuery.error.userMessage || todayQuery.error.message)) || "Failed to load calendar"}
             onRetry={function () { tasksQuery.refetch(); todayQuery.refetch(); }}
           />
         </div>
@@ -307,12 +307,12 @@ export default function CalendarScreen(){
 
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div className="dp-desktop-main" style={{position:"absolute",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       <GlassAppBar
         left={
           <>
-            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+            <IconButton icon={ArrowLeft} onClick={()=>navigate("/")} label="Go back" />
             <Calendar size={18} color={"var(--dp-accent)"} strokeWidth={2}/>
           </>
         }
@@ -325,8 +325,8 @@ export default function CalendarScreen(){
         }
       />
 
-      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
-        <div style={{width:"100%"}}>
+      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 0 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
+        <div className="dp-content-area" style={{padding:"0 16px"}}>
 
           {/* ── Quick Access ── */}
           <div style={{display:"flex",gap:8,marginBottom:14}}>

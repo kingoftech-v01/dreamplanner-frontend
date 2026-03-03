@@ -141,17 +141,17 @@ export default function ConversationListScreen() {
   var pinMut = useMutation({
     mutationFn: function (id) { return apiPost(CONVERSATIONS.PIN(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); },
-    onError: function (err) { showToast(err.message || "Failed to pin", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to pin", "error"); },
   });
   var archiveMut = useMutation({
     mutationFn: function (id) { return apiPost(CONVERSATIONS.ARCHIVE(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); },
-    onError: function (err) { showToast(err.message || "Failed to archive", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to archive", "error"); },
   });
   var deleteMut = useMutation({
     mutationFn: function (id) { return apiDelete(CONVERSATIONS.DETAIL(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["conversations"] }); showToast("Conversation deleted", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to delete", "error"); },
   });
 
   var loading = convsInf.isLoading;
@@ -187,18 +187,18 @@ export default function ConversationListScreen() {
 
   if (convsInf.isError) return (
     <div style={{ width: "100%", padding: "60px 16px 0", display: "flex", justifyContent: "center" }}>
-      <ErrorState message={convsInf.error?.message} onRetry={function () { convsInf.refetch(); }} />
+      <ErrorState message={convsInf.error?.userMessage || convsInf.error?.message} onRetry={function () { convsInf.refetch(); }} />
     </div>
   );
 
   return (
-    <div style={{ position:"fixed", inset:0, overflow:"hidden" }}>
+    <div className="dp-desktop-main" style={{ position:"absolute", inset:0, overflow:"hidden" }}>
 
       {/* ═══ APP BAR ═══ */}
-      <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:100 }}>
+      <div className="dp-desktop-header" style={{ position:"fixed", top:0, left:0, right:0, zIndex:100 }}>
         <GlassAppBar
           left={
-            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+            <IconButton icon={ArrowLeft} onClick={()=>navigate("/")} label="Go back" />
           }
           title={
             <div>
@@ -297,7 +297,7 @@ export default function ConversationListScreen() {
 
       {/* ═══ CONTENT ═══ */}
       <main style={{ position:"absolute", inset:0, overflowY:"auto", overflowX:"hidden", zIndex:10, paddingTop: (searchOpen ? 170 : 128) + (onlineFriends.length > 0 ? 100 : 0), paddingBottom:100, transition:"padding-top 0.3s, opacity 0.3s ease",opacity:uiOpacity}}>
-        <div style={{ width:"100%", padding:"0 16px" }}>
+        <div className="dp-content-area" style={{ padding:"0 16px" }}>
 
           {filtered.length === 0 ? (
             /* ── Empty State ── */

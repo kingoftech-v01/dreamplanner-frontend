@@ -72,7 +72,7 @@ export default function FriendRequestsScreen() {
       queryClient.invalidateQueries({ queryKey: ["friend-requests-received"] });
       queryClient.invalidateQueries({ queryKey: ["friends-online"] });
     }).catch(function (err) {
-      showToast(err.message || "Failed to accept", "error");
+      showToast(err.userMessage || err.message || "Failed to accept", "error");
       setReceivedStates(function (prev) { var n = Object.assign({}, prev); delete n[id]; return n; });
     });
   };
@@ -83,7 +83,7 @@ export default function FriendRequestsScreen() {
       showToast("Request declined", "info");
       queryClient.invalidateQueries({ queryKey: ["friend-requests-received"] });
     }).catch(function (err) {
-      showToast(err.message || "Failed to decline", "error");
+      showToast(err.userMessage || err.message || "Failed to decline", "error");
       setReceivedStates(function (prev) { var n = Object.assign({}, prev); delete n[id]; return n; });
     });
   };
@@ -94,7 +94,7 @@ export default function FriendRequestsScreen() {
       showToast("Request cancelled", "info");
       queryClient.invalidateQueries({ queryKey: ["friend-requests-sent"] });
     }).catch(function (err) {
-      showToast(err.message || "Failed to cancel", "error");
+      showToast(err.userMessage || err.message || "Failed to cancel", "error");
       setCancelledSent(function (prev) { var n = new Set(prev); n.delete(id); return n; });
     });
   };
@@ -109,7 +109,7 @@ export default function FriendRequestsScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={((receivedInf.error && receivedInf.error.message) || (sentInf.error && sentInf.error.message)) || "Failed to load friend requests"}
+          message={((receivedInf.error && (receivedInf.error.userMessage || receivedInf.error.message)) || (sentInf.error && (sentInf.error.userMessage || sentInf.error.message))) || "Failed to load friend requests"}
           onRetry={function () { receivedInf.refetch(); sentInf.refetch(); }}
         />
       </PageLayout>
@@ -119,7 +119,7 @@ export default function FriendRequestsScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/social")} label="Back" />}
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)" }}>Friend Requests</span>

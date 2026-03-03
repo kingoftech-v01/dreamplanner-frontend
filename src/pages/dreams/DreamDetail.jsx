@@ -117,12 +117,12 @@ export default function DreamDetailScreen(){
   var deleteDreamMut = useMutation({
     mutationFn: function () { return apiDelete(DREAMS.DETAIL(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dreams"] }); showToast("Dream deleted", "success"); navigate("/"); },
-    onError: function (err) { showToast(err.message || "Failed to delete dream", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to delete dream", "error"); },
   });
   var duplicateDreamMut = useMutation({
     mutationFn: function () { return apiPost(DREAMS.DUPLICATE(id)); },
     onSuccess: function (data) { showToast("Dream duplicated!", "success"); navigate("/dream/" + data.id); },
-    onError: function (err) { showToast(err.message || "Failed to duplicate", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to duplicate", "error"); },
   });
   var milestoneCompleteMut = useMutation({
     mutationFn: function (milestoneId) { return apiPost(DREAMS.MILESTONES.COMPLETE(milestoneId)); },
@@ -132,7 +132,7 @@ export default function DreamDetailScreen(){
       var ms = MILESTONES.find(function (m) { return m.id === milestoneId; });
       setAchievementShare({ type: "milestone", title: ms ? ms.label : "Milestone", milestoneId: milestoneId });
     },
-    onError: function (err) { showToast(err.message || "Failed to complete milestone", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to complete milestone", "error"); },
   });
 
   // ── Obstacles query & mutations ──
@@ -142,29 +142,29 @@ export default function DreamDetailScreen(){
   var addObstacleMut = useMutation({
     mutationFn: function (data) { return apiPost(DREAMS.OBSTACLES.LIST, data); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle added", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to add obstacle", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to add obstacle", "error"); },
   });
   var resolveObstacleMut = useMutation({
     mutationFn: function (obstacleId) { return apiPost(DREAMS.OBSTACLES.RESOLVE(obstacleId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle resolved!", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to resolve obstacle", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to resolve obstacle", "error"); },
   });
   var deleteObstacleMut = useMutation({
     mutationFn: function (obstacleId) { return apiDelete(DREAMS.OBSTACLES.DETAIL(obstacleId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["obstacles", id] }); showToast("Obstacle removed", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to delete obstacle", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to delete obstacle", "error"); },
   });
 
   // ── Tags mutations ──
   var addTagMut = useMutation({
     mutationFn: function (tagName) { return apiPost(DREAMS.TAGS(id), { tag_name: tagName }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag added", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to add tag", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to add tag", "error"); },
   });
   var removeTagMut = useMutation({
     mutationFn: function (tagName) { return apiDelete(DREAMS.TAG_DELETE(id, tagName)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag removed", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to remove tag", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to remove tag", "error"); },
   });
 
   // ── Collaborators query & mutations ──
@@ -174,12 +174,12 @@ export default function DreamDetailScreen(){
   var inviteCollabMut = useMutation({
     mutationFn: function (userId) { return apiPost(DREAMS.COLLABORATORS(id), { user_id: userId }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator invited!", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to invite collaborator", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to invite collaborator", "error"); },
   });
   var removeCollabMut = useMutation({
     mutationFn: function (userId) { return apiDelete(DREAMS.COLLABORATOR_DELETE(id, userId)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator removed", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to remove collaborator", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to remove collaborator", "error"); },
   });
 
   // ── Progress history query ──
@@ -302,8 +302,8 @@ export default function DreamDetailScreen(){
     // Persist task toggle to API
     apiPost(DREAMS.TASKS.COMPLETE(tId)).catch(function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); });
   };
-  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost(DREAMS.GOALS.LIST,{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to add goal","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddGoal(false);};
-  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost(DREAMS.TASKS.LIST,{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to add task","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddTask(null);};
+  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost(DREAMS.GOALS.LIST,{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to add goal","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddGoal(false);};
+  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost(DREAMS.TASKS.LIST,{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to add task","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddTask(null);};
 
   const handleShare = async () => {
     setShareModal(true);
@@ -363,15 +363,15 @@ export default function DreamDetailScreen(){
 
   if (dreamQuery.isError) return (
     <div style={{ width: "100%", padding: "60px 16px 0" }}>
-      <ErrorState message={dreamQuery.error?.message} onRetry={function () { dreamQuery.refetch(); }} />
+      <ErrorState message={dreamQuery.error?.userMessage || dreamQuery.error?.message} onRetry={function () { dreamQuery.refetch(); }} />
     </div>
   );
 
   return(
-    <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div className="dp-desktop-main" style={{position:"absolute",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />}
+        left={<IconButton icon={ArrowLeft} onClick={()=>navigate("/")} label="Go back" />}
         title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{DREAM.title}</h1>}
         right={
           <div style={{display:"flex",gap:6}}>
@@ -380,7 +380,7 @@ export default function DreamDetailScreen(){
             {isOwner && <div style={{position:"relative"}}>
               <IconButton icon={MoreVertical} onClick={()=>setMenu(!menu)} label="More options" />
               {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:"var(--dp-modal-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
-                {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Rocket,label:t("dreams.microStart")||"Micro Start",action:()=>{setMenu(false);navigate(`/micro-start/${DREAM.id}`);}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
+                {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Rocket,label:t("dreams.microStart")||"Micro Start",action:()=>{setMenu(false);navigate(`/micro-start/${DREAM.id}`);}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
                   <button key={i} onClick={action||(()=>setMenu(false))} className="dp-gh" style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":("var(--dp-text-primary)"),transition:"background 0.15s"}}>
                     <I size={15} strokeWidth={2}/>{label}
                   </button>
@@ -391,8 +391,8 @@ export default function DreamDetailScreen(){
         }
       />
 
-      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
-        <div style={{width:"100%"}}>
+      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 0 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
+        <div className="dp-content-area" style={{padding:"0 16px"}}>
 
           {/* ── Public dream banner for non-owners ── */}
           {!isOwner && DREAM.owner_name && (
@@ -1038,7 +1038,7 @@ export default function DreamDetailScreen(){
                 queryClient.invalidateQueries({ queryKey: ["dream", id] });
               }).catch(function (err) {
                 setIsPublic(!newVal);
-                showToast(err.message || "Failed to update privacy", "error");
+                showToast(err.userMessage || err.message || "Failed to update privacy", "error");
               });
             }} style={{
               flex: 1, padding: "10px 0", borderRadius: 12, border: "none",

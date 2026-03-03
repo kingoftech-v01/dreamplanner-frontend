@@ -90,7 +90,7 @@ export default function BuddyRequestsScreen() {
       queryClient.invalidateQueries({ queryKey: ["buddy-history"] });
     },
     onError: function (err, buddyId) {
-      showToast(err.message || "Failed to accept request", "error");
+      showToast(err.userMessage || err.message || "Failed to accept request", "error");
       setActionStates(function (prev) { var n = Object.assign({}, prev); delete n[buddyId]; return n; });
     },
   });
@@ -106,7 +106,7 @@ export default function BuddyRequestsScreen() {
       queryClient.invalidateQueries({ queryKey: ["buddy-history"] });
     },
     onError: function (err, buddyId) {
-      showToast(err.message || "Failed to decline request", "error");
+      showToast(err.userMessage || err.message || "Failed to decline request", "error");
       setActionStates(function (prev) { var n = Object.assign({}, prev); delete n[buddyId]; return n; });
     },
   });
@@ -144,7 +144,7 @@ export default function BuddyRequestsScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)" }}>

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Sparkles, Eye, EyeOff, Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
+import { Sparkles, Eye, EyeOff, Mail, Lock, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { isValidEmail } from "../../utils/sanitize";
 import { useAuth } from "../../context/AuthContext";
 import { openBrowser, addBrowserListener, isNative } from "../../services/native";
+import { apiPost, setToken } from "../../services/api";
 import { AUTH } from "../../services/endpoints";
 import GradientButton from "../../components/shared/GradientButton";
 import GlassInput from "../../components/shared/GlassInput";
@@ -12,7 +13,7 @@ import GlassCard from "../../components/shared/GlassCard";
 
 export default function LoginScreen() {
   var navigate = useNavigate();
-  var { login, socialLogin } = useAuth();
+  var { login, socialLogin, refreshUser } = useAuth();
   var [mounted, setMounted] = useState(false);
   var [email, setEmail] = useState("");
   var [password, setPassword] = useState("");
@@ -21,6 +22,9 @@ export default function LoginScreen() {
   var [serverError, setServerError] = useState("");
   var [submitting, setSubmitting] = useState(false);
   var [loginCooldown, setLoginCooldown] = useState(false);
+  var [tfaRequired, setTfaRequired] = useState(false);
+  var [tfaChallengeToken, setTfaChallengeToken] = useState("");
+  var [tfaCode, setTfaCode] = useState("");
 
   useEffect(function () {
     var timer = setTimeout(function () { setMounted(true); }, 50);
@@ -35,7 +39,7 @@ export default function LoginScreen() {
       setSubmitting(true);
       socialLogin(provider, token)
         .then(function () { navigate("/"); })
-        .catch(function (err) { setServerError(err.message || (provider + " login failed.")); })
+        .catch(function (err) { setServerError(err.userMessage || err.message || (provider + " login failed.")); })
         .finally(function () { setSubmitting(false); });
     };
     window.addEventListener("dp-oauth-callback", handleOAuthCallback);
@@ -61,14 +65,21 @@ export default function LoginScreen() {
 
     setSubmitting(true);
     login(email, password)
-      .then(function () {
+      .then(function (result) {
+        if (result && result.tfaRequired) {
+          // Show the 2FA verification screen with the challenge token
+          setTfaRequired(true);
+          setTfaChallengeToken(result.challengeToken || "");
+          setSubmitting(false);
+          return;
+        }
         navigate("/");
       })
       .catch(function (err) {
         if (err.fieldErrors) {
           setErrors(err.fieldErrors);
         }
-        setServerError(err.message || "Login failed. Please check your credentials.");
+        setServerError(err.userMessage || err.message || "Login failed. Please check your credentials.");
         // Brief cooldown after failed login to slow brute-force attempts
         setLoginCooldown(true);
         setTimeout(function () { setLoginCooldown(false); }, 2000);
@@ -146,7 +157,7 @@ export default function LoginScreen() {
             setSubmitting(true);
             socialLogin("google", accessToken)
               .then(function () { navigate("/"); })
-              .catch(function (err) { setServerError(err.message || "Google login failed."); })
+              .catch(function (err) { setServerError(err.userMessage || err.message || "Google login failed."); })
               .finally(function () { setSubmitting(false); });
           }
         }
@@ -165,13 +176,18 @@ export default function LoginScreen() {
 
     if (isNative) {
       var nativeRedirectUri = "com.dreamplanner.app://auth/apple/callback";
+      var appleStateBytes = new Uint8Array(32);
+      crypto.getRandomValues(appleStateBytes);
+      var oauthState = Array.from(appleStateBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      sessionStorage.setItem("oauth_state", oauthState);
+      sessionStorage.setItem("oauth_redirect", nativeRedirectUri);
       var nativeAuthUrl = "https://appleid.apple.com/auth/authorize" +
         "?client_id=" + encodeURIComponent(appleClientId) +
         "&redirect_uri=" + encodeURIComponent((import.meta.env.VITE_API_BASE || "") + AUTH.APPLE_REDIRECT) +
         "&response_type=code%20id_token" +
         "&response_mode=form_post" +
         "&scope=name%20email" +
-        "&state=" + encodeURIComponent(nativeRedirectUri);
+        "&state=" + encodeURIComponent(oauthState);
       openBrowser(nativeAuthUrl);
       return;
     }
@@ -200,7 +216,7 @@ export default function LoginScreen() {
             }
             socialLogin("apple", idToken)
               .then(function () { navigate("/"); })
-              .catch(function (err) { setServerError(err.message || "Apple login failed."); })
+              .catch(function (err) { setServerError(err.userMessage || err.message || "Apple login failed."); })
               .finally(function () { setSubmitting(false); });
           })
           .catch(function (err) {
@@ -229,6 +245,131 @@ export default function LoginScreen() {
       document.head.appendChild(script);
     }
   };
+
+  var handleTfaVerify = function (e) {
+    e.preventDefault();
+    if (!tfaCode.trim()) {
+      setServerError("Please enter your verification code.");
+      return;
+    }
+    setSubmitting(true);
+    setServerError("");
+    // Send the challenge token + OTP code to the unauthenticated 2FA endpoint
+    apiPost(AUTH.TFA_CHALLENGE, {
+      challengeToken: tfaChallengeToken,
+      code: tfaCode.trim(),
+    })
+      .then(function (data) {
+        // Backend returns JWT tokens on success
+        var access = data.access || data.accessToken;
+        if (!access) throw new Error("No token received");
+        setToken(access, data.refresh);
+        return refreshUser();
+      })
+      .then(function () {
+        navigate("/");
+      })
+      .catch(function (err) {
+        setServerError(err.userMessage || err.message || "Invalid verification code. Please try again.");
+      })
+      .finally(function () {
+        setSubmitting(false);
+      });
+  };
+
+  // ─── 2FA Verification Screen ─────────────────────────────────────
+  if (tfaRequired) {
+    return (
+      <PageLayout showNav={false}>
+        <div style={{
+          display: "flex", flexDirection: "column", alignItems: "center",
+          justifyContent: "center", minHeight: "100vh", padding: "40px 0",
+        }}>
+          <GlassCard padding="32px 24px" style={{ width: "100%" }}>
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: "50%",
+                background: "rgba(139,92,246,0.12)",
+                border: "1px solid rgba(139,92,246,0.25)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                margin: "0 auto 16px",
+              }}>
+                <ShieldCheck size={24} color="#8B5CF6" />
+              </div>
+              <h1 style={{
+                fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
+                margin: 0,
+              }}>
+                Two-Factor Authentication
+              </h1>
+              <p style={{
+                fontSize: 14, color: "var(--dp-text-tertiary)",
+                marginTop: 8, lineHeight: 1.5,
+              }}>
+                Enter the 6-digit code from your authenticator app or a backup code
+              </p>
+            </div>
+
+            {serverError && (
+              <div style={{
+                background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
+                borderRadius: 12, padding: "12px 16px", marginBottom: 16,
+                fontSize: 13, color: "var(--dp-danger)", lineHeight: 1.5,
+              }}>
+                {serverError}
+              </div>
+            )}
+
+            <form onSubmit={handleTfaVerify}>
+              <div style={{ marginBottom: 24 }}>
+                <GlassInput
+                  type="text"
+                  icon={ShieldCheck}
+                  placeholder="Enter code"
+                  value={tfaCode}
+                  onChange={function (e) { setTfaCode(e.target.value); }}
+                  inputStyle={{ fontSize: 20, fontWeight: 600, letterSpacing: "4px", textAlign: "center" }}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                />
+              </div>
+
+              <GradientButton
+                type="submit"
+                gradient="primary"
+                fullWidth
+                disabled={submitting}
+                loading={submitting}
+                icon={submitting ? undefined : ArrowRight}
+                style={{ height: 50 }}
+              >
+                {submitting ? "Verifying..." : "Verify"}
+              </GradientButton>
+            </form>
+
+            <div style={{ textAlign: "center", marginTop: 20 }}>
+              <button
+                type="button"
+                onClick={function () {
+                  setTfaRequired(false);
+                  setTfaChallengeToken("");
+                  setTfaCode("");
+                  setServerError("");
+                }}
+                style={{
+                  background: "none", border: "none", cursor: "pointer",
+                  color: "var(--dp-text-tertiary)", fontSize: 13, fontWeight: 500,
+                  padding: 0,
+                }}
+              >
+                Back to login
+              </button>
+            </div>
+          </GlassCard>
+        </div>
+      </PageLayout>
+    );
+  }
 
   return (
     <PageLayout showNav={false}>

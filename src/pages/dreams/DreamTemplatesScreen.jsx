@@ -87,7 +87,7 @@ export default function DreamTemplatesScreen() {
             display: "flex", alignItems: "center", gap: 16,
             marginBottom: 24,
           }}>
-            <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+            <IconButton icon={ArrowLeft} onClick={() => navigate("/")} />
             <div>
               <h1 style={{
                 fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
@@ -124,7 +124,7 @@ export default function DreamTemplatesScreen() {
             display: "flex", alignItems: "center", gap: 16,
             marginBottom: 24,
           }}>
-            <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+            <IconButton icon={ArrowLeft} onClick={() => navigate("/")} />
             <div>
               <h1 style={{
                 fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
@@ -141,7 +141,7 @@ export default function DreamTemplatesScreen() {
             </div>
           </div>
           <ErrorState
-            message={templatesQuery.error?.message || "Failed to load templates"}
+            message={(templatesQuery.error?.userMessage || templatesQuery.error?.message) || "Failed to load templates"}
             onRetry={function () { templatesQuery.refetch(); }}
           />
         </div>
@@ -161,7 +161,7 @@ export default function DreamTemplatesScreen() {
           display: "flex", alignItems: "center", gap: 16,
           marginBottom: 24,
         }}>
-          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+          <IconButton icon={ArrowLeft} onClick={() => navigate("/")} />
           <div>
             <h1 style={{
               fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
@@ -317,7 +317,7 @@ export default function DreamTemplatesScreen() {
                       showToast("Dream created from template!", "success");
                       navigate("/dream/" + data.id);
                     }).catch(function (err) {
-                      showToast(err.message || "Failed to use template", "error");
+                      showToast(err.userMessage || err.message || "Failed to use template", "error");
                     });
                   }}
                 >

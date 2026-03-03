@@ -108,7 +108,7 @@ export default function StoreScreen() {
       showToast("Item purchased!", "success");
     },
     onError: function (err) {
-      showToast(err.message || "Purchase failed", "error");
+      showToast(err.userMessage || err.message || "Purchase failed", "error");
     },
   });
 
@@ -123,7 +123,7 @@ export default function StoreScreen() {
       showToast("Item equipped!", "success");
     },
     onError: function (err) {
-      showToast(err.message || "Equip failed", "error");
+      showToast(err.userMessage || err.message || "Equip failed", "error");
     },
   });
 
@@ -135,7 +135,7 @@ export default function StoreScreen() {
       queryClient.invalidateQueries({ queryKey: ["store-wishlist"] });
     },
     onError: function (err) {
-      showToast(err.message || "Failed to update wishlist", "error");
+      showToast(err.userMessage || err.message || "Failed to update wishlist", "error");
     },
   });
 
@@ -147,7 +147,7 @@ export default function StoreScreen() {
       queryClient.invalidateQueries({ queryKey: ["store-wishlist"] });
     },
     onError: function (err) {
-      showToast(err.message || "Failed to update wishlist", "error");
+      showToast(err.userMessage || err.message || "Failed to update wishlist", "error");
     },
   });
 
@@ -159,7 +159,7 @@ export default function StoreScreen() {
       setRefundReason("");
       queryClient.invalidateQueries({ queryKey: ["store-history"] });
     },
-    onError: function (err) { showToast(err.message || "Refund request failed", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Refund request failed", "error"); },
   });
 
   var handleBuy = function (itemId) {
@@ -232,7 +232,7 @@ export default function StoreScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(itemsInf.error && itemsInf.error.message) || "Failed to load store items"}
+          message={(itemsInf.error && (itemsInf.error.userMessage || itemsInf.error.message)) || "Failed to load store items"}
           onRetry={function () { itemsInf.refetch(); }}
         />
       </PageLayout>
@@ -242,7 +242,7 @@ export default function StoreScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Go back" />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/"); }} label="Go back" />}
         title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Store</h1>}
         right={<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <IconButton icon={Gift} onClick={function () { navigate("/store/gifts"); }} label="Send Gift" />

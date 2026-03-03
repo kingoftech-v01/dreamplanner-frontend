@@ -91,7 +91,7 @@ export default function SubscriptionScreen() {
         showToast("Checkout session created", "success");
       }
     },
-    onError: function (err) { showToast(err.message || "Failed to start checkout", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to start checkout", "error"); },
   });
 
   var portalMut = useMutation({
@@ -107,7 +107,7 @@ export default function SubscriptionScreen() {
         showToast("Billing portal opened", "success");
       }
     },
-    onError: function (err) { showToast(err.message || "Failed to open billing portal", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to open billing portal", "error"); },
   });
 
   var cancelMut = useMutation({
@@ -116,7 +116,7 @@ export default function SubscriptionScreen() {
       showToast("Subscription cancelled", "success");
       subQuery.refetch();
     },
-    onError: function (err) { showToast(err.message || "Failed to cancel subscription", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to cancel subscription", "error"); },
   });
 
   var changePlanMut = useMutation({
@@ -129,7 +129,7 @@ export default function SubscriptionScreen() {
       }
       subQuery.refetch();
     },
-    onError: function (err) { showToast(err.message || "Failed to change plan", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to change plan", "error"); },
   });
 
   var cancelPendingChangeMut = useMutation({
@@ -138,7 +138,7 @@ export default function SubscriptionScreen() {
       showToast("Pending plan change cancelled", "success");
       subQuery.refetch();
     },
-    onError: function (err) { showToast(err.message || "Failed to cancel pending change", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to cancel pending change", "error"); },
   });
 
   var couponMut = useMutation({
@@ -148,7 +148,7 @@ export default function SubscriptionScreen() {
       setCouponCode("");
       subQuery.refetch();
     },
-    onError: function (err) { showToast(err.message || "Invalid coupon code", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Invalid coupon code", "error"); },
   });
 
   var invoicesInf = useInfiniteList({ queryKey: ["invoices"], url: SUBSCRIPTIONS.INVOICES, limit: 20, enabled: showInvoices });
@@ -166,7 +166,7 @@ export default function SubscriptionScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={((plansQuery.error && plansQuery.error.message) || (subQuery.error && subQuery.error.message)) || "Failed to load subscription data"}
+          message={((plansQuery.error && (plansQuery.error.userMessage || plansQuery.error.message)) || (subQuery.error && (subQuery.error.userMessage || subQuery.error.message))) || "Failed to load subscription data"}
           onRetry={function () { plansQuery.refetch(); subQuery.refetch(); }}
         />
       </PageLayout>
@@ -176,7 +176,7 @@ export default function SubscriptionScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/store")} />}
         title="Subscription"
       />
     }>

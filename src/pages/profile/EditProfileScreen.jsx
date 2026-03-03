@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
-import { apiPut, apiPost } from "../../services/api";
+import { apiPut, apiUpload } from "../../services/api";
 import { USERS } from "../../services/endpoints";
 import { takePicture, isNative } from "../../services/native";
 import { sanitizeText, sanitizeUrl, isValidEmail } from "../../utils/sanitize";
@@ -59,10 +59,10 @@ export default function EditProfileScreen(){
       updateUser({ displayName: name.trim(), bio: bio.trim(), timezone: timezone });
       queryClient.invalidateQueries({ queryKey: ["user"] });
       showToast("Profile updated successfully!", "success");
-      navigate(-1);
+      navigate("/profile");
     },
     onError: function(err) {
-      showToast(err.message || "Failed to update profile", "error");
+      showToast(err.userMessage || err.message || "Failed to update profile", "error");
     },
   });
 
@@ -70,7 +70,7 @@ export default function EditProfileScreen(){
     mutationFn: function(file) {
       var formData = new FormData();
       formData.append("avatar", file);
-      return apiPost(USERS.UPLOAD_AVATAR, formData);
+      return apiUpload(USERS.UPLOAD_AVATAR, formData);
     },
     onSuccess: function(data) {
       var newUrl = (data && data.avatarUrl) || null;
@@ -78,7 +78,7 @@ export default function EditProfileScreen(){
       queryClient.invalidateQueries({ queryKey: ["user"] });
     },
     onError: function(err) {
-      showToast(err.message || "Failed to upload avatar", "error");
+      showToast(err.userMessage || err.message || "Failed to upload avatar", "error");
     },
   });
 
@@ -149,7 +149,7 @@ export default function EditProfileScreen(){
 
       {/* APPBAR */}
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Go back" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/profile")} label="Go back" />}
         title="Edit Profile"
         right={
           hasChanges && !saving

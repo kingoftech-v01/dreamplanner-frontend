@@ -118,7 +118,7 @@ export default function NotificationsScreen() {
   useEffect(function () {
     if (notifsInf.isError) {
       showToast(
-        (notifsInf.error && notifsInf.error.message) || t("notifications.failedLoad"),
+        (notifsInf.error && (notifsInf.error.userMessage || notifsInf.error.message)) || t("notifications.failedLoad"),
         "error"
       );
     }
@@ -133,7 +133,7 @@ export default function NotificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ["unread"] });
       showToast(t("notifications.allCleared") || "All notifications cleared", "success");
     },
-    onError: function (err) { showToast(err.message || t("notifications.failedMarkAll"), "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || t("notifications.failedMarkAll"), "error"); },
   });
 
   var handleMarkAllRead = function () {
@@ -146,7 +146,7 @@ export default function NotificationsScreen() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["unread"] });
     },
-    onError: function (err) { showToast(err.message || t("notifications.failedMarkRead"), "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || t("notifications.failedMarkRead"), "error"); },
   });
 
   var handleDismiss = function (id) {
@@ -189,7 +189,7 @@ export default function NotificationsScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(notifsInf.error && notifsInf.error.message) || t("notifications.failedLoad")}
+          message={(notifsInf.error && (notifsInf.error.userMessage || notifsInf.error.message)) || t("notifications.failedLoad")}
           onRetry={function () { notifsInf.refetch(); }}
         />
       </PageLayout>
@@ -199,7 +199,7 @@ export default function NotificationsScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/"); }} />}
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span style={{

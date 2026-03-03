@@ -68,7 +68,7 @@ export default function TwoFactorScreen() {
       setStep("setup");
     },
     onError: function (err) {
-      showToast(err.message || "Failed to start 2FA setup", "error");
+      showToast(err.userMessage || err.message || "Failed to start 2FA setup", "error");
     },
   });
 
@@ -86,7 +86,7 @@ export default function TwoFactorScreen() {
       }
     },
     onError: function (err) {
-      showToast(err.message || "Verification failed", "error");
+      showToast(err.userMessage || err.message || "Verification failed", "error");
     },
   });
 
@@ -101,7 +101,7 @@ export default function TwoFactorScreen() {
       showToast("Two-factor authentication disabled", "success");
     },
     onError: function (err) {
-      showToast(err.message || "Failed to disable 2FA", "error");
+      showToast(err.userMessage || err.message || "Failed to disable 2FA", "error");
     },
   });
 
@@ -115,7 +115,7 @@ export default function TwoFactorScreen() {
       showToast("New backup codes generated", "success");
     },
     onError: function (err) {
-      showToast(err.message || "Failed to regenerate backup codes", "error");
+      showToast(err.userMessage || err.message || "Failed to regenerate backup codes", "error");
     },
   });
 
@@ -227,7 +227,7 @@ export default function TwoFactorScreen() {
       }}>
         <IconButton
           icon={ArrowLeft}
-          onClick={function () { navigate(-1); }}
+          onClick={function () { navigate("/settings"); }}
           label="Go back"
         />
         <span style={{

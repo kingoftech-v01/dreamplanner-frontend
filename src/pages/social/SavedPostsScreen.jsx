@@ -13,7 +13,7 @@ import Avatar from "../../components/shared/Avatar";
 import GlassAppBar from "../../components/shared/GlassAppBar";
 import IconButton from "../../components/shared/IconButton";
 import ExpandableText from "../../components/shared/ExpandableText";
-import BottomNav from "../../components/shared/BottomNav";
+
 import { ArrowLeft, Bookmark, Heart, MessageCircle, Trash2 } from "lucide-react";
 import { sanitizeText } from "../../utils/sanitize";
 
@@ -58,7 +58,7 @@ export default function SavedPostsScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title={<div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <Bookmark size={18} color="var(--dp-accent)" />
           <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>{t("profile.savedPosts") || "Saved Posts"}</span>
@@ -145,7 +145,6 @@ export default function SavedPostsScreen() {
         })}
       </div>
 
-      <BottomNav />
     </PageLayout>
   );
 }

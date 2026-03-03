@@ -241,7 +241,7 @@ export default function AIChatScreen(){
           })
           .catch(function (err) {
             setIsStreaming(false);
-            showToast(err.message || t("chat.failedSend"), "error");
+            showToast(err.userMessage || err.message || t("chat.failedSend"), "error");
           });
       }
     }
@@ -363,7 +363,7 @@ export default function AIChatScreen(){
       })
       .catch(function (err) {
         setIsStreaming(false);
-        showToast(err.message || t("chat.failedSend"), "error");
+        showToast(err.userMessage || err.message || t("chat.failedSend"), "error");
       });
   };
 
@@ -414,7 +414,7 @@ export default function AIChatScreen(){
       <GlassAppBar
         left={
           <>
-            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+            <IconButton icon={ArrowLeft} onClick={()=>navigate("/conversations")} label="Go back" />
             <div style={{width:36,height:36,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--dp-accent-soft)",border:"1px solid var(--dp-accent-border)",flexShrink:0}}>
               <Bot size={18} color="var(--dp-accent)" strokeWidth={2}/>
             </div>
@@ -499,7 +499,7 @@ export default function AIChatScreen(){
                   </div>
                   <div style={{padding:"14px 18px",borderRadius:"18px 18px 18px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:"1px solid var(--dp-glass-border)",display:"flex",gap:4,alignItems:"center"}}>
                     {streamingContent ? (
-                      <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent))}}/>
+                      <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent),{ALLOWED_TAGS:["strong","br"],ALLOWED_ATTR:["style"]})}}/>
                     ) : (
                       <><span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/></>
                     )}
@@ -808,7 +808,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
               ))}
             </div>
           )}
-          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(msg.content))}}/>
+          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(msg.content),{ALLOWED_TAGS:["strong","br"],ALLOWED_ATTR:["style"]})}}/>
           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
             {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
             {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}

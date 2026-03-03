@@ -107,7 +107,7 @@ export default function CirclesScreen() {
       qc.invalidateQueries({ queryKey: ["circles"] });
       showToast("Joined circle!", "success");
     },
-    onError: function (err) { showToast(err.message || "Failed to join", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to join", "error"); },
   });
 
   if (myCirclesInf.isError || discoverInf.isError) {
@@ -117,7 +117,7 @@ export default function CirclesScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title={<span style={{ display: "flex", alignItems: "center", gap: 8 }}><Users size={20} color="var(--dp-accent)" /><span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Circles</span></span>}
         right={
           <div style={{ display: "flex", gap: 6 }}>

@@ -120,7 +120,7 @@ export default function FindBuddyScreen(){
       queryClient.invalidateQueries({queryKey:["buddy-current"]});
       queryClient.invalidateQueries({queryKey:["buddy-suggestions"]});
     }).catch(function(err){
-      showToast(err.message||"Failed to send request","error");
+      showToast(err.userMessage || err.message ||"Failed to send request","error");
       setSent(function(p){var n=Object.assign({},p);delete n[id];return n;});
     });
   };
@@ -130,7 +130,7 @@ export default function FindBuddyScreen(){
     apiPost(BUDDIES.ENCOURAGE(CURRENT_BUDDY.id),{message:encourageMsg}).then(function(){
       showToast("Encouragement sent!","success");
     }).catch(function(err){
-      showToast(err.message||"Failed to send","error");
+      showToast(err.userMessage || err.message ||"Failed to send","error");
     }).finally(function(){
       setTimeout(function(){setEncourage(false);setSentEncourage(false);},1500);
     });
@@ -157,10 +157,10 @@ export default function FindBuddyScreen(){
 
   if (buddyQuery.isError || suggestionsQuery.isError) {
     return (
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
-            message={(buddyQuery.error && buddyQuery.error.message) || (suggestionsQuery.error && suggestionsQuery.error.message) || "Failed to load buddy data"}
+            message={(buddyQuery.error && (buddyQuery.error.userMessage || buddyQuery.error.message)) || (suggestionsQuery.error && (suggestionsQuery.error.userMessage || suggestionsQuery.error.message)) || "Failed to load buddy data"}
             onRetry={function () { buddyQuery.refetch(); suggestionsQuery.refetch(); }}
           />
         </div>
@@ -170,13 +170,13 @@ export default function FindBuddyScreen(){
   }
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div className="dp-desktop-main" style={{position:"absolute",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* APPBAR */}
       <GlassAppBar
         left={
           <>
-            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+            <IconButton icon={ArrowLeft} onClick={()=>navigate("/social")} label="Go back" />
             <Target size={20} color={"var(--dp-teal)"} strokeWidth={2}/>
           </>
         }
@@ -185,9 +185,9 @@ export default function FindBuddyScreen(){
       />
 
       {/* CONTENT */}
-      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
+      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 0 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
        <SubscriptionGate required="pro" feature="Dream Buddy">
-        <div style={{width:"100%"}}>
+        <div className="dp-content-area" style={{padding:"0 16px"}}>
 
           {/* ── What is Dream Buddy? ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>

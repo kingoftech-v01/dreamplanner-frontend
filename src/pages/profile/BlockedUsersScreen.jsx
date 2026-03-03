@@ -69,7 +69,7 @@ export default function BlockedUsersScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/settings"); }} />}
         title="Blocked Users"
       />
     }>

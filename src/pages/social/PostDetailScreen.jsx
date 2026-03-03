@@ -14,7 +14,7 @@ import GlassCard from "../../components/shared/GlassCard";
 import GlassInput from "../../components/shared/GlassInput";
 import Avatar from "../../components/shared/Avatar";
 import ExpandableText from "../../components/shared/ExpandableText";
-import BottomNav from "../../components/shared/BottomNav";
+
 import {
   ArrowLeft, Heart, MessageCircle, Share2, Bookmark,
   Sparkles, Send, Flame, Star, ThumbsUp, ArrowRight,
@@ -80,7 +80,7 @@ export default function PostDetailScreen() {
       qc.invalidateQueries({ queryKey: ["post-comments", id] });
       qc.invalidateQueries({ queryKey: ["post-detail", id] });
     },
-    onError: function (e) { showToast(e.message || "Failed", "error"); },
+    onError: function (e) { showToast(e.userMessage || e.message || "Failed", "error"); },
   });
   var encourageMut = useMutation({
     mutationFn: function (type) { return apiPost(SOCIAL.POSTS.ENCOURAGE(id), { encouragement_type: type, message: "" }); },
@@ -89,7 +89,7 @@ export default function PostDetailScreen() {
       setShowEncourage(false);
       qc.invalidateQueries({ queryKey: ["post-detail", id] });
     },
-    onError: function (e) { showToast(e.message || "Failed", "error"); },
+    onError: function (e) { showToast(e.userMessage || e.message || "Failed", "error"); },
   });
 
   function handleShare() {
@@ -109,16 +109,13 @@ export default function PostDetailScreen() {
 
   var post = postQuery.data;
   if (postQuery.isLoading) return (
-    <PageLayout header={<GlassAppBar left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />} title="Post" />}>
+    <PageLayout header={<GlassAppBar left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />} title="Post" />}>
       <div style={{ textAlign: "center", padding: "80px 20px", color: "var(--dp-text-muted)", fontSize: 14 }}>Loading...</div>
-      <BottomNav />
     </PageLayout>
   );
   if (postQuery.isError || !post) return (
-    <PageLayout>
-      <GlassAppBar left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />} title="Post" />
+    <PageLayout header={<GlassAppBar left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />} title="Post" />}>
       <div style={{ textAlign: "center", padding: "80px 20px", color: "var(--dp-text-muted)", fontSize: 14 }}>Post not found</div>
-      <BottomNav />
     </PageLayout>
   );
 
@@ -133,7 +130,7 @@ export default function PostDetailScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title="Post"
       />
     }>
@@ -275,7 +272,6 @@ export default function PostDetailScreen() {
         </div>
       </div>
 
-      <BottomNav />
     </PageLayout>
   );
 }

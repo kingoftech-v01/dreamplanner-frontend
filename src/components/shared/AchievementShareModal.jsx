@@ -39,7 +39,7 @@ export default function AchievementShareModal({
       qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
       _close();
     },
-    onError: function (e) { showToast(e.message || "Failed to share", "error"); },
+    onError: function (e) { showToast(e.userMessage || e.message || "Failed to share", "error"); },
   });
 
   function _close() {

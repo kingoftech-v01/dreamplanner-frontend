@@ -37,7 +37,7 @@ export default function CircleChallengeSheet({ open, onClose, challenge, circleI
       onJoined && onJoined();
     }).catch(function (err) {
       setJoining(false);
-      showToast && showToast(err.message || "Failed to join", "error");
+      showToast && showToast(err.userMessage || err.message || "Failed to join", "error");
     });
   }
 

@@ -101,17 +101,18 @@ export default function CallHistoryScreen() {
 
   if (callsInf.isError) return (
     <div style={{ width: "100%", padding: "80px 16px 0", display: "flex", justifyContent: "center" }}>
-      <ErrorState message={callsInf.error?.message} onRetry={function () { callsInf.refetch(); }} />
+      <ErrorState message={callsInf.error?.userMessage || callsInf.error?.message} onRetry={function () { callsInf.refetch(); }} />
     </div>
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+    <div className="dp-desktop-main" style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
 
       {/* APP BAR */}
       <GlassAppBar
+        className="dp-desktop-header"
         style={{ position: "fixed", top: 0, left: 0, right: 0 }}
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Go back" />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/conversations"); }} label="Go back" />}
         title="Call History"
       />
 
@@ -121,7 +122,7 @@ export default function CallHistoryScreen() {
         zIndex: 10, paddingTop: 72, paddingBottom: 100,
         transition: "opacity 0.3s ease", opacity: uiOpacity,
       }}>
-        <div style={{ width: "100%", padding: "0 16px" }}>
+        <div className="dp-content-area" style={{ padding: "0 16px" }}>
 
           {calls.length === 0 ? (
             <div className={mounted ? "dp-a dp-s" : "dp-a"} style={{ textAlign: "center", paddingTop: 60 }}>

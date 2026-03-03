@@ -90,7 +90,7 @@ export default function CircleInvitationsScreen() {
       queryClient.invalidateQueries({ queryKey: ["circle-invitations", id] });
     },
     onError: function (err) {
-      showToast(err.message || "Failed to send invitation", "error");
+      showToast(err.userMessage || err.message || "Failed to send invitation", "error");
     },
   });
 
@@ -113,7 +113,7 @@ export default function CircleInvitationsScreen() {
       }
     },
     onError: function (err) {
-      showToast(err.message || "Failed to generate link", "error");
+      showToast(err.userMessage || err.message || "Failed to generate link", "error");
     },
   });
 
@@ -141,7 +141,7 @@ export default function CircleInvitationsScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/social"); }} />}
         title={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <Mail size={18} color="var(--dp-accent-text)" strokeWidth={2} />

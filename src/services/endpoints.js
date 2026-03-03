@@ -5,6 +5,7 @@
 // ─── Auth ────────────────────────────────────────────────────────────
 export var AUTH = {
   LOGIN:           "/api/auth/login/",
+  TFA_CHALLENGE:   "/api/auth/2fa-challenge/",
   LOGOUT:          "/api/auth/logout/",
   REGISTER:        "/api/auth/registration/",
   TOKEN_REFRESH:   "/api/auth/token/refresh/",
@@ -63,7 +64,7 @@ export var DREAMS = {
   SHARE: function (id) { return "/api/dreams/dreams/" + id + "/share/"; },
   UNSHARE: function (id, userId) { return "/api/dreams/dreams/" + id + "/unshare/" + userId + "/"; },
   TAGS: function (id) { return "/api/dreams/dreams/" + id + "/tags/"; },
-  TAG_DELETE: function (id, tagName) { return "/api/dreams/dreams/" + id + "/tags/" + tagName + "/"; },
+  TAG_DELETE: function (id, tagName) { return "/api/dreams/dreams/" + id + "/tags/" + encodeURIComponent(tagName) + "/"; },
   COLLABORATORS: function (id) { return "/api/dreams/dreams/" + id + "/collaborators/"; },
   COLLABORATORS_LIST: function (id) { return "/api/dreams/dreams/" + id + "/collaborators/list/"; },
   COLLABORATOR_DELETE: function (id, userId) { return "/api/dreams/dreams/" + id + "/collaborators/" + userId + "/"; },

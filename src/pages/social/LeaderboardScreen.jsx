@@ -97,7 +97,7 @@ export default function LeaderboardScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(lbInf.error && lbInf.error.message) || "Failed to load leaderboard"}
+          message={(lbInf.error && (lbInf.error.userMessage || lbInf.error.message)) || "Failed to load leaderboard"}
           onRetry={function () { lbInf.refetch(); }}
         />
       </PageLayout>
@@ -107,7 +107,7 @@ export default function LeaderboardScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate("/social")} label="Back" />}
         title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Leaderboard</h1>}
       />
     }>

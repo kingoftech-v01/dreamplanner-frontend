@@ -9,6 +9,7 @@ import { getUserMessage } from "../utils/errorMessages";
 
 var API_BASE = import.meta.env.VITE_API_BASE || "";
 var REFRESH_URL = "/api/auth/token/refresh/";
+var _isNative = Capacitor.isNativePlatform();
 
 // ─── Token helpers (JWT) ─────────────────────────────────────────
 
@@ -20,7 +21,7 @@ var _accessToken = "";  // Memory only on web — never persisted to localStorag
  * refreshAccessToken() to obtain a new one via the httpOnly cookie.
  */
 export function initToken() {
-  if (!Capacitor.isNativePlatform()) {
+  if (!_isNative) {
     // Web: access token is memory-only. Check for legacy dp-token to migrate.
     var legacy = localStorage.getItem("dp-token");
     if (legacy) {
@@ -71,7 +72,7 @@ export function getAccessTokenForWS() {
  */
 export function setToken(access, refresh) {
   _accessToken = access || "";
-  if (Capacitor.isNativePlatform()) {
+  if (_isNative) {
     import("@capacitor/preferences").then(function (mod) {
       if (access) mod.Preferences.set({ key: "dp-access-token", value: access });
       else mod.Preferences.remove({ key: "dp-access-token" });
@@ -90,7 +91,7 @@ export function clearAuth() {
   localStorage.removeItem("dp-offline-queue");
   localStorage.removeItem("dp-recent-searches");
   localStorage.removeItem("dp-dream-draft");
-  if (Capacitor.isNativePlatform()) {
+  if (_isNative) {
     import("@capacitor/preferences").then(function (mod) {
       mod.Preferences.remove({ key: "dp-access-token" });
       mod.Preferences.remove({ key: "dp-refresh-token" });
@@ -110,7 +111,7 @@ var _refreshQueue = [];  // Callbacks waiting for refresh to complete
  * Native: refresh token is read from Capacitor Preferences and sent in body.
  */
 export async function refreshAccessToken() {
-  if (Capacitor.isNativePlatform()) {
+  if (_isNative) {
     var mod = await import("@capacitor/preferences");
     var result = await mod.Preferences.get({ key: "dp-refresh-token" });
     var refreshToken = result.value;
@@ -186,6 +187,11 @@ async function request(url, options) {
   var token = getToken();
   if (token) {
     headers["Authorization"] = "Bearer " + token;
+  }
+
+  // Native platform header — tells backend to return refresh token in body
+  if (_isNative) {
+    headers["X-Client-Platform"] = "native";
   }
 
   // CSRF for non-GET
@@ -270,26 +276,33 @@ async function request(url, options) {
     var errorBody = null;
     try { errorBody = await response.json(); } catch (e) { /* ignore */ }
 
+    // Extract the most useful error message from the response body.
+    // DRF returns field-level errors as { field: ["msg"] } and some views
+    // use { error: "msg" } or { detail: "msg" }.
+    var _firstFieldMsg = null;
+    var fieldErrors = {};
+    if (errorBody && typeof errorBody === "object") {
+      for (var _fk in errorBody) {
+        if (Array.isArray(errorBody[_fk]) && errorBody[_fk].length > 0) {
+          if (!_firstFieldMsg) _firstFieldMsg = errorBody[_fk][0];
+          fieldErrors[_fk] = errorBody[_fk][0];
+        }
+      }
+    }
     var error = new Error(
       errorBody?.detail ||
+      errorBody?.error ||
       errorBody?.message ||
       errorBody?.non_field_errors?.[0] ||
+      _firstFieldMsg ||
       "Request failed: " + response.status
     );
     error.status = response.status;
     error.body = errorBody ? snakeToCamel(errorBody) : null;
 
     // Field-level errors (DRF format: { field: ["error"] })
-    if (errorBody && typeof errorBody === "object") {
-      var fieldErrors = {};
-      for (var key in errorBody) {
-        if (Array.isArray(errorBody[key])) {
-          fieldErrors[key] = errorBody[key][0];
-        }
-      }
-      if (Object.keys(fieldErrors).length > 0) {
-        error.fieldErrors = snakeToCamel(fieldErrors);
-      }
+    if (Object.keys(fieldErrors).length > 0) {
+      error.fieldErrors = snakeToCamel(fieldErrors);
     }
 
     // User-friendly message (safe to display in UI)
@@ -362,7 +375,7 @@ export function getOfflineQueueCount() {
 
 export function enqueueOfflineMutation(url, options) {
   // Never queue sensitive authentication/account endpoints
-  var sensitivePatterns = ["/auth/", "/2fa/", "/password/", "/delete-account", "/conversations/"];
+  var sensitivePatterns = ["/auth/", "/2fa/", "/password/", "/delete-account", "/conversations/", "/users/", "/social/report", "/export", "/checkout", "/subscription/"];
   for (var i = 0; i < sensitivePatterns.length; i++) {
     if (url.indexOf(sensitivePatterns[i]) !== -1) return;
   }

@@ -78,7 +78,7 @@ export default function TimeBlocksScreen() {
       resetFormAndClose();
     },
     onError: function (err) {
-      showToast(err.message || "Failed to create time block", "error");
+      showToast(err.userMessage || err.message || "Failed to create time block", "error");
     },
   });
 
@@ -93,7 +93,7 @@ export default function TimeBlocksScreen() {
       resetFormAndClose();
     },
     onError: function (err) {
-      showToast(err.message || "Failed to update time block", "error");
+      showToast(err.userMessage || err.message || "Failed to update time block", "error");
     },
   });
 
@@ -108,7 +108,7 @@ export default function TimeBlocksScreen() {
       setConfirmDelete(null);
     },
     onError: function (err) {
-      showToast(err.message || "Failed to delete time block", "error");
+      showToast(err.userMessage || err.message || "Failed to delete time block", "error");
     },
   });
 
@@ -191,7 +191,7 @@ export default function TimeBlocksScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(blocksQuery.error && blocksQuery.error.message) || "Failed to load time blocks"}
+          message={(blocksQuery.error && (blocksQuery.error.userMessage || blocksQuery.error.message)) || "Failed to load time blocks"}
           onRetry={function () { blocksQuery.refetch(); }}
         />
       </PageLayout>
@@ -201,7 +201,7 @@ export default function TimeBlocksScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/calendar"); }} />}
         title="Time Blocks"
         right={<GradientButton gradient="primary" onClick={openAddModal} icon={Plus} size="sm" style={{borderRadius:14}} />}
       />

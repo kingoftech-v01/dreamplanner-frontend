@@ -134,8 +134,9 @@ export default function DreamCreateScreen() {
       navigate("/dream/" + dream.id + "/calibration");
     }).catch(function (err) {
       setSubmitting(false);
-      setServerError(err.message || "Failed to create dream. Please try again.");
-      showToast(err.message || "Failed to create dream", "error");
+      var msg = err.userMessage || err.message || "Failed to create dream. Please try again.";
+      setServerError(msg);
+      showToast(msg, "error");
     });
   }
 
@@ -190,7 +191,7 @@ export default function DreamCreateScreen() {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           marginBottom: 8,
         }}>
-          <IconButton icon={ArrowLeft} onClick={() => step > 0 ? setStep(step - 1) : navigate(-1)} />
+          <IconButton icon={ArrowLeft} onClick={() => step > 0 ? setStep(step - 1) : navigate("/")} />
 
           <span style={{
             fontSize: 13, color: "var(--dp-text-tertiary)",
@@ -199,7 +200,7 @@ export default function DreamCreateScreen() {
             Step {step + 1} of {STEPS.length}
           </span>
 
-          <IconButton icon={X} onClick={() => navigate(-1)} />
+          <IconButton icon={X} onClick={() => navigate("/")} />
         </div>
 
         {/* Progress Bar */}

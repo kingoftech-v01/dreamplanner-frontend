@@ -42,7 +42,7 @@ export default function VoiceCallScreen() {
       sessionRef.current = null;
     }
     apiPost(CONVERSATIONS.CALLS.END(callId)).catch(function () {});
-    navigate(-1);
+    navigate("/conversations");
   }, [navigate, callId]);
 
   // Join the Agora RTC channel (called only when both sides are ready)
@@ -62,7 +62,7 @@ export default function VoiceCallScreen() {
     });
     sessionRef.current = session;
     session.join().catch(function (err) {
-      setError(err.message || "Could not access microphone");
+      setError(err.userMessage || err.message || "Could not access microphone");
     });
   }, [callId, handleCallEnd]);
 
@@ -77,7 +77,7 @@ export default function VoiceCallScreen() {
         if (pollRef.current) clearInterval(pollRef.current);
         setCallStatus("ended");
         setError(data.status === "rejected" ? "Call declined" : data.status === "missed" ? "No answer" : "Call ended");
-        setTimeout(function () { navigate(-1); }, 1500);
+        setTimeout(function () { navigate("/conversations"); }, 1500);
       }
     }
     window.addEventListener("dp-call-status", handleCallStatus);
@@ -99,7 +99,7 @@ export default function VoiceCallScreen() {
           if (pollRef.current) clearInterval(pollRef.current);
           setCallStatus("ended");
           setError(s === "rejected" ? "Call declined" : s === "missed" ? "No answer" : "Call ended");
-          setTimeout(function () { navigate(-1); }, 1500);
+          setTimeout(function () { navigate("/conversations"); }, 1500);
         }
       }).catch(function () {});
     }
@@ -116,7 +116,7 @@ export default function VoiceCallScreen() {
       setCallStatus("connecting");
       joinRTC();
     }).catch(function (err) {
-      setError(err.message || "Failed to accept call");
+      setError(err.userMessage || err.message || "Failed to accept call");
     });
   }, [callId, answering, joinRTC]);
 
@@ -138,7 +138,7 @@ export default function VoiceCallScreen() {
     var timeout = setTimeout(function () {
       apiPost(CONVERSATIONS.CALLS.CANCEL(callId)).catch(function () {});
       setError("No answer");
-      setTimeout(function () { navigate(-1); }, 1500);
+      setTimeout(function () { navigate("/conversations"); }, 1500);
     }, 30000);
     return function () { clearTimeout(timeout); };
   }, [callStatus, callId, navigate]);
@@ -148,12 +148,12 @@ export default function VoiceCallScreen() {
       sessionRef.current.leave();
     }
     apiPost(CONVERSATIONS.CALLS.END(callId)).catch(function () {});
-    navigate(-1);
+    navigate("/conversations");
   };
 
   var cancelCall = function () {
     apiPost(CONVERSATIONS.CALLS.CANCEL(callId)).catch(function () {});
-    navigate(-1);
+    navigate("/conversations");
   };
 
   var handleToggleMute = function () {

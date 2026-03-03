@@ -104,9 +104,9 @@ export default function DreamEditScreen() {
     }).then(function () {
       queryClient.invalidateQueries({ queryKey: ["dream", id] });
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
-      navigate(-1);
+      navigate("/dream/" + id);
     }).catch(function (err) {
-      setServerError(err.message || "Failed to save changes.");
+      setServerError(err.userMessage || err.message || "Failed to save changes.");
     }).finally(function () {
       setSubmitting(false);
     });
@@ -143,7 +143,7 @@ export default function DreamEditScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={dreamQuery.error?.message || "Could not load dream."}
+          message={(dreamQuery.error?.userMessage || dreamQuery.error?.message) || "Could not load dream."}
           onRetry={function () { dreamQuery.refetch(); }}
         />
       </PageLayout>
@@ -162,7 +162,7 @@ export default function DreamEditScreen() {
           display: "flex", alignItems: "center", gap: 16,
           marginBottom: 28,
         }}>
-          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+          <IconButton icon={ArrowLeft} onClick={() => navigate("/dream/" + id)} />
           <h1 style={{
             fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
             margin: 0, letterSpacing: "-0.5px",

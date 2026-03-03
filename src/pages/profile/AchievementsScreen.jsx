@@ -89,7 +89,7 @@ export default function AchievementsScreen() {
     return (
       <PageLayout>
         <ErrorState
-          message={(achievementsInf.error && achievementsInf.error.message) || "Failed to load achievements"}
+          message={(achievementsInf.error && (achievementsInf.error.userMessage || achievementsInf.error.message)) || "Failed to load achievements"}
           onRetry={function () { achievementsInf.refetch(); }}
         />
       </PageLayout>
@@ -101,7 +101,7 @@ export default function AchievementsScreen() {
       <div style={{ paddingTop: 20, paddingBottom: 40 }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, ...stagger(0) }}>
-          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+          <IconButton icon={ArrowLeft} onClick={() => navigate("/profile")} />
           <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Achievements</span>
           <span style={{
             marginLeft: "auto", padding: "4px 10px", borderRadius: 10,

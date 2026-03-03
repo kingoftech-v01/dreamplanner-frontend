@@ -78,7 +78,7 @@ export default function MicroStartScreen() {
       queryClient.invalidateQueries({ queryKey: ["dream", dreamId] });
     },
     onError: function (err) {
-      showToast(err.message || "Failed to save completion", "error");
+      showToast(err.userMessage || err.message || "Failed to save completion", "error");
     },
   });
 
@@ -178,7 +178,7 @@ export default function MicroStartScreen() {
     return (
       <PageLayout showNav={false}>
         <ErrorState
-          message={dreamQuery.error?.message || "Failed to load dream"}
+          message={(dreamQuery.error?.userMessage || dreamQuery.error?.message) || "Failed to load dream"}
           onRetry={function () { dreamQuery.refetch(); }}
         />
       </PageLayout>
@@ -188,7 +188,7 @@ export default function MicroStartScreen() {
   return (
     <PageLayout showNav={false} header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Go back" />}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(dreamId ? "/dream/" + dreamId : "/")} label="Go back" />}
         title={dream.title}
         subtitle="2-Minute Start"
         right={<Timer size={18} color={"var(--dp-accent-text)"} strokeWidth={2} />}

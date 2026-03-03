@@ -226,7 +226,7 @@ export default function App() {
         <Route path="/login" element={<GuestRoute><LoginScreen /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute><RegisterScreen /></GuestRoute>} />
         <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordScreen /></GuestRoute>} />
-        <Route path="/change-password" element={<ChangePasswordScreen />} />
+        <Route path="/change-password" element={<P><ChangePasswordScreen /></P>} />
         <Route path="/terms" element={<TermsOfServiceScreen />} />
         <Route path="/privacy" element={<PrivacyPolicyScreen />} />
 

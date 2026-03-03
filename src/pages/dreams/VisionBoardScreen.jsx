@@ -112,7 +112,7 @@ export default function VisionBoardScreen() {
         if (next[id]) { delete next[id]; } else { next[id] = true; }
         return next;
       });
-      showToast(err.message || "Failed to update favorite", "error");
+      showToast(err.userMessage || err.message || "Failed to update favorite", "error");
     },
   });
 
@@ -155,7 +155,7 @@ export default function VisionBoardScreen() {
       setShowGenModal(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
     }).catch(function (err) {
-      showToast(err.message || t("vision.uploadFailed"), "error");
+      showToast(err.userMessage || err.message || t("vision.uploadFailed"), "error");
       setGenerating(null);
     });
   };
@@ -167,6 +167,9 @@ export default function VisionBoardScreen() {
     input.onchange = function (e) {
       var file = e.target.files && e.target.files[0];
       if (!file) return;
+      var validTypes = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+      if (validTypes.indexOf(file.type) === -1) { showToast("Unsupported file type. Use JPEG, PNG, WebP, or GIF.", "error"); return; }
+      if (file.size > 10 * 1024 * 1024) { showToast("Image too large. Maximum 10MB.", "error"); return; }
       setUploading(dreamId);
       var formData = new FormData();
       formData.append("image", file);
@@ -177,12 +180,28 @@ export default function VisionBoardScreen() {
         setShowGenModal(false);
         queryClient.invalidateQueries({ queryKey: ["dreams"] });
       }).catch(function (err) {
-        showToast(err.message || t("vision.uploadFailed"), "error");
+        showToast(err.userMessage || err.message || t("vision.uploadFailed"), "error");
         setUploading(null);
       });
     };
     input.click();
   };
+
+  var boardHeader = (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      padding: "20px 0 16px",
+    }}>
+      <IconButton icon={ArrowLeft} onClick={function () { navigate("/"); }} />
+      <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
+      <span style={{
+        fontSize: 17, fontWeight: 700, color: "var(--dp-text)",
+        letterSpacing: "-0.3px", flex: 1,
+      }}>
+        Vision Board
+      </span>
+    </div>
+  );
 
   // ── Loading state ──
   if (dreamsInf.isLoading) {
@@ -192,19 +211,7 @@ export default function VisionBoardScreen() {
           minHeight: "100vh",
           paddingBottom: 100,
         }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12,
-            padding: "20px 0 16px",
-          }}>
-            <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />
-            <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
-            <span style={{
-              fontSize: 17, fontWeight: 700, color: "var(--dp-text)",
-              letterSpacing: "-0.3px", flex: 1,
-            }}>
-              Vision Board
-            </span>
-          </div>
+          {boardHeader}
           <SkeletonCard height={90} style={{ marginBottom: 16 }} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             {[1, 2, 3, 4].map(function (i) {
@@ -224,21 +231,9 @@ export default function VisionBoardScreen() {
           minHeight: "100vh",
           paddingBottom: 100,
         }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 12,
-            padding: "20px 0 16px",
-          }}>
-            <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />
-            <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
-            <span style={{
-              fontSize: 17, fontWeight: 700, color: "var(--dp-text)",
-              letterSpacing: "-0.3px", flex: 1,
-            }}>
-              Vision Board
-            </span>
-          </div>
+          {boardHeader}
           <ErrorState
-            message={dreamsInf.error?.message || "Failed to load your dreams."}
+            message={(dreamsInf.error?.userMessage || dreamsInf.error?.message) || "Failed to load your dreams."}
             onRetry={function () { dreamsInf.refetch(); }}
           />
         </div>
@@ -266,7 +261,7 @@ export default function VisionBoardScreen() {
             transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />
+          <IconButton icon={ArrowLeft} onClick={function () { navigate("/"); }} />
           <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
           <span
             style={{

@@ -106,7 +106,7 @@ export default function CircleDetailScreen() {
   var createPostMut = useMutation({
     mutationFn: function (content) { return apiPost(CIRCLES.POSTS(id), { content: content }); },
     onSuccess: function () { qc.invalidateQueries({ queryKey: ["circle-feed", id] }); setNewPost(""); showToast("Post shared!", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to post", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to post", "error"); },
   });
 
   var reactMut = useMutation({
@@ -117,19 +117,19 @@ export default function CircleDetailScreen() {
   var deletePostMut = useMutation({
     mutationFn: function (postId) { return apiDelete(CIRCLES.POST_DELETE(id, postId)); },
     onSuccess: function () { qc.invalidateQueries({ queryKey: ["circle-feed", id] }); showToast("Post deleted", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to delete", "error"); },
   });
 
   var editPostMut = useMutation({
     mutationFn: function (p) { return apiPut(CIRCLES.POST_EDIT(id, p.postId), { content: p.content }); },
     onSuccess: function () { qc.invalidateQueries({ queryKey: ["circle-feed", id] }); setEditingPost(null); showToast("Post updated", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to update", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to update", "error"); },
   });
 
   var leaveMut = useMutation({
     mutationFn: function () { return apiPost(CIRCLES.LEAVE(id)); },
     onSuccess: function () { showToast("Left circle", "success"); navigate("/circles"); },
-    onError: function (err) { showToast(err.message || "Failed to leave", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to leave", "error"); },
   });
 
   var promoteMut = useMutation({
@@ -147,7 +147,7 @@ export default function CircleDetailScreen() {
   var challengeJoinMut = useMutation({
     mutationFn: function (challengeId) { return apiPost(CIRCLES.CHALLENGE_JOIN(challengeId)); },
     onSuccess: function () { qc.invalidateQueries({ queryKey: ["circle-challenges", id] }); showToast("Joined challenge!", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to join", "error"); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to join", "error"); },
   });
 
   // ── Handlers ──

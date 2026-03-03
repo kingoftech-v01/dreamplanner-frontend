@@ -52,7 +52,7 @@ export default function RegisterScreen() {
       setSubmitting(true);
       socialLogin(provider, token)
         .then(function () { navigate("/onboarding"); })
-        .catch(function (err) { setServerError(err.message || (provider + " sign up failed.")); })
+        .catch(function (err) { setServerError(err.userMessage || err.message || (provider + " sign up failed.")); })
         .finally(function () { setSubmitting(false); });
     };
     window.addEventListener("dp-oauth-callback", handleOAuthCallback);
@@ -120,7 +120,7 @@ export default function RegisterScreen() {
             setSubmitting(true);
             socialLogin("google", accessToken)
               .then(function () { navigate("/onboarding"); })
-              .catch(function (err) { setServerError(err.message || "Google sign up failed."); })
+              .catch(function (err) { setServerError(err.userMessage || err.message || "Google sign up failed."); })
               .finally(function () { setSubmitting(false); });
           }
         }
@@ -137,13 +137,18 @@ export default function RegisterScreen() {
 
     if (isNative) {
       var nativeRedirectUri = "com.dreamplanner.app://auth/apple/callback";
+      var appleStateBytes = new Uint8Array(32);
+      crypto.getRandomValues(appleStateBytes);
+      var oauthState = Array.from(appleStateBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+      sessionStorage.setItem("oauth_state", oauthState);
+      sessionStorage.setItem("oauth_redirect", nativeRedirectUri);
       var nativeAuthUrl = "https://appleid.apple.com/auth/authorize" +
         "?client_id=" + encodeURIComponent(appleClientId) +
         "&redirect_uri=" + encodeURIComponent((import.meta.env.VITE_API_BASE || "") + AUTH.APPLE_REDIRECT) +
         "&response_type=code%20id_token" +
         "&response_mode=form_post" +
         "&scope=name%20email" +
-        "&state=" + encodeURIComponent(nativeRedirectUri);
+        "&state=" + encodeURIComponent(oauthState);
       openBrowser(nativeAuthUrl);
       return;
     }
@@ -172,7 +177,7 @@ export default function RegisterScreen() {
             }
             socialLogin("apple", idToken)
               .then(function () { navigate("/onboarding"); })
-              .catch(function (err) { setServerError(err.message || "Apple sign up failed."); })
+              .catch(function (err) { setServerError(err.userMessage || err.message || "Apple sign up failed."); })
               .finally(function () { setSubmitting(false); });
           })
           .catch(function (err) {
@@ -233,7 +238,7 @@ export default function RegisterScreen() {
         if (err.fieldErrors) {
           setErrors(err.fieldErrors);
         }
-        var msg = err.message || "";
+        var msg = err.userMessage || err.message || "";
         if (err.status === 500) msg = "Server error. Please try again later.";
         else if (msg.toLowerCase().includes("unique") || msg.toLowerCase().includes("already exists"))
           msg = "An account with this email already exists. Try signing in instead.";

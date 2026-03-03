@@ -130,7 +130,7 @@ export default function SettingsScreen(){
       showToast(t("settings.preferencesSaved")||"Preferences saved","success");
     },
     onError:function(err){
-      showToast(err.message||"Failed to save preferences","error");
+      showToast(err.userMessage || err.message ||"Failed to save preferences","error");
     },
   });
 
@@ -144,7 +144,7 @@ export default function SettingsScreen(){
       setNewEmail("");
     },
     onError:function(err){
-      showToast(err.message||"Failed to change email","error");
+      showToast(err.userMessage || err.message ||"Failed to change email","error");
     },
   });
 
@@ -157,7 +157,7 @@ export default function SettingsScreen(){
       logout();
     },
     onError:function(err){
-      showToast(err.message||"Failed to delete account","error");
+      showToast(err.userMessage || err.message ||"Failed to delete account","error");
     },
   });
 
@@ -212,7 +212,7 @@ export default function SettingsScreen(){
     <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back"/>}
+        left={<IconButton icon={ArrowLeft} onClick={()=>navigate("/profile")} label="Go back"/>}
         title={t("settings.title")}
       />
 

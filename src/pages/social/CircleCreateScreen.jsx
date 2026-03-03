@@ -105,11 +105,11 @@ export default function CircleCreateScreen() {
       if (newId) {
         navigate("/circle/" + newId);
       } else {
-        navigate(-1);
+        navigate("/circles");
       }
     },
     onError: function (err) {
-      showToast(err.message || "Failed to create circle", "error");
+      showToast(err.userMessage || err.message || "Failed to create circle", "error");
     },
   });
 
@@ -141,7 +141,7 @@ export default function CircleCreateScreen() {
   return (
     <PageLayout header={
       <GlassAppBar
-        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Back" />}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/circles"); }} label="Back" />}
         title={<span style={{ display: "flex", alignItems: "center", gap: 8 }}><Users size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} /><span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)", letterSpacing: "-0.3px" }}>Create Circle</span></span>}
       />
     }>

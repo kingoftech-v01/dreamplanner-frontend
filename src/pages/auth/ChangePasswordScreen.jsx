@@ -84,9 +84,9 @@ export default function ChangePasswordScreen() {
       .catch(function (err) {
         if (err.fieldErrors) {
           var msg = err.fieldErrors.oldPassword || err.fieldErrors.newPassword1 || err.fieldErrors.newPassword2 || "";
-          setServerError(msg || err.message || "Failed to update password.");
+          setServerError(msg || err.userMessage || err.message || "Failed to update password.");
         } else {
-          setServerError(err.message || "Failed to update password.");
+          setServerError(err.userMessage || err.message || "Failed to update password.");
         }
       })
       .finally(function () {
@@ -106,7 +106,7 @@ export default function ChangePasswordScreen() {
           display: "flex", alignItems: "center", gap: 16,
           marginBottom: 32,
         }}>
-          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
+          <IconButton icon={ArrowLeft} onClick={() => navigate("/settings")} />
           <h1 style={{
             fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
             margin: 0, letterSpacing: "-0.5px",

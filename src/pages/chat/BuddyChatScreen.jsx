@@ -262,7 +262,7 @@ export default function BuddyChatScreen(){
         // Catch up on any messages missed while disconnected
         queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
       }).catch(function(err){
-        console.error("RTM channel join failed:",err.message||err.code||"unknown");
+        console.error("RTM channel join failed:",err.userMessage || err.message ||err.code||"unknown");
         rtmChannelRef.current=null;
         // Auto-retry with exponential backoff (max 30s)
         if(!cancelled){
@@ -324,7 +324,7 @@ export default function BuddyChatScreen(){
       rtmChannelRef.current.sendMessage(text).catch(function(){});
     }
     apiPost(BUDDIES.SEND_MESSAGE,{conversationId:convId,content:text})
-      .catch(function(err){showToast(err.message||t("chat.failedSend"),"error");});
+      .catch(function(err){showToast(err.userMessage || err.message ||t("chat.failedSend"),"error");});
   };
 
   // ─── Pin / Like mutations ─────────────────────────────────────
@@ -388,7 +388,7 @@ export default function BuddyChatScreen(){
         <GlassAppBar
           left={
             <>
-              <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+              <IconButton icon={ArrowLeft} onClick={()=>navigate("/conversations")} label="Go back" />
               <Avatar name={BUDDY.displayName} size={38} color="var(--dp-teal)" online={BUDDY.online} />
             </>
           }
@@ -403,12 +403,12 @@ export default function BuddyChatScreen(){
               <IconButton icon={Phone} label="Call" onClick={function(){
                 apiPost(CONVERSATIONS.CALLS.INITIATE,{callee_id:buddyInfo&&buddyInfo.id||id,call_type:"voice"}).then(function(data){
                   navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-                }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
+                }).catch(function(err){showToast(err.userMessage || err.message ||t("chat.failedCall"),"error");});
               }} />
               <IconButton icon={Video} label="Video call" onClick={function(){
                 apiPost(CONVERSATIONS.CALLS.INITIATE,{callee_id:buddyInfo&&buddyInfo.id||id,call_type:"video"}).then(function(data){
                   navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-                }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
+                }).catch(function(err){showToast(err.userMessage || err.message ||t("chat.failedCall"),"error");});
               }} />
               <div style={{position:"relative"}}>
                 <IconButton icon={MoreVertical} onClick={()=>setMenuOpen(!menuOpen)} label="More options" />

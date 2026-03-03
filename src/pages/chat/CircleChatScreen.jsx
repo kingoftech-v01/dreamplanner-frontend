@@ -212,7 +212,7 @@ export default function CircleChatScreen(){
           if(list.length>0)setMessages(list.map(mapCircleMsg));
         }).catch(function(){});
       }).catch(function(err){
-        console.error("Circle RTM join failed:",err.message||err.code||"unknown");
+        console.error("Circle RTM join failed:",err.userMessage || err.message ||err.code||"unknown");
         rtmChannelRef.current=null;
         // Auto-retry with exponential backoff
         if(!cancelled){
@@ -266,7 +266,7 @@ export default function CircleChatScreen(){
       }).catch(function(){});
     }
     apiPost(CIRCLES.CHAT_SEND(id),{content:text})
-      .catch(function(err){showToast(err.message||"Failed to send","error");});
+      .catch(function(err){showToast(err.userMessage || err.message ||"Failed to send","error");});
   };
 
   var handleInput=function(e){
@@ -316,12 +316,12 @@ export default function CircleChatScreen(){
             <IconButton icon={Phone} label="Voice call" onClick={function(){
               apiPost(CIRCLES.CALL.START(id)).then(function(data){
                 navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(circleName));
-              }).catch(function(err){showToast(err.message||"Failed to start call","error");});
+              }).catch(function(err){showToast(err.userMessage || err.message ||"Failed to start call","error");});
             }} />
             <IconButton icon={Video} label="Video call" onClick={function(){
               apiPost(CIRCLES.CALL.START(id),{call_type:"video"}).then(function(data){
                 navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(circleName));
-              }).catch(function(err){showToast(err.message||"Failed to start call","error");});
+              }).catch(function(err){showToast(err.userMessage || err.message ||"Failed to start call","error");});
             }} />
           </div>
         }

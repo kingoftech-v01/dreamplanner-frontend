@@ -1,3 +1,5 @@
+import GradientButton from "./GradientButton";
+
 export default function EmptyState({ icon, title, subtitle, action, onAction }) {
   return (
     <div style={{
@@ -16,7 +18,7 @@ export default function EmptyState({ icon, title, subtitle, action, onAction }) 
 
       <h3 style={{
         fontSize: 17, fontWeight: 600, color: "var(--dp-text)",
-        fontFamily: "Inter, sans-serif", margin: "0 0 6px",
+        margin: "0 0 6px",
       }}>
         {title || "Nothing here yet"}
       </h3>
@@ -24,7 +26,7 @@ export default function EmptyState({ icon, title, subtitle, action, onAction }) 
       {subtitle && (
         <p style={{
           fontSize: 13, color: "var(--dp-text-tertiary)",
-          fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+          lineHeight: 1.5,
           maxWidth: 260, margin: "0 0 20px",
         }}>
           {subtitle}
@@ -32,19 +34,9 @@ export default function EmptyState({ icon, title, subtitle, action, onAction }) 
       )}
 
       {action && onAction && (
-        <button
-          onClick={onAction}
-          style={{
-            height: 40, borderRadius: 12, padding: "0 20px",
-            background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-            border: "none", cursor: "pointer",
-            color: "#fff", fontSize: 13, fontWeight: 600,
-            fontFamily: "Inter, sans-serif",
-            boxShadow: "0 4px 16px rgba(139,92,246,0.3)",
-          }}
-        >
+        <GradientButton onClick={onAction} size="sm" gradient="primary">
           {action}
-        </button>
+        </GradientButton>
       )}
     </div>
   );

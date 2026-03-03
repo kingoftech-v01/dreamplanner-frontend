@@ -8,11 +8,18 @@ import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPut, apiPost, apiDelete } from "../../services/api";
 import { USERS } from "../../services/endpoints";
 import { isValidEmail, sanitizeText } from "../../utils/sanitize";
+import { adaptColor } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassModal from "../../components/shared/GlassModal";
 import {
   ArrowLeft, User, Mail, Lock, Sun, Moon, Monitor, Sparkles,
   Globe, Clock, Bell, Calendar, Crown, ShoppingBag,
   Info, FileText, Shield, LogOut, Trash2, X, Check,
-  ChevronRight, AlertTriangle, BellOff, BellRing
+  ChevronRight, AlertTriangle, BellOff, BellRing,
+  Download, UserX
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -24,7 +31,22 @@ import {
  * ═══════════════════════════════════════════════════════════════════ */
 
 const LANGUAGES = [
-  {code:"en",label:"English"},{code:"fr",label:"Français"},{code:"es",label:"Español"},
+  {code:"en",label:"English"},
+  {code:"fr",label:"Français"},
+  {code:"es",label:"Español"},
+  {code:"de",label:"Deutsch"},
+  {code:"pt",label:"Português"},
+  {code:"it",label:"Italiano"},
+  {code:"nl",label:"Nederlands"},
+  {code:"ru",label:"Русский"},
+  {code:"ja",label:"日本語"},
+  {code:"ko",label:"한국어"},
+  {code:"zh",label:"中文"},
+  {code:"ar",label:"العربية"},
+  {code:"hi",label:"हिन्दी"},
+  {code:"tr",label:"Türkçe"},
+  {code:"pl",label:"Polski"},
+  {code:"ht",label:"Kreyòl Ayisyen"},
 ];
 
 const TIMEZONES = [
@@ -70,7 +92,12 @@ export default function SettingsScreen(){
   // Fetch notification preferences from API
   useQuery({
     queryKey:["notification-preferences"],
-    queryFn:function(){return apiGet(USERS.NOTIFICATION_PREFS);},
+    queryFn:function(){return apiGet(USERS.NOTIFICATION_PREFS).catch(function(e){
+      // Backend may not support GET on this endpoint (405) — use defaults silently
+      if(e && (e.status===405||e.status===404))return null;
+      throw e;
+    });},
+    retry:false,
     onSuccess:function(data){
       if(data){
         setNotifs({
@@ -136,43 +163,43 @@ export default function SettingsScreen(){
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
-  // Sync timezone preference to localStorage
+  // Sync timezone preference to localStorage and backend
   useEffect(()=>{
     try{localStorage.setItem("dp-timezone",tz);}catch(e){}
+    // Sync to backend so streak calculations use correct timezone
+    apiPut(USERS.UPDATE_PROFILE, { timezone: tz }).catch(function(){});
   },[tz]);
 
 
   const Toggle=({on,onToggle})=>{
-    const{resolved:_r}=useTheme();const _isLight=_r==="light";
     return(
-    <button onClick={onToggle} style={{width:44,height:26,borderRadius:13,padding:2,border:"none",cursor:"pointer",background:on?"rgba(93,229,168,0.3)":(_isLight?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.08)"),transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)"}}>
-      <div style={{width:22,height:22,borderRadius:11,background:on?"#5DE5A8":(_isLight?"rgba(26,21,53,0.25)":"rgba(255,255,255,0.3)"),transform:on?"translateX(18px)":"translateX(0)",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",boxShadow:on?"0 0 8px rgba(93,229,168,0.4)":"none"}}/>
+    <button onClick={onToggle} style={{width:44,height:26,borderRadius:13,padding:2,border:"none",cursor:"pointer",background:on?"rgba(93,229,168,0.3)":"var(--dp-accent-soft)",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)"}}>
+      <div style={{width:22,height:22,borderRadius:11,background:on?"var(--dp-success)":"var(--dp-text-muted)",transform:on?"translateX(18px)":"translateX(0)",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",boxShadow:on?"0 0 8px rgba(93,229,168,0.4)":"none"}}/>
     </button>
     );
   };
 
   const Tile=({icon:I,title,sub,right,onClick,color="#C4B5FD"})=>{
     const{resolved:_r}=useTheme();const _isLight=_r==="light";
-    const _mc=color==="#C4B5FD"?(_isLight?"#6D28D9":"#C4B5FD"):color==="#FCD34D"?(_isLight?"#B45309":"#FCD34D"):color==="#5EEAD4"?(_isLight?"#0D9488":"#5EEAD4"):color==="#5DE5A8"?(_isLight?"#059669":"#5DE5A8"):color==="#F69A9A"?(_isLight?"#DC2626":"#F69A9A"):color==="rgba(255,255,255,0.85)"?(_isLight?"rgba(26,21,53,0.7)":"rgba(255,255,255,0.85)"):color;
+    const _mc=color==="rgba(255,255,255,0.85)"?(_isLight?"rgba(26,21,53,0.7)":"rgba(255,255,255,0.85)"):adaptColor(color,_isLight);
     return(
-    <div className="dp-g dp-gh" onClick={onClick} style={{padding:"12px 16px",marginBottom:6,cursor:onClick?"pointer":"default",display:"flex",alignItems:"center",gap:14}}>
+    <GlassCard hover onClick={onClick} padding="12px 16px" mb={6} style={{cursor:onClick?"pointer":"default",display:"flex",alignItems:"center",gap:14}}>
       <div style={{width:36,height:36,borderRadius:12,background:`${color}10`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
         <I size={17} color={_mc} strokeWidth={2}/>
       </div>
       <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:14,fontWeight:500,color:_isLight?"#1a1535":"#fff"}}>{title}</div>
-        {sub&&<div style={{fontSize:12,color:_isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:1}}>{sub}</div>}
+        <div style={{fontSize:14,fontWeight:500,color:"var(--dp-text)"}}>{title}</div>
+        {sub&&<div style={{fontSize:12,color:"var(--dp-text-tertiary)",marginTop:1}}>{sub}</div>}
       </div>
-      {right||<ChevronRight size={16} color={_isLight?"rgba(26,21,53,0.4)":"rgba(255,255,255,0.3)"} strokeWidth={2}/>}
-    </div>
+      {right||<ChevronRight size={16} color="var(--dp-text-muted)" strokeWidth={2}/>}
+    </GlassCard>
     );
   };
 
   const Section=({title,delay,children})=>{
-    const{resolved:_r}=useTheme();const _isLight=_r==="light";
     return(
     <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${delay}ms`}}>
-      <div style={{fontSize:12,fontWeight:700,color:_isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:8,paddingLeft:4}}>{title}</div>
+      <h2 style={{fontSize:12,fontWeight:700,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.8px",marginBottom:8,paddingLeft:4,margin:0,marginBottom:8}}>{title}</h2>
       {children}
       <div style={{height:12}}/>
     </div>
@@ -182,12 +209,12 @@ export default function SettingsScreen(){
   const langLabel=LANGUAGES.find(l=>l.code===locale)?.label||"English";
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
-      <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",padding:"0 16px",gap:10,background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <button className="dp-ib" aria-label="Go back" onClick={()=>navigate(-1)}><ArrowLeft size={20} strokeWidth={2}/></button>
-        <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>{t("settings.title")}</span>
-      </header>
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back"/>}
+        title={t("settings.title")}
+      />
 
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"20px 16px 32px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{width:"100%"}}>
@@ -196,35 +223,43 @@ export default function SettingsScreen(){
             <Tile icon={User} title={t("settings.editProfile")} sub={(user&&user.displayName)||""} onClick={()=>navigate("/edit-profile")}/>
             <Tile icon={Mail} title={t("settings.email")} sub={(user&&user.email)||""} onClick={function(){setShowEmailChange(true);setNewEmail("");}}/>
             <Tile icon={Lock} title={t("settings.changePassword")} onClick={()=>navigate("/change-password")}/>
+            <Tile icon={Shield} title={t("settings.twoFactor") || "Two-Factor Auth"} onClick={()=>navigate("/settings/2fa")}/>
+            <Tile icon={UserX} title={t("settings.blockedUsers") || "Blocked Users"} onClick={()=>navigate("/settings/blocked")}/>
+            <Tile icon={Download} title={t("settings.dataExport") || "Export My Data"} onClick={()=>navigate("/settings/export")}/>
           </Section>
 
           <Section title={t("settings.appearance")} delay={100}>
-            <div className="dp-g" style={{padding:14,marginBottom:6}}>
-              <div style={{fontSize:14,fontWeight:500,color:isLight?"#1a1535":"#fff",marginBottom:12}}>{t("settings.visualTheme")}</div>
+            <GlassCard padding={14} mb={6}>
+              <div style={{fontSize:14,fontWeight:500,color:"var(--dp-text)",marginBottom:12}}>{t("settings.visualTheme")}</div>
               <div style={{display:"flex",gap:10}}>
                 {[
-                  {id:"default",label:t("settings.default"),sub:t("settings.dayNight"),icons:[Sun,Moon]},
-                  {id:"cosmos",label:t("settings.cosmos"),sub:t("settings.space"),icons:[Sparkles]},
-                  {id:"saturn",label:t("settings.saturn"),sub:t("settings.planets"),icons:[Globe]},
+                  {id:"default",label:t("settings.default"),sub:t("settings.dayNight"),icons:[Sun,Moon],preview:["#f0ecff","#7C3AED","#14B8A6","#F59E0B"]},
+                  {id:"cosmos",label:t("settings.cosmos"),sub:t("settings.space"),icons:[Sparkles],preview:["#0F0A1E","#8B5CF6","#C4B5FD","#5DE5A8"]},
+                  {id:"saturn",label:t("settings.saturn"),sub:t("settings.planets"),icons:[Globe],preview:["#0A0520","#EC4899","#8B5CF6","#14B8A6"]},
                 ].map(th=>{const active=theme===th.id;return(
-                  <button key={th.id} onClick={()=>setTheme(th.id)} style={{
-                    flex:1,padding:"16px 12px",borderRadius:16,border:active?"1px solid rgba(139,92,246,0.4)":(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"),
-                    background:active?"rgba(139,92,246,0.12)":(isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.02)"),
-                    display:"flex",flexDirection:"column",alignItems:"center",gap:6,cursor:"pointer",transition:"all 0.2s",
+                  <button key={th.id} onClick={()=>setTheme(th.id)} aria-pressed={active} style={{
+                    flex:1,padding:"16px 12px",borderRadius:16,border:active?"1px solid rgba(139,92,246,0.4)":("1px solid var(--dp-glass-border)"),
+                    background:active?"var(--dp-accent-soft)":(isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.02)"),
+                    display:"flex",flexDirection:"column",alignItems:"center",gap:8,cursor:"pointer",transition:"all 0.2s",
+                    fontFamily:"inherit",
                   }}>
-                    <div style={{display:"flex",gap:4}}>
-                      {th.icons.map((I,i)=><I key={i} size={18} color={active?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)")} strokeWidth={2}/>)}
+                    {/* Theme color preview */}
+                    <div style={{width:"100%",height:40,borderRadius:10,overflow:"hidden",display:"flex",border:"1px solid var(--dp-glass-border)"}}>
+                      {th.preview.map(function(c,ci){return <div key={ci} style={{flex:1,background:c}} />;})}
                     </div>
-                    <span style={{fontSize:13,fontWeight:active?600:500,color:active?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.7)":"rgba(255,255,255,0.85)")}}>{th.label}</span>
-                    <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{th.sub}</span>
-                    {active&&<div style={{width:6,height:6,borderRadius:3,background:isLight?"#7C3AED":"#C4B5FD",boxShadow:"0 0 6px rgba(196,181,253,0.5)"}}/>}
+                    <div style={{display:"flex",gap:4}}>
+                      {th.icons.map((I,i)=><I key={i} size={16} color={active?"var(--dp-accent)":"var(--dp-text-muted)"} strokeWidth={2}/>)}
+                    </div>
+                    <span style={{fontSize:13,fontWeight:active?600:500,color:active?"var(--dp-accent)":"var(--dp-text-primary)"}}>{th.label}</span>
+                    <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{th.sub}</span>
+                    {active&&<div style={{width:6,height:6,borderRadius:3,background:"var(--dp-accent)",boxShadow:"0 0 6px rgba(196,181,253,0.5)"}}/>}
                   </button>
                 );})}
               </div>
-            </div>
+            </GlassCard>
             {theme==="default"&&(
-              <div className="dp-g" style={{padding:14,marginTop:6,marginBottom:6}}>
-                <div style={{fontSize:13,fontWeight:500,color:isLight?"#1a1535":"#fff",marginBottom:10}}>{t("settings.timeOfDay")}</div>
+              <GlassCard padding={14} mb={6} style={{marginTop:6}}>
+                <div style={{fontSize:13,fontWeight:500,color:"var(--dp-text)",marginBottom:10}}>{t("settings.timeOfDay")}</div>
                 <div style={{display:"flex",gap:8}}>
                   {[
                     {id:null,Icon:Monitor,label:t("settings.auto")},
@@ -233,17 +268,17 @@ export default function SettingsScreen(){
                   ].map(m=>{const active=forceMode===m.id;return(
                     <button key={m.label} onClick={()=>setForceMode(m.id)} style={{
                       flex:1,padding:"10px 8px",borderRadius:12,
-                      border:active?"1px solid rgba(139,92,246,0.3)":(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"),
-                      background:active?"rgba(139,92,246,0.1)":"transparent",
+                      border:active?"1px solid rgba(139,92,246,0.3)":("1px solid var(--dp-glass-border)"),
+                      background:active?"var(--dp-accent-soft)":"transparent",
                       display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"pointer",fontSize:12,fontFamily:"inherit",
-                      color:active?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.6)"),transition:"all 0.2s",
+                      color:active?"var(--dp-accent)":"var(--dp-text-tertiary)",transition:"all 0.2s",
                     }}>
                       <m.Icon size={16} strokeWidth={2}/>
                       <span style={{fontWeight:active?600:400}}>{m.label}</span>
                     </button>
                   );})}
                 </div>
-              </div>
+              </GlassCard>
             )}
           </Section>
 
@@ -255,20 +290,18 @@ export default function SettingsScreen(){
             <Tile icon={User} title={t("settings.buddyReminders")} right={<Toggle on={notifs.buddy} onToggle={function(){var next={...notifs,buddy:!notifs.buddy};setNotifs(next);notifMutation.mutate({pushEnabled:next.push,emailEnabled:next.email,buddyReminders:next.buddy,streakReminders:next.streak});}}/>} color="#5EEAD4"/>
             <Tile icon={BellOff} title={t("settings.doNotDisturb")} sub={dndEnabled?(dndStart+" - "+dndEnd):undefined} right={<Toggle on={dndEnabled} onToggle={function(){var next=!dndEnabled;setDndEnabled(next);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:next,dndStart:dndStart,dndEnd:dndEnd});}}/>}/>
             {dndEnabled&&(
-              <div className="dp-g" style={{padding:14,marginBottom:6}}>
+              <GlassCard padding={14} mb={6}>
                 <div style={{display:"flex",gap:12}}>
                   <div style={{flex:1}}>
-                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>{t("settings.from")}</label>
-                    <input type="time" value={dndStart} onChange={function(e){setDndStart(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:e.target.value,dndEnd:dndEnd});}}
-                      style={{width:"100%",padding:"10px 12px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+                    <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",marginBottom:6,display:"block"}}>{t("settings.from")}</label>
+                    <GlassInput type="time" value={dndStart} onChange={function(e){setDndStart(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:e.target.value,dndEnd:dndEnd});}}/>
                   </div>
                   <div style={{flex:1}}>
-                    <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginBottom:6,display:"block"}}>{t("settings.to")}</label>
-                    <input type="time" value={dndEnd} onChange={function(e){setDndEnd(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:dndStart,dndEnd:e.target.value});}}
-                      style={{width:"100%",padding:"10px 12px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+                    <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",marginBottom:6,display:"block"}}>{t("settings.to")}</label>
+                    <GlassInput type="time" value={dndEnd} onChange={function(e){setDndEnd(e.target.value);notifMutation.mutate({pushEnabled:notifs.push,emailEnabled:notifs.email,buddyReminders:notifs.buddy,streakReminders:notifs.streak,dndEnabled:dndEnabled,dndStart:dndStart,dndEnd:e.target.value});}}/>
                   </div>
                 </div>
-              </div>
+              </GlassCard>
             )}
             <Tile icon={Calendar} title={t("settings.googleCalendar")} sub={t("settings.syncEvents")} color="#93C5FD" onClick={()=>navigate("/calendar-connect")}/>
           </Section>
@@ -285,14 +318,10 @@ export default function SettingsScreen(){
           </Section>
 
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"500ms"}}>
-            <button onClick={function(){logout();}} style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(246,154,154,0.15)",background:"rgba(246,154,154,0.06)",color:isLight?"#DC2626":"#F69A9A",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s",marginBottom:10}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(246,154,154,0.12)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(246,154,154,0.06)"}>
+            <button onClick={function(){logout();}} className="dp-gh" style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(246,154,154,0.15)",background:"rgba(246,154,154,0.06)",color:"var(--dp-danger)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s",marginBottom:10}}>
               <LogOut size={16} strokeWidth={2}/>{t("settings.signOut")}
             </button>
-            <button onClick={function(){setShowDelete(true);setDeleteText("");setDeletePassword("");}} style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",color:"rgba(239,68,68,0.8)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.1)"}
-              onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.04)"}>
+            <button onClick={function(){setShowDelete(true);setDeleteText("");setDeletePassword("");}} className="dp-gh" style={{width:"100%",padding:"14px 0",borderRadius:16,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",color:"rgba(239,68,68,0.8)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.2s"}}>
               <Trash2 size={16} strokeWidth={2}/>{t("settings.deleteAccount")}
             </button>
           </div>
@@ -301,122 +330,87 @@ export default function SettingsScreen(){
       </main>
 
       {/* ═══ LANGUAGE PICKER ═══ */}
-      {showLang&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-          <div onClick={()=>setShowLang(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"100%",maxWidth:420,maxHeight:"70vh",background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:"22px 22px 0 0",border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",borderBottom:"none",animation:"dpSlideUp 0.3s cubic-bezier(0.16,1,0.3,1)",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"16px 20px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.chooseLanguage")}</span>
-              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={()=>setShowLang(false)}><X size={16} strokeWidth={2}/></button>
-            </div>
-            <div style={{flex:1,overflowY:"auto",padding:"8px 12px 20px"}}>
-              {LANGUAGES.map(l=>(
-                <button key={l.code} onClick={()=>{setLocale(l.code);setShowLang(false);}} style={{
-                  width:"100%",padding:"12px 16px",borderRadius:12,border:"none",marginBottom:4,
-                  background:locale===l.code?"rgba(139,92,246,0.1)":"transparent",
-                  display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",
-                  transition:"all 0.15s",fontFamily:"inherit",
-                }}
-                  onMouseEnter={e=>{if(locale!==l.code)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)";}}
-                  onMouseLeave={e=>{if(locale!==l.code)e.currentTarget.style.background="transparent";}}>
-                  <span style={{fontSize:14,fontWeight:locale===l.code?600:400,color:locale===l.code?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)")}}>{l.label}</span>
-                  {locale===l.code&&<Check size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>}
-                </button>
-              ))}
-            </div>
-          </div>
+      <GlassModal open={showLang} onClose={()=>setShowLang(false)} variant="bottom" title={t("settings.chooseLanguage")}>
+        <div style={{padding:"8px 12px 20px"}}>
+          {LANGUAGES.map(l=>(
+            <button key={l.code} onClick={()=>{setLocale(l.code);setShowLang(false);}} className="dp-gh" style={{
+              width:"100%",padding:"12px 16px",borderRadius:12,border:"none",marginBottom:4,
+              background:locale===l.code?"var(--dp-accent-soft)":"transparent",
+              display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",
+              transition:"all 0.15s",fontFamily:"inherit",
+            }}>
+              <span style={{fontSize:14,fontWeight:locale===l.code?600:400,color:locale===l.code?"var(--dp-accent)":"var(--dp-text-primary)"}}>{l.label}</span>
+              {locale===l.code&&<Check size={16} color="var(--dp-accent)" strokeWidth={2.5}/>}
+            </button>
+          ))}
         </div>
-      )}
+      </GlassModal>
 
       {/* ═══ TIMEZONE PICKER ═══ */}
-      {showTz&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-          <div onClick={()=>{setShowTz(false);setTzSearch("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"100%",maxWidth:420,maxHeight:"70vh",background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:"22px 22px 0 0",border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",borderBottom:"none",animation:"dpSlideUp 0.3s cubic-bezier(0.16,1,0.3,1)",display:"flex",flexDirection:"column"}}>
-            <div style={{padding:"16px 20px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.chooseTimezone")}</span>
-              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={()=>{setShowTz(false);setTzSearch("");}}><X size={16} strokeWidth={2}/></button>
-            </div>
-            <div style={{padding:"8px 12px 0",flexShrink:0}}>
-              <input value={tzSearch} onChange={e=>setTzSearch(e.target.value)} placeholder={t("settings.searchTimezones")} autoFocus style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
-            </div>
-            <div style={{flex:1,overflowY:"auto",padding:"8px 12px 20px"}}>
-              {TIMEZONES.filter(tz_item=>!tzSearch||tz_item.label.toLowerCase().includes(tzSearch.toLowerCase())||tz_item.value.toLowerCase().includes(tzSearch.toLowerCase())).map(tz_item=>(
-                <button key={tz_item.value} onClick={()=>{setTz(tz_item.value);setShowTz(false);setTzSearch("");}} style={{
-                  width:"100%",padding:"12px 16px",borderRadius:12,border:"none",marginBottom:4,
-                  background:tz===tz_item.value?"rgba(139,92,246,0.1)":"transparent",
-                  display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",
-                  transition:"all 0.15s",fontFamily:"inherit",
-                }}
-                  onMouseEnter={e=>{if(tz!==tz_item.value)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)";}}
-                  onMouseLeave={e=>{if(tz!==tz_item.value)e.currentTarget.style.background="transparent";}}>
-                  <div>
-                    <span style={{fontSize:14,fontWeight:tz===tz_item.value?600:400,color:tz===tz_item.value?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)")}}>{tz_item.label}</span>
-                    <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",marginLeft:8}}>UTC{tz_item.offset}</span>
-                  </div>
-                  {tz===tz_item.value&&<Check size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>}
-                </button>
-              ))}
-            </div>
-          </div>
+      <GlassModal open={showTz} onClose={()=>{setShowTz(false);setTzSearch("");}} variant="bottom" title={t("settings.chooseTimezone")}>
+        <div style={{padding:"8px 12px 0",flexShrink:0}}>
+          <GlassInput value={tzSearch} onChange={e=>setTzSearch(e.target.value)} placeholder={t("settings.searchTimezones")} autoFocus/>
         </div>
-      )}
+        <div style={{flex:1,overflowY:"auto",padding:"8px 12px 20px"}}>
+          {TIMEZONES.filter(tz_item=>!tzSearch||tz_item.label.toLowerCase().includes(tzSearch.toLowerCase())||tz_item.value.toLowerCase().includes(tzSearch.toLowerCase())).map(tz_item=>(
+            <button key={tz_item.value} onClick={()=>{setTz(tz_item.value);setShowTz(false);setTzSearch("");}} className="dp-gh" style={{
+              width:"100%",padding:"12px 16px",borderRadius:12,border:"none",marginBottom:4,
+              background:tz===tz_item.value?"var(--dp-accent-soft)":"transparent",
+              display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",
+              transition:"all 0.15s",fontFamily:"inherit",
+            }}>
+              <div>
+                <span style={{fontSize:14,fontWeight:tz===tz_item.value?600:400,color:tz===tz_item.value?"var(--dp-accent)":"var(--dp-text-primary)"}}>{tz_item.label}</span>
+                <span style={{fontSize:12,color:"var(--dp-text-muted)",marginLeft:8}}>UTC{tz_item.offset}</span>
+              </div>
+              {tz===tz_item.value&&<Check size={16} color="var(--dp-accent)" strokeWidth={2.5}/>}
+            </button>
+          ))}
+        </div>
+      </GlassModal>
 
       {/* ═══ EMAIL CHANGE DIALOG ═══ */}
-      {showEmailChange&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-              <div style={{width:40,height:40,borderRadius:12,background:"rgba(139,92,246,0.1)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Mail size={20} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-              </div>
-              <div>
-                <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.changeEmail")}</div>
-                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{t("settings.verificationSent")}</div>
-              </div>
-            </div>
-            <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:12}}>
-              {t("settings.current")} <strong>{(user&&user.email)||""}</strong>
-            </div>
-            <input value={newEmail} onChange={function(e){setNewEmail(e.target.value);}} placeholder={t("settings.newEmail")} type="email" autoFocus
-              style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")||"Cancel"}</button>
-              <button disabled={!newEmail||emailMutation.isPending} onClick={function(){var cleanEmail=sanitizeText(newEmail,254);if(!isValidEmail(cleanEmail)){showToast("Please enter a valid email address","error");return;}emailMutation.mutate({newEmail:cleanEmail});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newEmail?"rgba(139,92,246,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:newEmail?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:newEmail?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{emailMutation.isPending?"Saving...":"Save"}</button>
-            </div>
+      <GlassModal open={showEmailChange} onClose={function(){setShowEmailChange(false);setNewEmail("");}} variant="center" maxWidth={380} style={{padding:24}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <div style={{width:40,height:40,borderRadius:12,background:"var(--dp-accent-soft)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <Mail size={20} color="var(--dp-accent)" strokeWidth={2}/>
+          </div>
+          <div>
+            <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("settings.changeEmail")}</div>
+            <div style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{t("settings.verificationSent")}</div>
           </div>
         </div>
-      )}
+        <div style={{fontSize:13,color:"var(--dp-text-primary)",lineHeight:1.5,marginBottom:12}}>
+          {t("settings.current")} <strong>{(user&&user.email)||""}</strong>
+        </div>
+        <GlassInput value={newEmail} onChange={function(e){setNewEmail(e.target.value);}} placeholder={t("settings.newEmail")} type="email" autoFocus style={{marginBottom:14}}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={function(){setShowEmailChange(false);setNewEmail("");}} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-glass-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text-primary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")||"Cancel"}</button>
+          <button disabled={!newEmail||emailMutation.isPending} onClick={function(){var cleanEmail=sanitizeText(newEmail,254);if(!isValidEmail(cleanEmail)){showToast("Please enter a valid email address","error");return;}emailMutation.mutate({newEmail:cleanEmail});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newEmail?"rgba(139,92,246,0.2)":"var(--dp-glass-bg)",color:newEmail?"var(--dp-accent)":"var(--dp-text-muted)",fontSize:14,fontWeight:600,cursor:newEmail?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{emailMutation.isPending?"Saving...":"Save"}</button>
+        </div>
+      </GlassModal>
 
       {/* ═══ DELETE ACCOUNT DIALOG ═══ */}
-      {showDelete&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={()=>setShowDelete(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid rgba(239,68,68,0.15)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-              <div style={{width:40,height:40,borderRadius:12,background:"rgba(239,68,68,0.1)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <AlertTriangle size={20} color="rgba(239,68,68,0.8)" strokeWidth={2}/>
-              </div>
-              <div>
-                <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("settings.deleteAccount")}</div>
-                <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{t("settings.cannotBeUndone")}</div>
-              </div>
-            </div>
-            <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,marginBottom:16}}>
-              {t("settings.deleteWarning")} <strong style={{color:"rgba(239,68,68,0.9)"}}>DELETE</strong>
-            </div>
-            <input value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder={t("settings.typeDelete")}
-              style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:10}}/>
-            <input value={deletePassword} onChange={function(e){setDeletePassword(e.target.value);}} placeholder={t("settings.enterPassword")} type="password"
-              style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",marginBottom:14}}/>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setShowDelete(false)} style={{flex:1,padding:"12px",borderRadius:12,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")}</button>
-              <button disabled={deleteText!=="DELETE"||!deletePassword||deleteMutation.isPending} onClick={function(){deleteMutation.mutate({password:deletePassword});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:(deleteText==="DELETE"&&deletePassword)?"rgba(239,68,68,0.2)":(isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)"),color:(deleteText==="DELETE"&&deletePassword)?"rgba(239,68,68,0.9)":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.2)"),fontSize:14,fontWeight:600,cursor:(deleteText==="DELETE"&&deletePassword)?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{deleteMutation.isPending?"Deleting...":"Delete Forever"}</button>
-            </div>
+      <GlassModal open={showDelete} onClose={()=>setShowDelete(false)} variant="center" maxWidth={380} style={{padding:24,borderColor:"var(--dp-danger-soft)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+          <div style={{width:40,height:40,borderRadius:12,background:"var(--dp-danger-soft)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <AlertTriangle size={20} color="var(--dp-danger-solid)" strokeWidth={2}/>
+          </div>
+          <div>
+            <div style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("settings.deleteAccount")}</div>
+            <div style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{t("settings.cannotBeUndone")}</div>
           </div>
         </div>
-      )}
+        <div style={{fontSize:13,color:"var(--dp-text-primary)",lineHeight:1.5,marginBottom:16}}>
+          {t("settings.deleteWarning")} <strong style={{color:"rgba(239,68,68,0.9)"}}>DELETE</strong>
+        </div>
+        <GlassInput value={deleteText} onChange={e=>setDeleteText(e.target.value)} placeholder={t("settings.typeDelete")} style={{marginBottom:10}}/>
+        <GlassInput value={deletePassword} onChange={function(e){setDeletePassword(e.target.value);}} placeholder={t("settings.enterPassword")} type="password" style={{marginBottom:14}}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>setShowDelete(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-glass-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text-primary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{t("settings.cancel")}</button>
+          <button disabled={deleteText!=="DELETE"||!deletePassword||deleteMutation.isPending} onClick={function(){deleteMutation.mutate({password:deletePassword});}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:(deleteText==="DELETE"&&deletePassword)?"rgba(239,68,68,0.2)":"var(--dp-glass-bg)",color:(deleteText==="DELETE"&&deletePassword)?"rgba(239,68,68,0.9)":"var(--dp-text-muted)",fontSize:14,fontWeight:600,cursor:(deleteText==="DELETE"&&deletePassword)?"pointer":"not-allowed",fontFamily:"inherit",transition:"all 0.2s"}}>{deleteMutation.isPending?"Deleting...":"Delete Forever"}</button>
+        </div>
+      </GlassModal>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

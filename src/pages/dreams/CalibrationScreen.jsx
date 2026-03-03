@@ -6,9 +6,14 @@ import {
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { BRAND, GRADIENTS, adaptColor } from "../../styles/colors";
 import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPost } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — AI Dream Calibration Screen
@@ -58,15 +63,6 @@ const FALLBACK_QUESTIONS = [
     options: ["Low", "Medium", "High", "Very High"],
   },
 ];
-
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
 
 export default function CalibrationScreen() {
   const navigate = useNavigate();
@@ -308,7 +304,6 @@ export default function CalibrationScreen() {
     <PageLayout showNav={false}>
       <div
         style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
           minHeight: "100vh",
           paddingBottom: 32,
         }}
@@ -329,7 +324,7 @@ export default function CalibrationScreen() {
             style={{
               height: "100%",
               width: `${progress}%`,
-              background: "linear-gradient(90deg, #8B5CF6, #C4B5FD)",
+              background: GRADIENTS.xp,
               borderRadius: "0 2px 2px 0",
               transition: "width 0.6s cubic-bezier(0.16, 1, 0.3, 1)",
               boxShadow: "0 0 12px rgba(139,92,246,0.4)",
@@ -350,9 +345,7 @@ export default function CalibrationScreen() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <button className="dp-ib" onClick={() => navigate(-1)}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
+            <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
             <span
               style={{
                 fontSize: 17,
@@ -369,7 +362,7 @@ export default function CalibrationScreen() {
               style={{
                 fontSize: 13,
                 fontWeight: 600,
-                color: isLight ? "#6D28D9" : "#C4B5FD",
+                color: adaptColor(BRAND.purpleLight, isLight),
                 padding: "4px 12px",
                 borderRadius: 10,
                 background: "rgba(139,92,246,0.1)",
@@ -410,7 +403,7 @@ export default function CalibrationScreen() {
             >
               <Loader2
                 size={28}
-                color={isLight ? "#6D28D9" : "#C4B5FD"}
+                color={adaptColor(BRAND.purpleLight, isLight)}
                 strokeWidth={2}
                 style={{ animation: "spin 1s linear infinite" }}
               />
@@ -454,7 +447,7 @@ export default function CalibrationScreen() {
                 animation: "calibPulse 2s ease-in-out infinite",
               }}
             >
-              <Sparkles size={40} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={1.5} />
+              <Sparkles size={40} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={1.5} />
             </div>
 
             <h2
@@ -497,18 +490,13 @@ export default function CalibrationScreen() {
             >
               {[
                 { icon: Target, label: "Goals", value: planResult ? String(planResult.goals ? (planResult.goals.length || planResult.goals) : "--") : "--", color: "#8B5CF6" },
-                { icon: Zap, label: "Tasks", value: planResult && planResult.tasks ? String(planResult.tasks) : "--", color: isLight ? "#B45309" : "#FCD34D" },
+                { icon: Zap, label: "Tasks", value: planResult && planResult.tasks ? String(planResult.tasks) : "--", color: adaptColor(BRAND.yellow, isLight) },
                 { icon: Star, label: "Questions", value: String(Object.keys(answers).length || calibrationCount) + "/" + String(questions.length || calibrationCount), color: "#10B981" },
               ].map(({ icon: Icon, label, value, color }, i) => (
-                <div
+                <GlassCard
                   key={i}
-                  style={{
-                    flex: 1,
-                    ...glass,
-                    padding: "14px 8px",
-                    textAlign: "center",
-                    borderRadius: 16,
-                  }}
+                  padding="14px 8px"
+                  style={{ flex: 1, textAlign: "center", borderRadius: 16 }}
                 >
                   <Icon
                     size={18}
@@ -530,92 +518,45 @@ export default function CalibrationScreen() {
                   >
                     {label}
                   </div>
-                </div>
+                </GlassCard>
               ))}
             </div>
 
             {/* Retry / View Plan button */}
             {planError ? (
-              <button
+              <GradientButton
+                gradient="primaryDark"
                 onClick={handleCalibrationComplete}
                 disabled={generatingPlan}
-                style={{
-                  width: "100%",
-                  maxWidth: 360,
-                  padding: "16px 0",
-                  borderRadius: 16,
-                  border: "none",
-                  background: generatingPlan ? "var(--dp-glass-bg)" : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                  color: generatingPlan ? "var(--dp-text-muted)" : "#fff",
-                  fontSize: 16,
-                  fontWeight: 700,
-                  cursor: generatingPlan ? "not-allowed" : "pointer",
-                  fontFamily: "inherit",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                  boxShadow: generatingPlan ? "none" : "0 4px 20px rgba(139,92,246,0.35)",
-                  transition: "all 0.2s",
-                  marginBottom: 12,
-                }}
+                loading={generatingPlan}
+                icon={!generatingPlan ? Sparkles : undefined}
+                fullWidth
+                style={{ maxWidth: 360, padding: "16px 0", borderRadius: 16, marginBottom: 12 }}
               >
-                {generatingPlan ? (
-                  <>
-                    <Loader2 size={18} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                    Generating Plan...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles size={18} strokeWidth={2} />
-                    Retry Plan Generation
-                  </>
-                )}
-              </button>
+                {generatingPlan ? "Generating Plan..." : "Retry Plan Generation"}
+              </GradientButton>
             ) : null}
-            <button
+            <GradientButton
+              gradient={planError ? undefined : "primaryDark"}
               onClick={() => navigate(id ? `/dream/${id}` : "/")}
               disabled={generatingPlan}
+              loading={generatingPlan}
+              icon={!generatingPlan && !planError ? Sparkles : undefined}
+              fullWidth
               style={{
-                width: "100%",
                 maxWidth: 360,
                 padding: "16px 0",
                 borderRadius: 16,
-                border: planError ? "1px solid var(--dp-input-border)" : "none",
-                background: planError
-                  ? "var(--dp-surface)"
-                  : generatingPlan
-                  ? "var(--dp-glass-bg)"
-                  : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                color: planError
-                  ? "var(--dp-text)"
-                  : generatingPlan ? "var(--dp-text-muted)" : "#fff",
-                fontSize: 16,
-                fontWeight: 700,
-                cursor: generatingPlan ? "not-allowed" : "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                boxShadow: (planError || generatingPlan) ? "none" : "0 4px 20px rgba(139,92,246,0.35)",
-                transition: "all 0.2s",
+                ...(planError ? {
+                  background: "var(--dp-surface)",
+                  border: "1px solid var(--dp-input-border)",
+                  color: "var(--dp-text)",
+                  boxShadow: "none",
+                } : {}),
               }}
             >
-              {generatingPlan ? (
-                <>
-                  <Loader2 size={18} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                  Generating Plan...
-                </>
-              ) : planError ? (
-                "Go to Dream"
-              ) : (
-                <>
-                  <Sparkles size={18} strokeWidth={2} />
-                  View Your Plan
-                </>
-              )}
-            </button>
+              {generatingPlan ? "Generating Plan..." : planError ? "Go to Dream" : "View Your Plan"}
+            </GradientButton>
           </div>
         ) : (
           /* Question card */
@@ -628,11 +569,11 @@ export default function CalibrationScreen() {
               transition: "all 0.4s cubic-bezier(0.16, 1, 0.3, 1)",
             }}
           >
-            <div
+            <GlassCard
+              padding={28}
               style={{
-                ...glass,
-                padding: 28,
                 borderRadius: 24,
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
               }}
             >
               {/* AI Avatar */}
@@ -651,7 +592,7 @@ export default function CalibrationScreen() {
                   boxShadow: "0 0 24px rgba(139,92,246,0.15)",
                 }}
               >
-                <Bot size={28} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={1.5} />
+                <Bot size={28} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={1.5} />
               </div>
 
               {/* Question text */}
@@ -715,7 +656,7 @@ export default function CalibrationScreen() {
                               justifyContent: "center",
                             }}
                           >
-                            <Check size={13} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={3} />
+                            <Check size={13} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={3} />
                           </div>
                         )}
                       </button>
@@ -723,34 +664,15 @@ export default function CalibrationScreen() {
                   })}
                 </div>
               ) : (
-                <textarea
+                <GlassInput
                   value={textValue}
                   onChange={(e) => setTextValue(e.target.value)}
                   placeholder={question.placeholder}
-                  rows={4}
-                  style={{
-                    width: "100%",
-                    padding: "14px 18px",
-                    borderRadius: 14,
-                    border: "1px solid var(--dp-input-border)",
-                    background: "var(--dp-glass-bg)",
-                    color: "var(--dp-text)",
-                    fontSize: 14,
-                    fontFamily: "inherit",
-                    outline: "none",
-                    resize: "none",
-                    lineHeight: 1.6,
-                    transition: "border-color 0.2s",
-                  }}
-                  onFocus={(e) =>
-                    (e.target.style.borderColor = "rgba(139,92,246,0.3)")
-                  }
-                  onBlur={(e) =>
-                    (e.target.style.borderColor = "var(--dp-input-border)")
-                  }
+                  multiline
+                  inputStyle={{ rows: 4, lineHeight: 1.6, padding: "14px 18px" }}
                 />
               )}
-            </div>
+            </GlassCard>
 
             {/* Step dots indicator */}
             <div
@@ -813,33 +735,16 @@ export default function CalibrationScreen() {
                 Skip
               </button>
 
-              <button
+              <GradientButton
+                gradient="primaryDark"
                 onClick={handleNext}
                 disabled={!canProceed || submittingAnswer}
-                style={{
-                  padding: "12px 28px",
-                  borderRadius: 14,
-                  border: "none",
-                  background: canProceed
-                    ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                    : "var(--dp-glass-bg)",
-                  color: canProceed ? "#fff" : "var(--dp-text-muted)",
-                  fontSize: 15,
-                  fontWeight: 600,
-                  cursor: canProceed ? "pointer" : "not-allowed",
-                  fontFamily: "inherit",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  boxShadow: canProceed
-                    ? "0 4px 16px rgba(139,92,246,0.3)"
-                    : "none",
-                  transition: "all 0.25s",
-                }}
+                loading={submittingAnswer}
+                icon={!submittingAnswer ? ChevronRight : undefined}
+                size="md"
               >
                 {submittingAnswer ? "Analyzing..." : currentQ === questions.length - 1 ? "Complete" : "Next"}
-                <ChevronRight size={18} strokeWidth={2} />
-              </button>
+              </GradientButton>
             </div>
           </div>
         )}

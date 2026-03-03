@@ -28,6 +28,8 @@ export default defineConfig({
       },
       workbox: {
         importScripts: ['./sw-custom.js'],
+        clientsClaim: true,
+        skipWaiting: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         runtimeCaching: [
           {

@@ -57,20 +57,20 @@ export function sanitizeText(str, maxLength) {
   return clean;
 }
 
-/** Sanitize URL — block javascript: and data: schemes, validate format */
+/** Sanitize URL — block javascript:, data:, and protocol-relative URLs */
 export function sanitizeUrl(url) {
   if (typeof url !== "string") return "";
   var trimmed = url.trim();
   if (!trimmed) return "";
   // Block dangerous schemes
   if (/^(javascript|data|vbscript):/i.test(trimmed)) return "";
-  // Must start with http://, https://, or // (protocol-relative)
-  if (!/^(https?:\/\/|\/\/)/i.test(trimmed)) {
-    // Allow relative paths starting with /
-    if (/^\/[^\/]/.test(trimmed)) return trimmed.slice(0, 2000);
-    return "";
-  }
-  return trimmed.slice(0, 2000);
+  // Block protocol-relative URLs (//evil.com) — can bypass same-origin
+  if (/^\/\//.test(trimmed)) return "";
+  // Must start with http:// or https://
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.slice(0, 2000);
+  // Allow relative paths starting with / (but not //)
+  if (/^\/[^\/]/.test(trimmed)) return trimmed.slice(0, 2000);
+  return "";
 }
 
 /** Sanitize number — ensure numeric within range */

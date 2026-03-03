@@ -1,38 +1,54 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../services/api";
 import { CIRCLES } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import {
-  ArrowLeft, Users, Plus, Flame, Trophy, MessageSquare,
-  Search, ChevronRight, UserPlus, Check
+  ArrowLeft, Users, Plus, Flame, Search, UserPlus, Check, X
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import PillTabs from "../../components/shared/PillTabs";
 import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { adaptColor, catSolid, BRAND } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GlassInput from "../../components/shared/GlassInput";
+import GradientButton from "../../components/shared/GradientButton";
+import ExpandableText from "../../components/shared/ExpandableText";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Circles Screen
+// Category-filtered discover + horizontal My Circles row
 // ═══════════════════════════════════════════════════════════════
 
-const CATEGORY_COLORS = {
-  Health: "#10B981",
-  Career: "#8B5CF6",
-  Growth: "#6366F1",
-  Finance: "#FCD34D",
-  Hobbies: "#EC4899",
+var CIRCLE_CATEGORIES = [
+  { key: "all", label: "All" },
+  { key: "career", label: "Career" },
+  { key: "health", label: "Health" },
+  { key: "fitness", label: "Fitness" },
+  { key: "education", label: "Education" },
+  { key: "finance", label: "Finance" },
+  { key: "creativity", label: "Creativity" },
+  { key: "relationships", label: "Social" },
+  { key: "personal_growth", label: "Growth" },
+  { key: "hobbies", label: "Hobbies" },
+];
+
+// Extra categories not in colors.js CATEGORIES map
+var EXTRA_CAT_COLORS = {
+  fitness: "#3B82F6", education: "#6366F1", creativity: "#EC4899",
+  personal_growth: "#6366F1", other: "#9CA3AF",
 };
 
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
+function getCatColor(key) {
+  if (!key) return BRAND.purple;
+  var k = key.toLowerCase().replace(/\s+/g, "_");
+  return catSolid(k) || EXTRA_CAT_COLORS[k] || BRAND.purple;
+}
 
 function normalizeCircles(data) {
   var list = Array.isArray(data) ? data : (data && data.results ? data.results : []);
@@ -41,439 +57,210 @@ function normalizeCircles(data) {
       id: c.id,
       name: c.name || "",
       description: c.description || "",
-      category: c.category || "Growth",
-      memberCount: c.memberCount != null ? c.memberCount : 0,
-      posts: c.posts != null ? c.posts : 0,
-      activeChallenge: c.activeChallenge || null,
-      isJoined: c.isJoined != null ? c.isJoined : false,
+      category: c.category || "other",
+      memberCount: c.memberCount != null ? c.memberCount : (c.member_count || 0),
+      activeChallenge: c.activeChallenge || c.active_challenge || null,
+      isJoined: c.isJoined != null ? c.isJoined : (c.is_joined || false),
     };
   });
 }
 
 export default function CirclesScreen() {
-  const navigate = useNavigate();
-  const { resolved } = useTheme(); const isLight = resolved === "light";
-  const { showToast } = useToast();
-  var queryClient = useQueryClient();
-  const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState("my"); // "my" | "discover"
+  var navigate = useNavigate();
+  var { resolved } = useTheme(); var isLight = resolved === "light";
+  var { showToast } = useToast();
+  var qc = useQueryClient();
+  var [mounted, setMounted] = useState(false);
+  var [showSearch, setShowSearch] = useState(false);
+  var [searchText, setSearchText] = useState("");
+  var [debouncedSearch, setDebouncedSearch] = useState("");
+  var [activeCategory, setActiveCategory] = useState("all");
   var [justJoinedSet, setJustJoinedSet] = useState(function () { return new Set(); });
+  var debounceRef = useRef(null);
+
+  // Debounce search input
+  useEffect(function () {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(function () {
+      setDebouncedSearch(searchText.trim());
+    }, 300);
+    return function () { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchText]);
+
+  // Build discover URL with category + search filters
+  var discoverUrl = CIRCLES.LIST + "?filter=recommended";
+  if (activeCategory !== "all") discoverUrl += "&category=" + activeCategory;
+  if (debouncedSearch) discoverUrl += "&search=" + encodeURIComponent(debouncedSearch);
 
   var myCirclesInf = useInfiniteList({ queryKey: ["circles", "my"], url: CIRCLES.LIST + "?filter=my", limit: 20 });
-  var discoverInf = useInfiniteList({ queryKey: ["circles", "discover"], url: CIRCLES.LIST + "?filter=recommended", limit: 20 });
+  var discoverInf = useInfiniteList({ queryKey: ["circles", "discover", activeCategory, debouncedSearch], url: discoverUrl, limit: 20 });
 
   var myCircles = normalizeCircles(myCirclesInf.items);
   var discoverCircles = normalizeCircles(discoverInf.items);
 
-  useEffect(() => {
-    setTimeout(() => setMounted(true), 100);
-  }, []);
+  useEffect(function () { setTimeout(function () { setMounted(true); }, 100); }, []);
 
   var joinMut = useMutation({
     mutationFn: function (circleId) { return apiPost(CIRCLES.JOIN(circleId)); },
     onSuccess: function (_data, circleId) {
-      setJustJoinedSet(function (prev) {
-        var next = new Set(prev);
-        next.add(circleId);
-        return next;
-      });
-      queryClient.invalidateQueries({ queryKey: ["circles"] });
+      setJustJoinedSet(function (prev) { var next = new Set(prev); next.add(circleId); return next; });
+      qc.invalidateQueries({ queryKey: ["circles"] });
       showToast("Joined circle!", "success");
     },
     onError: function (err) { showToast(err.message || "Failed to join", "error"); },
   });
 
-  var isLoading = (activeTab === "my" && myCirclesInf.isLoading) ||
-    (activeTab === "discover" && discoverInf.isLoading);
-
-  const tabs = [
-    { key: "my", label: "My Circles" },
-    { key: "discover", label: "Discover" },
-  ];
-
-  const currentList = activeTab === "my" ? myCircles : discoverCircles;
-
   if (myCirclesInf.isError || discoverInf.isError) {
-    return (
-      <PageLayout>
-        <ErrorState
-          message={((myCirclesInf.error && myCirclesInf.error.message) || (discoverInf.error && discoverInf.error.message)) || "Failed to load circles"}
-          onRetry={function () { myCirclesInf.refetch(); discoverInf.refetch(); }}
-        />
-      </PageLayout>
-    );
+    return <PageLayout><ErrorState message="Failed to load circles" onRetry={function () { myCirclesInf.refetch(); discoverInf.refetch(); }} /></PageLayout>;
   }
 
   return (
-    <PageLayout>
-      <div
-        style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-          minHeight: "100vh",
-          paddingBottom: 100,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "20px 0 16px",
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(-10px)",
-            transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
-        >
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <Users size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-          <span
-            style={{
-              fontSize: 17,
-              fontWeight: 700,
-              color: "var(--dp-text)",
-              letterSpacing: "-0.3px",
-            }}
-          >
-            Circles
-          </span>
-        </div>
-
-        {/* Tab bar */}
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            padding: 4,
-            borderRadius: 14,
-            background: "var(--dp-glass-bg)",
-            border: "1px solid var(--dp-glass-border)",
-            marginBottom: 20,
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(10px)",
-            transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s",
-          }}
-        >
-          {tabs.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              style={{
-                flex: 1,
-                padding: "10px 0",
-                borderRadius: 11,
-                border: "none",
-                background:
-                  activeTab === tab.key
-                    ? "rgba(139,92,246,0.15)"
-                    : "transparent",
-                color:
-                  activeTab === tab.key
-                    ? "var(--dp-text)"
-                    : "var(--dp-text-tertiary)",
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-                boxShadow:
-                  activeTab === tab.key
-                    ? "0 2px 8px rgba(139,92,246,0.15)"
-                    : "none",
-              }}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Circle cards */}
-        {isLoading ? (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "60px 20px",
-              opacity: mounted ? 1 : 0,
-              transition: "all 0.5s ease 0.2s",
-            }}
-          >
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                border: "3px solid var(--dp-glass-border)",
-                borderTopColor: isLight ? "#8B5CF6" : "#C4B5FD",
-                borderRadius: "50%",
-                animation: "spin 0.8s linear infinite",
-                margin: "0 auto 16px",
-              }}
-            />
-            <p style={{ fontSize: 14, color: "var(--dp-text-tertiary)" }}>
-              Loading circles...
-            </p>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title={<span style={{ display: "flex", alignItems: "center", gap: 8 }}><Users size={20} color="var(--dp-accent)" /><span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Circles</span></span>}
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <IconButton icon={showSearch ? X : Search} onClick={function () { setShowSearch(!showSearch); setSearchText(""); }} />
+            <IconButton icon={Plus} onClick={function () { navigate("/circles/create"); }} />
           </div>
-        ) : currentList.length === 0 ? (
-          <div
-            style={{
-              textAlign: "center",
-              padding: "60px 20px",
-              opacity: mounted ? 1 : 0,
-              transition: "all 0.5s ease 0.2s",
-            }}
-          >
-            <Users
-              size={40}
-              color={isLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.15)"}
-              strokeWidth={1.5}
-              style={{ marginBottom: 16 }}
-            />
-            <p style={{ fontSize: 15, color: "var(--dp-text-tertiary)" }}>
-              {activeTab === "my"
-                ? "You haven't joined any circles yet"
-                : "No new circles to discover"}
-            </p>
+        }
+      />
+    }>
+
+      <div style={{ paddingBottom: 32, opacity: mounted ? 1 : 0, transition: "opacity 0.4s ease" }}>
+
+        {/* Search bar */}
+        {showSearch && (
+          <div style={{ marginBottom: 12 }}>
+            <GlassInput icon={Search} value={searchText} onChange={function (e) { setSearchText(e.target.value); }} autoFocus placeholder="Search circles..." />
           </div>
-        ) : (
-          currentList.map((circle, i) => {
-            const categoryColor =
-              CATEGORY_COLORS[circle.category] || "#C4B5FD";
-            const justJoined =
-              activeTab === "discover" && (circle.isJoined || justJoinedSet.has(circle.id));
+        )}
 
-            return (
-              <div
-                key={circle.id}
-                style={{
-                  opacity: mounted ? 1 : 0,
-                  transform: mounted ? "translateY(0)" : "translateY(16px)",
-                  transition: `all 0.5s cubic-bezier(0.16, 1, 0.3, 1) ${0.15 + i * 0.07}s`,
-                }}
-              >
-                <div
-                  onClick={() => navigate(`/circle/${circle.id}`)}
-                  style={{
-                    ...glass,
-                    padding: 18,
-                    marginBottom: 12,
-                    cursor: "pointer",
-                    transition: "all 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "var(--dp-surface-hover)";
-                    e.currentTarget.style.transform = "translateY(-2px)";
-                    e.currentTarget.style.boxShadow =
-                      "0 8px 32px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.08)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "var(--dp-glass-bg)";
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow =
-                      "inset 0 1px 0 rgba(255,255,255,0.06)";
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      justifyContent: "space-between",
-                      marginBottom: 12,
-                    }}
-                  >
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          marginBottom: 6,
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: 16,
-                            fontWeight: 700,
-                            color: "var(--dp-text)",
-                          }}
-                        >
-                          {circle.name}
-                        </span>
-                      </div>
-                      <p
-                        style={{
-                          fontSize: 12,
-                          color: "var(--dp-text-secondary)",
-                          lineHeight: 1.5,
-                          marginBottom: 10,
-                        }}
-                      >
-                        {circle.description}
-                      </p>
-                    </div>
-                    <ChevronRight
-                      size={18}
-                      color="var(--dp-text-muted)"
-                      strokeWidth={2}
-                      style={{ flexShrink: 0, marginTop: 2 }}
-                    />
-                  </div>
-
-                  {/* Meta row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                      gap: 8,
-                    }}
-                  >
-                    {/* Category pill */}
-                    <span
-                      style={{
-                        padding: "4px 10px",
-                        borderRadius: 8,
-                        background: `${categoryColor}12`,
-                        border: `1px solid ${categoryColor}20`,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: isLight ? ({ "#FCD34D": "#B45309" }[categoryColor] || categoryColor) : categoryColor,
-                      }}
-                    >
-                      {circle.category}
-                    </span>
-
-                    {/* Member count */}
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 11,
-                        color: "var(--dp-text-tertiary)",
-                      }}
-                    >
-                      <Users size={12} strokeWidth={2} />
-                      {circle.memberCount}
-                    </span>
-
-                    {/* Post count */}
-                    <span
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 4,
-                        fontSize: 11,
-                        color: "var(--dp-text-tertiary)",
-                      }}
-                    >
-                      <MessageSquare size={12} strokeWidth={2} />
-                      {circle.posts}
-                    </span>
-
-                    {/* Active challenge */}
-                    {circle.activeChallenge && (
-                      <span
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 4,
-                          padding: "3px 8px",
-                          borderRadius: 8,
-                          background: "rgba(249,115,22,0.08)",
-                          border: "1px solid rgba(249,115,22,0.15)",
-                          fontSize: 10,
-                          fontWeight: 600,
-                          color: "#FB923C",
-                        }}
-                      >
-                        <Flame size={11} strokeWidth={2.5} />
-                        Challenge
+        {/* ═══ MY CIRCLES — horizontal scroll row ═══ */}
+        {myCircles.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}>My Circles</span>
+              <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>{myCircles.length}</span>
+            </div>
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+              {myCircles.map(function (circle) {
+                var catColor = getCatColor(circle.category);
+                return (
+                  <div key={circle.id} onClick={function () { navigate("/circle/" + circle.id); }} style={{
+                    flexShrink: 0, width: 80, textAlign: "center", cursor: "pointer",
+                  }}>
+                    <div style={{
+                      width: 56, height: 56, borderRadius: 18, margin: "0 auto 6px",
+                      background: catColor + "15", border: "2px solid " + catColor + "30",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>
+                      <span style={{ fontSize: 18, fontWeight: 700, color: catColor }}>
+                        {(circle.name || "C")[0].toUpperCase()}
                       </span>
-                    )}
+                    </div>
+                    <div style={{
+                      fontSize: 11, fontWeight: 600, color: "var(--dp-text)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
+                      {circle.name}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-                    {/* Join button (Discover tab) */}
-                    {activeTab === "discover" && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          joinMut.mutate(circle.id);
-                        }}
-                        disabled={justJoined || joinMut.isPending}
-                        style={{
-                          marginLeft: "auto",
-                          padding: "6px 14px",
-                          borderRadius: 10,
-                          border: justJoined
-                            ? "1px solid rgba(16,185,129,0.2)"
-                            : "none",
-                          background: justJoined
-                            ? "rgba(16,185,129,0.08)"
-                            : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                          color: justJoined ? "#10B981" : "#fff",
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: justJoined ? "default" : "pointer",
-                          fontFamily: "inherit",
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 5,
-                          boxShadow: justJoined
-                            ? "none"
-                            : "0 2px 8px rgba(139,92,246,0.25)",
-                          transition: "all 0.25s",
-                        }}
-                      >
-                        {justJoined ? (
-                          <>
-                            <Check size={13} strokeWidth={2.5} />
-                            Joined
-                          </>
-                        ) : (
-                          <>
-                            <UserPlus size={13} strokeWidth={2} />
-                            Join
-                          </>
-                        )}
-                      </button>
+        {myCircles.length === 0 && !myCirclesInf.isLoading && (
+          <GlassCard padding={20} mb={16} style={{ textAlign: "center" }}>
+            <Users size={28} color="var(--dp-text-muted)" strokeWidth={1.5} style={{ marginBottom: 8 }} />
+            <p style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)", marginBottom: 4 }}>No circles yet</p>
+            <p style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>Join a circle below to get started!</p>
+          </GlassCard>
+        )}
+
+        {/* ═══ DISCOVER ═══ */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}>Discover</span>
+        </div>
+
+        {/* Category filter tabs */}
+        <PillTabs
+          tabs={CIRCLE_CATEGORIES}
+          active={activeCategory}
+          onChange={setActiveCategory}
+          size="sm"
+          scrollable
+          style={{ marginBottom: 14 }}
+        />
+
+        {discoverInf.isLoading && (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading circles...</div>
+        )}
+
+        {!discoverInf.isLoading && discoverCircles.length === 0 && (
+          <div style={{ textAlign: "center", padding: 32, color: "var(--dp-text-muted)" }}>
+            <p style={{ fontSize: 14 }}>{debouncedSearch ? "No circles match your search" : "No circles to discover"}</p>
+          </div>
+        )}
+
+        {discoverCircles.map(function (circle) {
+          var catColor = getCatColor(circle.category);
+          var justJoined = circle.isJoined || justJoinedSet.has(circle.id);
+
+          return (
+            <GlassCard key={circle.id} hover padding={16} mb={10} onClick={function () { navigate("/circle/" + circle.id); }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{
+                  width: 44, height: 44, borderRadius: 14, flexShrink: 0,
+                  background: catColor + "15", border: "1px solid " + catColor + "25",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <span style={{ fontSize: 18, fontWeight: 700, color: catColor }}>
+                    {(circle.name || "C")[0].toUpperCase()}
+                  </span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3 }}>
+                    {circle.name}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{
+                      padding: "2px 7px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+                      background: catColor + "12", color: adaptColor(catColor, isLight),
+                      border: "1px solid " + catColor + "20",
+                    }}>{circle.category}</span>
+                    <span style={{ fontSize: 11, color: "var(--dp-text-muted)", display: "flex", alignItems: "center", gap: 3 }}>
+                      <Users size={11} /> {circle.memberCount}
+                    </span>
+                    {circle.activeChallenge && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 2, fontSize: 10, color: "#FB923C" }}>
+                        <Flame size={10} /> Active
+                      </span>
                     )}
                   </div>
                 </div>
+                <GradientButton
+                  gradient={justJoined ? "teal" : "primaryDark"}
+                  size="sm"
+                  icon={justJoined ? Check : UserPlus}
+                  disabled={justJoined || joinMut.isPending}
+                  onClick={function (e) { e.stopPropagation(); joinMut.mutate(circle.id); }}
+                >
+                  {justJoined ? "Joined" : "Join"}
+                </GradientButton>
               </div>
-            );
-          })
-        )}
-        <div ref={myCirclesInf.sentinelRef} style={{height:1}} />
-        <div ref={discoverInf.sentinelRef} style={{height:1}} />
-        {(activeTab === "my" ? myCirclesInf.loadingMore : discoverInf.loadingMore) && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+              {circle.description && (
+                <ExpandableText text={circle.description} maxLines={2} fontSize={12} color="var(--dp-text-secondary)" style={{ marginTop: 8 }} />
+              )}
+            </GlassCard>
+          );
+        })}
 
-        {/* Create Circle FAB */}
-        <button
-          onClick={() => navigate("/circles/create")}
-          style={{
-            position: "fixed",
-            bottom: 28,
-            right: 28,
-            width: 56,
-            height: 56,
-            borderRadius: 18,
-            border: "none",
-            background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-            color: "#fff",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            boxShadow:
-              "0 6px 24px rgba(139,92,246,0.4), 0 0 40px rgba(139,92,246,0.15)",
-            zIndex: 100,
-            transition: "all 0.25s",
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "scale(1)" : "scale(0.5)",
-          }}
-        >
-          <Plus size={24} strokeWidth={2.5} />
-        </button>
+        <div ref={discoverInf.sentinelRef} style={{ height: 1 }} />
+        {discoverInf.loadingMore && <div style={{ textAlign: "center", padding: 16, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading more...</div>}
       </div>
     </PageLayout>
   );

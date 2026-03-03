@@ -6,11 +6,15 @@ import { NOTIFICATIONS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Bell, CheckCheck, Star, Users, Target, Clock, Zap, MessageCircle, Shield } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
+import { BRAND } from "../../styles/colors";
 import { useToast } from "../../context/ToastContext";
 import { useT } from "../../context/I18nContext";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
+import IconButton from "../../components/shared/IconButton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import PillTabs from "../../components/shared/PillTabs";
 
 const TYPE_COLORS = {
   dream_progress: "#8B5CF6",
@@ -80,18 +84,9 @@ const DATE_SECTIONS = [
   { labelKey: "notifications.earlier", category: "earlier" },
 ];
 
-const glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
-
 export default function NotificationsScreen() {
   const navigate = useNavigate();
-  const { resolved } = useTheme(); const isLight = resolved === "light";
+  useTheme();
   var { showToast } = useToast();
   var { t } = useT();
   var queryClient = useQueryClient();
@@ -132,8 +127,11 @@ export default function NotificationsScreen() {
   var markAllReadMutation = useMutation({
     mutationFn: function () { return apiPost(NOTIFICATIONS.MARK_ALL_READ); },
     onSuccess: function () {
+      // Server deletes all notifications — clear local cache
+      queryClient.setQueryData(["notifications"], { pages: [], pageParams: [] });
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
       queryClient.invalidateQueries({ queryKey: ["unread"] });
+      showToast(t("notifications.allCleared") || "All notifications cleared", "success");
     },
     onError: function (err) { showToast(err.message || t("notifications.failedMarkAll"), "error"); },
   });
@@ -199,7 +197,49 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{
+              fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
+              }}>
+              {t("notifications.title")}
+            </span>
+            {unreadCount > 0 && (
+              <span style={{
+                background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                color: "#fff", fontSize: 11, fontWeight: 700,
+                padding: "2px 8px", borderRadius: 10,
+                minWidth: 20, textAlign: "center",
+              }}>
+                {unreadCount}
+              </span>
+            )}
+          </div>
+        }
+        right={
+          unreadCount > 0 ? (
+            <button
+              onClick={handleMarkAllRead}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: "none", cursor: "pointer",
+                padding: "8px 12px", borderRadius: 10, fontFamily: "inherit",
+              }}
+            >
+              <CheckCheck size={16} color={BRAND.purple} />
+              <span style={{
+                fontSize: 12, fontWeight: 600, color: BRAND.purple,
+                }}>
+                {t("notifications.markAllRead")}
+              </span>
+            </button>
+          ) : null
+        }
+      />
+    }>
       <style>{`
         @keyframes slideDismiss {
           from { transform: translateX(0); opacity: 1; }
@@ -211,85 +251,17 @@ export default function NotificationsScreen() {
         }
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        paddingTop: 16, paddingBottom: 12,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h1 style={{
-              fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-              fontFamily: "Inter, sans-serif", margin: 0,
-            }}>
-              {t("notifications.title")}
-            </h1>
-            {unreadCount > 0 && (
-              <span style={{
-                background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                color: "#fff", fontSize: 11, fontWeight: 700,
-                fontFamily: "Inter, sans-serif",
-                padding: "2px 8px", borderRadius: 10,
-                minWidth: 20, textAlign: "center",
-              }}>
-                {unreadCount}
-              </span>
-            )}
-          </div>
-        </div>
-        {unreadCount > 0 && (
-          <button
-            onClick={handleMarkAllRead}
-            style={{
-              display: "flex", alignItems: "center", gap: 6,
-              background: "none", border: "none", cursor: "pointer",
-              padding: "8px 12px", borderRadius: 10,
-            }}
-          >
-            <CheckCheck size={16} color={isLight ? "#6D28D9" : "#8B5CF6"} />
-            <span style={{
-              fontSize: 12, fontWeight: 600, color: isLight ? "#6D28D9" : "#8B5CF6",
-              fontFamily: "Inter, sans-serif",
-            }}>
-              {t("notifications.markAllRead")}
-            </span>
-          </button>
-        )}
-      </div>
-
       {/* Filter Tabs */}
       <div style={{
-        display: "flex", gap: 8, marginBottom: 20,
+        marginBottom: 20,
         opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
         transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
       }}>
-        {FILTER_TABS.map(function (tab) {
-          return (
-            <button
-              key={tab.id}
-              onClick={function () { setActiveFilter(tab.id); }}
-              style={{
-                padding: "8px 16px", borderRadius: 12, flex: 1,
-                background: activeFilter === tab.id
-                  ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                  : "var(--dp-glass-bg)",
-                border: activeFilter === tab.id
-                  ? "1px solid rgba(139,92,246,0.3)"
-                  : "1px solid var(--dp-input-border)",
-                color: activeFilter === tab.id ? "#fff" : "var(--dp-text-tertiary)",
-                fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                cursor: "pointer", transition: "all 0.25s ease",
-              }}
-            >
-              {t(tab.labelKey)}
-            </button>
-          );
-        })}
+        <PillTabs
+          tabs={FILTER_TABS.map(function (tab) { return { key: tab.id, label: t(tab.labelKey) }; })}
+          active={activeFilter}
+          onChange={setActiveFilter}
+        />
       </div>
 
       {/* Loading Skeletons */}
@@ -309,7 +281,7 @@ export default function NotificationsScreen() {
               {/* Section header */}
               <div style={{
                 fontSize: 13, fontWeight: 600, color: "var(--dp-text-muted)",
-                fontFamily: "Inter, sans-serif", marginBottom: 10,
+                marginBottom: 10,
                 textTransform: "uppercase", letterSpacing: "0.5px",
               }}>
                 {section.label}
@@ -328,7 +300,9 @@ export default function NotificationsScreen() {
                       key={notification.id}
                       onClick={function () { handleDismiss(notification.id); }}
                       style={{
-                        ...glassStyle,
+                        backdropFilter: "blur(40px)",
+                        WebkitBackdropFilter: "blur(40px)",
+                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
                         borderRadius: 16,
                         padding: "14px 16px",
                         display: "flex", alignItems: "flex-start", gap: 12,
@@ -375,14 +349,15 @@ export default function NotificationsScreen() {
                         <div style={{
                           fontSize: 14, fontWeight: 600,
                           color: notification.read ? "var(--dp-text-secondary)" : "var(--dp-text)",
-                          fontFamily: "Inter, sans-serif", marginBottom: 3,
+                          marginBottom: 3,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
                           {notification.title}
                         </div>
                         <div style={{
                           fontSize: 13,
                           color: notification.read ? "var(--dp-text-muted)" : "var(--dp-text-secondary)",
-                          fontFamily: "Inter, sans-serif", lineHeight: 1.4,
+                          lineHeight: 1.4,
                           wordBreak: "break-word",
                           display: "-webkit-box",
                           WebkitLineClamp: 2,
@@ -393,7 +368,7 @@ export default function NotificationsScreen() {
                         </div>
                         <div style={{
                           fontSize: 11, color: "var(--dp-text-muted)",
-                          fontFamily: "Inter, sans-serif", marginTop: 6,
+                          marginTop: 6,
                         }}>
                           {notification.time}
                         </div>
@@ -407,7 +382,7 @@ export default function NotificationsScreen() {
         })
       )}
       <div ref={notifsInf.sentinelRef} style={{height:1}} />
-      {notifsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>{t("notifications.loadingMore")}</div>}
+      {notifsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:"var(--dp-text-muted)",fontSize:13}}>{t("notifications.loadingMore")}</div>}
 
       {/* Empty state */}
       {!notifsInf.isLoading && sections.length === 0 && (
@@ -426,14 +401,13 @@ export default function NotificationsScreen() {
           </div>
           <div style={{
             fontSize: 18, fontWeight: 700, color: "var(--dp-text-secondary)",
-            fontFamily: "Inter, sans-serif", marginBottom: 8,
+            marginBottom: 8,
           }}>
             {t("notifications.allCaughtUp")}
           </div>
           <div style={{
             fontSize: 14, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             {t("notifications.noNew")}
           </div>
         </div>

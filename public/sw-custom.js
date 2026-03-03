@@ -5,7 +5,13 @@
  * foreground like a phone call when a task is due.
  * ═══════════════════════════════════════════════════════════════════ */
 
-/* ═══ Skip waiting — allow new SW to activate on demand ═══ */
+/* ═══ Skip waiting — activate new SW immediately ═══ */
+self.addEventListener("install", function () {
+  self.skipWaiting();
+});
+self.addEventListener("activate", function (event) {
+  event.waitUntil(self.clients.claim());
+});
 self.addEventListener("message", function (event) {
   if (event.data && event.data.type === "SKIP_WAITING") {
     self.skipWaiting();

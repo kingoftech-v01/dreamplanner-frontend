@@ -18,37 +18,50 @@ export default function Toast({ toasts, onDismiss }) {
   if (!toasts || toasts.length === 0) return null;
 
   return (
-    <div style={{
-      position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",
-      zIndex: 10000, display: "flex", flexDirection: "column-reverse", gap: 8,
-      pointerEvents: "none", maxWidth: "calc(100vw - 32px)", width: 380,
-    }}>
-      {toasts.map(function (toast, i) {
+    <div
+      role="status"
+      aria-live="polite"
+      aria-relevant="additions removals"
+      style={{
+        position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",
+        zIndex: 10000, display: "flex", flexDirection: "column-reverse", gap: 8,
+        pointerEvents: "none", maxWidth: "calc(100vw - 32px)", width: 380,
+      }}
+    >
+      {toasts.map(function (toast) {
         var c = COLORS[toast.type] || COLORS.info;
         var Icon = ICONS[toast.type] || Info;
         return (
-          <div key={toast.id} style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
-            borderRadius: 14, background: c.bg, border: "1px solid " + c.border,
-            backdropFilter: "blur(30px)", WebkitBackdropFilter: "blur(30px)",
-            animation: "dpToastIn 0.25s cubic-bezier(0.16,1,0.3,1)",
-            pointerEvents: "auto", overflow: "hidden", position: "relative",
-          }}>
-            <Icon size={18} color={c.icon} strokeWidth={2} style={{ flexShrink: 0 }} />
+          <div
+            key={toast.id}
+            role="alert"
+            aria-atomic="true"
+            style={{
+              display: "flex", alignItems: "center", gap: 10, padding: "12px 14px",
+              borderRadius: 14, background: c.bg, border: "1px solid " + c.border,
+              backdropFilter: "blur(30px)", WebkitBackdropFilter: "blur(30px)",
+              animation: "dpToastIn 0.25s cubic-bezier(0.16,1,0.3,1)",
+              pointerEvents: "auto", overflow: "hidden", position: "relative",
+            }}
+          >
+            <Icon size={18} color={c.icon} strokeWidth={2} style={{ flexShrink: 0 }} aria-hidden="true" />
             <span style={{
               flex: 1, fontSize: 13, fontWeight: 500, color: c.text,
-              fontFamily: "'Inter', -apple-system, sans-serif",
             }}>{toast.message}</span>
-            <button onClick={function () { onDismiss(toast.id); }} style={{
-              width: 24, height: 24, borderRadius: 8, border: "none",
-              background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer", flexShrink: 0,
-            }}>
-              <X size={12} strokeWidth={2.5} />
+            <button
+              onClick={function () { onDismiss(toast.id); }}
+              aria-label={"Dismiss " + (toast.type || "notification")}
+              style={{
+                width: 44, height: 44, borderRadius: 10, border: "none",
+                background: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", flexShrink: 0, margin: "-10px -6px -10px 0",
+              }}
+            >
+              <X size={14} strokeWidth={2.5} />
             </button>
             {/* Progress bar */}
-            <div style={{
+            <div aria-hidden="true" style={{
               position: "absolute", bottom: 0, left: 0, height: 2,
               background: c.icon, borderRadius: 1, opacity: 0.4,
               animation: "dpToastProgress " + toast.duration + "ms linear forwards",

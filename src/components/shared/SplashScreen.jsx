@@ -40,14 +40,12 @@ export default function SplashScreen({ onDone }) {
       </div>
       <div style={{
         fontSize: 24, fontWeight: 700, color: "#fff", letterSpacing: "-0.5px",
-        fontFamily: "'Inter', -apple-system, sans-serif",
         animation: "dpSplashText 0.8s cubic-bezier(0.16,1,0.3,1) 0.2s both",
       }}>
         DreamPlanner
       </div>
       <div style={{
         fontSize: 13, color: "rgba(255,255,255,0.4)", marginTop: 8,
-        fontFamily: "'Inter', -apple-system, sans-serif",
         animation: "dpSplashText 0.8s cubic-bezier(0.16,1,0.3,1) 0.4s both",
       }}>
         Plan your dreams. Achieve your goals.

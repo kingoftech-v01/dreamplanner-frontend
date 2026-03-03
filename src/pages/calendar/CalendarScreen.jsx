@@ -14,6 +14,13 @@ import {
   Target, CheckCircle, Circle, X, Check, Calendar,
   Zap, MoreVertical, Edit3, Trash2, LayoutGrid, Link
 } from "lucide-react";
+import { BRAND, GRADIENTS, adaptColor } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassModal from "../../components/shared/GlassModal";
+import GlassInput from "../../components/shared/GlassInput";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Calendar Screen v1
@@ -24,7 +31,7 @@ const NOW=new Date();const TODAY={y:NOW.getFullYear(),m:NOW.getMonth(),d:NOW.get
 const DAYS=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
 const MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-var TYPE_COLORS = { task: "#5DE5A8", event: "#C4B5FD", reminder: "#FCD34D", deadline: "#F69A9A" };
+var TYPE_COLORS = { task: BRAND.green, event: BRAND.purpleLight, reminder: BRAND.yellow, deadline: BRAND.red };
 
 function getKey(y,m,d){return `${y}-${m}-${d}`;}
 function getDaysInMonth(y,m){return new Date(y,m+1,0).getDate();}
@@ -109,7 +116,7 @@ export default function CalendarScreen(){
   }, [tasksQuery.error]);
 
   useEffect(function () {
-    if (todayQuery.error) showToast(todayQuery.error.message || "Failed to load today's events", "error");
+    if (todayQuery.error) showToast(todayQuery.error.message || "Failed to load today's tasks", "error");
   }, [todayQuery.error]);
 
   // Transform all data into keyed object by "y-m-d"
@@ -164,7 +171,7 @@ export default function CalendarScreen(){
       return apiPatch(CALENDAR.EVENT_DETAIL(params.id), { status: params.completed ? "completed" : "scheduled" });
     },
     onSuccess: function () { invalidateCalendar(); },
-    onError: function (err) { showToast(err.message || "Failed to update event", "error"); },
+    onError: function (err) { showToast(err.message || "Failed to update task", "error"); },
   });
 
   // ── Delete calendar event ──
@@ -172,7 +179,7 @@ export default function CalendarScreen(){
     mutationFn: function (params) {
       return apiDelete(CALENDAR.EVENT_DETAIL(params.id));
     },
-    onSuccess: function () { invalidateCalendar(); showToast("Event deleted", "success"); },
+    onSuccess: function () { invalidateCalendar(); showToast("Task deleted", "success"); },
     onError: function (err) { showToast(err.message || "Failed to delete", "error"); },
   });
 
@@ -181,8 +188,8 @@ export default function CalendarScreen(){
     mutationFn: function (body) {
       return apiPost(CALENDAR.EVENTS, body);
     },
-    onSuccess: function () { invalidateCalendar(); showToast("Event created", "success"); },
-    onError: function (err) { showToast(err.message || "Failed to create event", "error"); },
+    onSuccess: function () { invalidateCalendar(); showToast("Task created", "success"); },
+    onError: function (err) { showToast(err.message || "Failed to create task", "error"); },
   });
 
   var toggleTask = function (evtKey, evtId) {
@@ -231,7 +238,7 @@ export default function CalendarScreen(){
     // Default 1-hour duration
     var endH = parseInt(time24.split(":")[0], 10) + 1;
     var endTime = dateStr + "T" + String(endH).padStart(2, "0") + ":" + time24.split(":")[1] + ":00";
-    createMutation.mutate({ title: cleanTitle, startTime: startTime, endTime: endTime });
+    createMutation.mutate({ title: cleanTitle, start_time: startTime, end_time: endTime });
     setNewTitle("");
     setAddEvt(false);
   };
@@ -240,7 +247,7 @@ export default function CalendarScreen(){
 
   if (tasksQuery.isError && todayQuery.isError) {
     return (
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
             message={(tasksQuery.error && tasksQuery.error.message) || (todayQuery.error && todayQuery.error.message) || "Failed to load calendar"}
@@ -255,33 +262,31 @@ export default function CalendarScreen(){
   const daysInMonth=getDaysInMonth(viewY,viewM);
 
   const renderEventCard=(evt,evtKey)=>(
-    <div className="dp-g" style={{marginBottom:8,overflow:"hidden"}}>
+    <GlassCard mb={8} style={{overflow:"hidden"}}>
       <div style={{padding:14,display:"flex",alignItems:"center",gap:12}}>
         <div style={{width:4,alignSelf:"stretch",minHeight:40,borderRadius:2,background:evt.color,flexShrink:0,boxShadow:`0 0 8px ${evt.color}30`}}/>
         {evt.type==="task"?(
-          <button onClick={()=>toggleTask(evtKey,evt.id)} style={{width:24,height:24,borderRadius:8,border:evt.done?"none":(isLight?"2px solid rgba(139,92,246,0.2)":"2px solid rgba(255,255,255,0.15)"),background:evt.done?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.2s"}}>
-            {evt.done&&<Check size={13} color={isLight?"#059669":"#5DE5A8"} strokeWidth={3}/>}
+          <button aria-label={evt.done ? "Mark task incomplete" : "Mark task complete"} onClick={()=>toggleTask(evtKey,evt.id)} style={{width:24,height:24,borderRadius:8,border:evt.done?"none":"2px solid var(--dp-accent-border)",background:evt.done?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.2s",fontFamily:"inherit"}}>
+            {evt.done&&<Check size={13} color={"var(--dp-success)"} strokeWidth={3}/>}
           </button>
         ):(
           <div style={{width:24,height:24,borderRadius:8,background:`${evt.color}15`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-            <Clock size={12} color={isLight?(evt.color==="#5DE5A8"?"#059669":evt.color==="#C4B5FD"?"#6D28D9":evt.color==="#FCD34D"?"#B45309":evt.color==="#5EEAD4"?"#0D9488":evt.color==="#F69A9A"?"#DC2626":evt.color):evt.color} strokeWidth={2.5}/>
+            <Clock size={12} color={adaptColor(evt.color,isLight)} strokeWidth={2.5}/>
           </div>
         )}
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:14,fontWeight:500,color:evt.done?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),textDecoration:evt.done?"line-through":"none",transition:"all 0.2s"}}>{evt.title}</div>
+          <div style={{fontSize:14,fontWeight:500,color:evt.done?"var(--dp-text-muted)":"var(--dp-text)",textDecoration:evt.done?"line-through":"none",transition:"all 0.2s"}}>{evt.title}</div>
           <div style={{display:"flex",alignItems:"center",gap:8,marginTop:2}}>
-            <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{evt.time}</span>
-            {evt.isDeadline&&<span style={{padding:"1px 6px",borderRadius:6,fontSize:10,fontWeight:700,textTransform:"uppercase",background:"rgba(239,68,68,0.12)",color:isLight?"#DC2626":"#F87171"}}>Deadline</span>}
-            {evt.dream&&<span style={{fontSize:12,color:isLight?(evt.color==="#5DE5A8"?"#059669":evt.color==="#C4B5FD"?"#6D28D9":evt.color==="#FCD34D"?"#B45309":evt.color==="#5EEAD4"?"#0D9488":evt.color==="#F69A9A"?"#DC2626":evt.color):evt.color,fontWeight:500}}>{evt.dream}</span>}
+            <span style={{fontSize:12,color:"var(--dp-text-secondary)"}}>{evt.time}</span>
+            {evt.isDeadline&&<span style={{padding:"1px 6px",borderRadius:6,fontSize:10,fontWeight:700,textTransform:"uppercase",background:"rgba(239,68,68,0.12)",color:"var(--dp-danger)"}}>Deadline</span>}
+            {evt.dream&&<span style={{fontSize:12,color:adaptColor(evt.color,isLight),fontWeight:500}}>{evt.dream}</span>}
           </div>
         </div>
-        <button aria-label="Delete event" onClick={()=>setConfirmDel({key:evtKey,id:evt.id,title:evt.title})} style={{width:30,height:30,borderRadius:9,border:"none",background:"rgba(239,68,68,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s",opacity:0.5}}
-          onMouseEnter={e=>{e.currentTarget.style.opacity="1";e.currentTarget.style.background="rgba(239,68,68,0.12)";}}
-          onMouseLeave={e=>{e.currentTarget.style.opacity="0.5";e.currentTarget.style.background="rgba(239,68,68,0.06)";}}>
+        <button aria-label="Delete event" className="dp-gh" onClick={()=>setConfirmDel({key:evtKey,id:evt.id,title:evt.title})} style={{width:30,height:30,borderRadius:9,border:"none",background:"rgba(239,68,68,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,transition:"all 0.15s",opacity:0.5,fontFamily:"inherit"}}>
           <Trash2 size={14} color="rgba(239,68,68,0.8)" strokeWidth={2}/>
         </button>
       </div>
-    </div>
+    </GlassCard>
   );
 
   const firstDow=getFirstDow(viewY,viewM);
@@ -302,50 +307,54 @@ export default function CalendarScreen(){
 
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
-      <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button className="dp-ib" aria-label="Go back" onClick={()=>navigate(-1)}><ArrowLeft size={20} strokeWidth={2}/></button>
-          <Calendar size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-          <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Calendar</span>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={goToday} style={{padding:"6px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Today</button>
-          <button className="dp-ib" aria-label="Add event" onClick={()=>{setNewTitle("");setAddEvt(true);}}><Plus size={18} strokeWidth={2}/></button>
-        </div>
-      </header>
+      <GlassAppBar
+        left={
+          <>
+            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+            <Calendar size={18} color={"var(--dp-accent)"} strokeWidth={2}/>
+          </>
+        }
+        title="Calendar"
+        right={
+          <>
+            <button aria-label="Go to today" onClick={goToday} style={{padding:"6px 12px",borderRadius:10,border:"1px solid var(--dp-accent-border)",background:"var(--dp-accent-soft)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Today</button>
+            <IconButton icon={Plus} label="Add task" onClick={()=>{setNewTitle("");setAddEvt(true);}} />
+          </>
+        }
+      />
 
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{width:"100%"}}>
 
           {/* ── Quick Access ── */}
           <div style={{display:"flex",gap:8,marginBottom:14}}>
-            <button onClick={function(){navigate("/calendar/timeblocks");}} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
-              <LayoutGrid size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-              <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Time Blocks</span>
-            </button>
-            <button onClick={function(){navigate("/calendar-connect");}} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
-              <Link size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-              <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Google Sync</span>
-            </button>
+            <GlassCard hover padding="10px 12px" style={{flex:1,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={function(){navigate("/calendar/timeblocks");}}>
+              <LayoutGrid size={16} color={"var(--dp-accent)"} strokeWidth={2}/>
+              <span style={{fontSize:13,fontWeight:600,color:"var(--dp-text-primary)"}}>Time Blocks</span>
+            </GlassCard>
+            <GlassCard hover padding="10px 12px" style={{flex:1,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}} onClick={function(){navigate("/calendar-connect");}}>
+              <Link size={16} color={"var(--dp-accent)"} strokeWidth={2}/>
+              <span style={{fontSize:13,fontWeight:600,color:"var(--dp-text-primary)"}}>Google Sync</span>
+            </GlassCard>
           </div>
 
           {/* ── Month Nav ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <button aria-label="Previous month" onClick={prevMonth} className="dp-ib" style={{width:36,height:36}}><ChevronLeft size={18} strokeWidth={2}/></button>
-              <span style={{fontSize:18,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{MONTHS[viewM]} {viewY}</span>
-              <button aria-label="Next month" onClick={nextMonth} className="dp-ib" style={{width:36,height:36}}><ChevronRight size={18} strokeWidth={2}/></button>
+              <IconButton icon={ChevronLeft} onClick={prevMonth} label="Previous month" size="sm" />
+              <h1 style={{fontSize:18,fontWeight:700,color:"var(--dp-text)",margin:0}}>{MONTHS[viewM]} {viewY}</h1>
+              <IconButton icon={ChevronRight} onClick={nextMonth} label="Next month" size="sm" />
             </div>
           </div>
 
           {/* ── Calendar Grid ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"80ms"}}>
-            <div className="dp-g" style={{padding:12,marginBottom:16}}>
+            <GlassCard padding={12} mb={16}>
               {/* Day headers */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:6}}>
-                {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",padding:"4px 0"}}>{d}</div>)}
+                {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:12,fontWeight:600,color:"var(--dp-text-muted)",padding:"4px 0"}}>{d}</div>)}
               </div>
               {/* Date cells */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
@@ -355,16 +364,15 @@ export default function CalendarScreen(){
                   const hasEvt=events[k]&&events[k].length>0;
                   const evtColors=(events[k]||[]).slice(0,3).map(e=>e.color);
                   return(
-                    <button key={d} onClick={()=>setSelDay(d)} style={{
+                    <button key={d} role="button" aria-label={new Date(viewY,viewM,d).toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",year:"numeric"})} onClick={()=>setSelDay(d)} style={{
                       position:"relative",aspectRatio:"1",borderRadius:12,border:"none",cursor:"pointer",
                       background:isSel(d)?"rgba(139,92,246,0.2)":isToday(d)?"rgba(93,229,168,0.08)":"transparent",
                       outline:isSel(d)?"2px solid rgba(139,92,246,0.4)":isToday(d)?"1px solid rgba(93,229,168,0.15)":"none",
                       display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:2,
-                      transition:"all 0.15s",
+                      transition:"all 0.15s",fontFamily:"inherit",
                     }}
-                      onMouseEnter={e=>{if(!isSel(d))e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)";}}
-                      onMouseLeave={e=>{if(!isSel(d)&&!isToday(d))e.currentTarget.style.background="transparent";else if(isToday(d)&&!isSel(d))e.currentTarget.style.background="rgba(93,229,168,0.08)";}}>
-                      <span style={{fontSize:14,fontWeight:isToday(d)||isSel(d)?700:400,color:isSel(d)?(isLight?"#7C3AED":"#C4B5FD"):isToday(d)?(isLight?"#059669":"#5DE5A8"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)")}}>{d}</span>
+                      className="dp-gh">
+                      <span style={{fontSize:14,fontWeight:isToday(d)||isSel(d)?700:400,color:isSel(d)?"var(--dp-accent)":isToday(d)?"var(--dp-success)":"var(--dp-text-primary)"}}>{d}</span>
                       {hasEvt&&(
                         <div style={{display:"flex",gap:2}}>
                           {evtColors.map((c,j)=><div key={j} style={{width:4,height:4,borderRadius:2,background:c}}/>)}
@@ -374,7 +382,7 @@ export default function CalendarScreen(){
                   );
                 })}
               </div>
-            </div>
+            </GlassCard>
           </div>
 
           {/* ── Events Section ── */}
@@ -393,18 +401,18 @@ export default function CalendarScreen(){
                   <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${160+si*120}ms`}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8,marginTop:si>0?8:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <div style={{width:8,height:8,borderRadius:4,background:label==="Today"?"#5DE5A8":"#C4B5FD"}}/>
-                        <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{label}</span>
-                        <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{new Date(label==="Today"?Date.now():Date.now()+86400000).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
+                        <div style={{width:8,height:8,borderRadius:4,background:label==="Today"?BRAND.green:BRAND.purpleLight}}/>
+                        <h2 style={{fontSize:15,fontWeight:700,color:"var(--dp-text)",margin:0}}>{label}</h2>
+                        <span style={{fontSize:12,color:"var(--dp-text-muted)"}}>{new Date(label==="Today"?Date.now():Date.now()+86400000).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
                       </div>
-                      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{evts.length} item{evts.length!==1?"s":""}</span>
+                      <span style={{fontSize:12,color:"var(--dp-text-secondary)"}}>{evts.length} item{evts.length!==1?"s":""}</span>
                     </div>
                   </div>
                   {evts.length===0?(
                     <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${200+si*120}ms`}}>
-                      <div style={{padding:"16px 20px",borderRadius:14,background:isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.02)",border:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.04)",textAlign:"center",marginBottom:8}}>
-                        <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No events scheduled</span>
-                      </div>
+                      <GlassCard padding="16px 20px" mb={8} style={{textAlign:"center"}}>
+                        <span style={{fontSize:13,color:"var(--dp-text-muted)"}}>No tasks scheduled</span>
+                      </GlassCard>
                     </div>
                   ):(
                     evts.map((evt,i)=>(
@@ -422,23 +430,23 @@ export default function CalendarScreen(){
               <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"160ms"}}>
                 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>
+                    <h2 style={{fontSize:15,fontWeight:700,color:"var(--dp-text)",margin:0}}>
                       {isToday(selDay)?"Today":new Date(viewY,viewM,selDay).toLocaleDateString("en-US",{weekday:"long",month:"short",day:"numeric"})}
-                    </span>
-                    {selDay!==null&&<button onClick={()=>setSelDay(null)} style={{padding:"3px 8px",borderRadius:6,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.6)",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>}
+                    </h2>
+                    {selDay!==null&&<button aria-label="Clear day selection" onClick={()=>setSelDay(null)} style={{padding:"3px 8px",borderRadius:6,border:"1px solid var(--dp-input-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text-tertiary)",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Clear</button>}
                   </div>
-                  <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{selEvents.length} item{selEvents.length!==1?"s":""}</span>
+                  <span style={{fontSize:12,color:"var(--dp-text-secondary)"}}>{selEvents.length} item{selEvents.length!==1?"s":""}</span>
                 </div>
               </div>
               {selEvents.length===0?(
                 <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"240ms"}}>
-                  <div className="dp-g" style={{padding:32,textAlign:"center"}}>
-                    <Calendar size={32} color={isLight?"rgba(26,21,53,0.15)":"rgba(255,255,255,0.15)"} strokeWidth={1.5} style={{margin:"0 auto 10px"}}/>
-                    <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>No events for this day</div>
-                    <button onClick={()=>{setNewTitle("");setAddEvt(true);}} style={{marginTop:12,padding:"8px 16px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
-                      <Plus size={13} strokeWidth={2}/>Add Event
+                  <GlassCard padding={32} style={{textAlign:"center"}}>
+                    <Calendar size={32} color={"var(--dp-text-muted)"} strokeWidth={1.5} style={{margin:"0 auto 10px"}}/>
+                    <div style={{fontSize:14,color:"var(--dp-text-secondary)"}}>No tasks for this day</div>
+                    <button aria-label="Add task for this day" onClick={()=>{setNewTitle("");setAddEvt(true);}} style={{marginTop:12,padding:"8px 16px",borderRadius:10,border:"1px solid var(--dp-accent-border)",background:"var(--dp-accent-soft)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:4}}>
+                      <Plus size={13} strokeWidth={2}/>Add Task
                     </button>
-                  </div>
+                  </GlassCard>
                 </div>
               ):(
                 selEvents.map((evt,i)=>(
@@ -457,60 +465,48 @@ export default function CalendarScreen(){
       <BottomNav />
 
       {/* ═══ DELETE CONFIRM ═══ */}
-      {confirmDel&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={()=>setConfirmDel(null)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"85%",maxWidth:340,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid rgba(239,68,68,0.12)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.2s ease-out"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-              <div style={{width:36,height:36,borderRadius:12,background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Trash2 size={18} color="rgba(239,68,68,0.8)" strokeWidth={2}/>
-              </div>
-              <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Delete Event?</div>
+      <GlassModal open={!!confirmDel} onClose={()=>setConfirmDel(null)} variant="center" maxWidth={340}>
+        <div style={{padding:24}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+            <div style={{width:36,height:36,borderRadius:12,background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <Trash2 size={18} color="rgba(239,68,68,0.8)" strokeWidth={2}/>
             </div>
-            <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:16,lineHeight:1.5}}>
-              Are you sure you want to delete "<span style={{color:isLight?"#1a1535":"#fff",fontWeight:500}}>{confirmDel.title}</span>"? This cannot be undone.
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setConfirmDel(null)} style={{flex:1,padding:"11px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={()=>deleteEvent(confirmDel.key,confirmDel.id)} style={{flex:1,padding:"11px",borderRadius:12,border:"none",background:"rgba(239,68,68,0.15)",color:"rgba(239,68,68,0.9)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.25)"}
-                onMouseLeave={e=>e.currentTarget.style.background="rgba(239,68,68,0.15)"}>Delete</button>
-            </div>
+            <div style={{fontSize:15,fontWeight:600,color:"var(--dp-text)"}}>Delete Task?</div>
+          </div>
+          <div style={{fontSize:13,color:"var(--dp-text-primary)",marginBottom:16,lineHeight:1.5}}>
+            Are you sure you want to delete "<span style={{color:"var(--dp-text)",fontWeight:500}}>{confirmDel?.title}</span>"? This cannot be undone.
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setConfirmDel(null)} style={{flex:1,padding:"11px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text-primary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <button className="dp-gh" onClick={()=>deleteEvent(confirmDel.key,confirmDel.id)} style={{flex:1,padding:"11px",borderRadius:12,border:"none",background:"rgba(239,68,68,0.15)",color:"rgba(239,68,68,0.9)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.15s"}}>Delete</button>
           </div>
         </div>
-      )}
+      </GlassModal>
 
       {/* ═══ ADD EVENT MODAL ═══ */}
-      {addEvt&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={()=>setAddEvt(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid var(--dp-input-border)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>New Event</span>
-              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={()=>setAddEvt(false)}><X size={16} strokeWidth={2}/></button>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Title</label>
-              <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} autoFocus placeholder="Event name..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Date</label>
-              <div style={{padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:14,display:"flex",alignItems:"center",gap:8}}>
-                <Calendar size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-                {new Date(viewY,viewM,selDay||TODAY.d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}
-              </div>
-            </div>
-            <div style={{marginBottom:16}}>
-              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Time</label>
-              <input value={newTime} onChange={e=>setNewTime(e.target.value)} placeholder="9:00 AM" style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setAddEvt(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={handleAddEvt} disabled={!newTitle.trim()} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newTitle.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),color:newTitle.trim()?"#fff":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.25)"),fontSize:14,fontWeight:600,cursor:newTitle.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>Create</button>
+      <GlassModal open={addEvt} onClose={()=>setAddEvt(false)} variant="center" maxWidth={380} title="New Task">
+        <div style={{padding:24}}>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)",marginBottom:6,display:"block"}}>Title</label>
+            <GlassInput value={newTitle} onChange={e=>setNewTitle(e.target.value)} autoFocus placeholder="Task name..." />
+          </div>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)",marginBottom:6,display:"block"}}>Date</label>
+            <div style={{padding:"10px 14px",borderRadius:12,background:"var(--dp-glass-bg)",border:"1px solid var(--dp-input-border)",color:"var(--dp-text-primary)",fontSize:14,display:"flex",alignItems:"center",gap:8}}>
+              <Calendar size={14} color={"var(--dp-accent)"} strokeWidth={2}/>
+              {new Date(viewY,viewM,selDay||TODAY.d).toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric",year:"numeric"})}
             </div>
           </div>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)",marginBottom:6,display:"block"}}>Time</label>
+            <GlassInput value={newTime} onChange={e=>setNewTime(e.target.value)} placeholder="9:00 AM" />
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>setAddEvt(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text-primary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <GradientButton gradient="primaryDark" onClick={handleAddEvt} disabled={!newTitle.trim()} fullWidth style={{flex:1,borderRadius:12,padding:"12px 0",fontSize:14}}>Create</GradientButton>
+          </div>
         </div>
-      )}
+      </GlassModal>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

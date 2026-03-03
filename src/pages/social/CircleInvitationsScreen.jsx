@@ -11,21 +11,20 @@ import {
   Check, Search, Send, Users, Loader
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import { CONTACT_COLORS, GRADIENTS } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import PillTabs from "../../components/shared/PillTabs";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Circle Invitations Screen
 // ═══════════════════════════════════════════════════════════════
 
-var AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#F59E0B", "#10B981", "#6366F1"];
-
-var glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
+var AVATAR_COLORS = CONTACT_COLORS;
 
 function getAvatarColor(name) {
   if (!name) return AVATAR_COLORS[0];
@@ -83,7 +82,7 @@ export default function CircleInvitationsScreen() {
   // ─── Invite User Mutation ────────────────────────────────────
   var inviteMutation = useMutation({
     mutationFn: function (userId) {
-      return apiPost(CIRCLES.INVITE(id), { userId: userId });
+      return apiPost(CIRCLES.INVITE(id), { user_id: userId });
     },
     onSuccess: function () {
       showToast("Invitation sent!", "success");
@@ -140,107 +139,30 @@ export default function CircleInvitationsScreen() {
   ];
 
   return (
-    <PageLayout>
-      <div
-        style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-          minHeight: "100vh",
-          paddingBottom: 80,
-        }}
-      >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "20px 0 16px",
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(-10px)",
-            transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
-        >
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <Mail size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-          <span
-            style={{
-              fontSize: 17,
-              fontWeight: 700,
-              color: "var(--dp-text)",
-              letterSpacing: "-0.3px",
-            }}
-          >
-            Invitations
-          </span>
-        </div>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Mail size={18} color="var(--dp-accent-text)" strokeWidth={2} />
+            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)", letterSpacing: "-0.3px" }}>
+              Invitations
+            </span>
+          </div>
+        }
+      />
+    }>
+      <div style={{ paddingBottom: 80 }}>
 
         {/* Tab Bar */}
-        <div
-          style={{
-            display: "flex",
-            gap: 4,
-            padding: 4,
-            borderRadius: 14,
-            background: "var(--dp-glass-bg)",
-            border: "1px solid var(--dp-glass-border)",
-            marginBottom: 20,
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(10px)",
-            transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s",
-          }}
-        >
-          {tabs.map(function (tab) {
-            var Icon = tab.icon;
-            return (
-              <button
-                key={tab.key}
-                onClick={function () { setActiveTab(tab.key); }}
-                style={{
-                  flex: 1,
-                  padding: "10px 0",
-                  borderRadius: 11,
-                  border: "none",
-                  background: activeTab === tab.key
-                    ? "rgba(139,92,246,0.15)"
-                    : "transparent",
-                  color: activeTab === tab.key
-                    ? "var(--dp-text)"
-                    : "var(--dp-text-tertiary)",
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 6,
-                  transition: "all 0.25s cubic-bezier(0.16, 1, 0.3, 1)",
-                }}
-              >
-                <Icon size={14} strokeWidth={2} />
-                {tab.label}
-                {tab.badge > 0 && (
-                  <span
-                    style={{
-                      background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                      color: "#fff",
-                      fontSize: 10,
-                      fontWeight: 700,
-                      padding: "1px 6px",
-                      borderRadius: 8,
-                      minWidth: 16,
-                      textAlign: "center",
-                    }}
-                  >
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
+        <PillTabs
+          tabs={tabs.map(function (tab) {
+            return { key: tab.key, label: tab.label, icon: tab.icon, count: tab.badge > 0 ? tab.badge : undefined };
           })}
-        </div>
+          active={activeTab}
+          onChange={setActiveTab}
+          style={{ marginBottom: 20 }}
+        />
 
         {/* ═══ INVITE MEMBERS TAB ═══ */}
         {activeTab === "invite" && (
@@ -253,76 +175,35 @@ export default function CircleInvitationsScreen() {
                 transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.15s",
               }}
             >
-              <div style={{ ...glass, padding: 20, marginBottom: 16 }}>
+              <GlassCard padding={20} mb={16}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                  <Search size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-                  <span
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: "var(--dp-text)",
-                    }}
-                  >
+                  <Search size={16} color="var(--dp-accent-text)" strokeWidth={2} />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-text)" }}>
                     Invite by Username
                   </span>
                 </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--dp-text-secondary)",
-                    lineHeight: 1.5,
-                    marginBottom: 14,
-                  }}
-                >
+                <div style={{ fontSize: 13, color: "var(--dp-text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
                   Search for a user by username or ID to send them an invitation.
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <input
+                  <GlassInput
                     value={searchInput}
                     onChange={function (e) { setSearchInput(e.target.value); }}
                     onKeyDown={function (e) { if (e.key === "Enter") handleInviteUser(); }}
                     placeholder="Username or user ID..."
-                    style={{
-                      flex: 1,
-                      padding: "12px 16px",
-                      borderRadius: 14,
-                      border: "1px solid var(--dp-input-border)",
-                      background: "var(--dp-input-bg)",
-                      color: "var(--dp-text)",
-                      fontSize: 14,
-                      fontFamily: "inherit",
-                      outline: "none",
-                    }}
+                    style={{ flex: 1, borderRadius: 14 }}
                   />
-                  <button
+                  <GradientButton
+                    gradient="primaryDark"
                     onClick={handleInviteUser}
                     disabled={inviteMutation.isPending || !searchInput.trim()}
-                    style={{
-                      width: 48,
-                      height: 48,
-                      borderRadius: 14,
-                      border: "none",
-                      background: searchInput.trim()
-                        ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                        : "var(--dp-glass-bg)",
-                      color: searchInput.trim() ? "#fff" : "var(--dp-text-muted)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: searchInput.trim() && !inviteMutation.isPending ? "pointer" : "not-allowed",
-                      flexShrink: 0,
-                      transition: "all 0.2s",
-                      boxShadow: searchInput.trim() ? "0 2px 10px rgba(139,92,246,0.3)" : "none",
-                      opacity: inviteMutation.isPending ? 0.7 : 1,
-                    }}
-                  >
-                    {inviteMutation.isPending
-                      ? <Loader size={17} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                      : <Send size={17} strokeWidth={2} />
-                    }
-                  </button>
+                    loading={inviteMutation.isPending}
+                    icon={Send}
+                    size="md"
+                    style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0 }}
+                  />
                 </div>
-              </div>
+              </GlassCard>
             </div>
 
             {/* Generate Invite Link */}
@@ -333,103 +214,48 @@ export default function CircleInvitationsScreen() {
                 transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.25s",
               }}
             >
-              <div style={{ ...glass, padding: 20, marginBottom: 16 }}>
+              <GlassCard padding={20} mb={16}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                  <Link size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-                  <span
-                    style={{
-                      fontSize: 15,
-                      fontWeight: 700,
-                      color: "var(--dp-text)",
-                    }}
-                  >
+                  <Link size={16} color="var(--dp-accent-text)" strokeWidth={2} />
+                  <span style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-text)" }}>
                     Share Invite Link
                   </span>
                 </div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--dp-text-secondary)",
-                    lineHeight: 1.5,
-                    marginBottom: 14,
-                  }}
-                >
+                <div style={{ fontSize: 13, color: "var(--dp-text-secondary)", lineHeight: 1.5, marginBottom: 14 }}>
                   Generate a shareable link anyone can use to join this circle.
                 </div>
 
                 {inviteLink ? (
                   <div style={{ display: "flex", gap: 8 }}>
-                    <div
-                      style={{
-                        flex: 1,
-                        padding: "12px 14px",
-                        borderRadius: 14,
-                        background: "var(--dp-input-bg)",
-                        border: "1px solid var(--dp-input-border)",
-                        color: "var(--dp-text-secondary)",
-                        fontSize: 13,
-                        fontFamily: "inherit",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
+                    <div style={{
+                      flex: 1, padding: "12px 14px", borderRadius: 14,
+                      background: "var(--dp-input-bg)", border: "1px solid var(--dp-input-border)",
+                      color: "var(--dp-text-secondary)", fontSize: 13, fontFamily: "inherit",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}>
                       {inviteLink}
                     </div>
-                    <button
+                    <GradientButton
+                      gradient={copiedLink ? "success" : "primaryDark"}
                       onClick={handleCopyLink}
-                      style={{
-                        width: 48,
-                        height: 48,
-                        borderRadius: 14,
-                        border: "none",
-                        background: copiedLink
-                          ? "rgba(16,185,129,0.15)"
-                          : "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                        color: copiedLink ? "#10B981" : "#fff",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        flexShrink: 0,
-                        transition: "all 0.25s",
-                      }}
-                    >
-                      {copiedLink ? <Check size={18} strokeWidth={2} /> : <Copy size={18} strokeWidth={2} />}
-                    </button>
+                      icon={copiedLink ? Check : Copy}
+                      size="md"
+                      style={{ width: 48, height: 48, borderRadius: 14, flexShrink: 0 }}
+                    />
                   </div>
                 ) : (
-                  <button
+                  <GradientButton
+                    gradient="primaryDark"
                     onClick={function () { linkMutation.mutate(); }}
                     disabled={linkMutation.isPending}
-                    style={{
-                      width: "100%",
-                      padding: "13px 0",
-                      borderRadius: 14,
-                      border: "none",
-                      background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                      color: "#fff",
-                      fontSize: 14,
-                      fontWeight: 600,
-                      cursor: linkMutation.isPending ? "not-allowed" : "pointer",
-                      fontFamily: "inherit",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                      boxShadow: "0 4px 16px rgba(139,92,246,0.3)",
-                      transition: "all 0.25s",
-                      opacity: linkMutation.isPending ? 0.7 : 1,
-                    }}
+                    loading={linkMutation.isPending}
+                    icon={Link}
+                    fullWidth
                   >
-                    {linkMutation.isPending
-                      ? <Loader size={16} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                      : <Link size={16} strokeWidth={2} />
-                    }
                     {linkMutation.isPending ? "Generating..." : "Generate Invite Link"}
-                  </button>
+                  </GradientButton>
                 )}
-              </div>
+              </GlassCard>
             </div>
           </div>
         )}
@@ -451,7 +277,7 @@ export default function CircleInvitationsScreen() {
                     width: 32,
                     height: 32,
                     border: "3px solid var(--dp-glass-border)",
-                    borderTopColor: isLight ? "#8B5CF6" : "#C4B5FD",
+                    borderTopColor: "var(--dp-accent)",
                     borderRadius: "50%",
                     animation: "spin 0.8s linear infinite",
                     margin: "0 auto 16px",
@@ -474,7 +300,7 @@ export default function CircleInvitationsScreen() {
               >
                 <Mail
                   size={40}
-                  color={isLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.15)"}
+                  color="var(--dp-text-muted)"
                   strokeWidth={1.5}
                   style={{ marginBottom: 16 }}
                 />
@@ -491,7 +317,7 @@ export default function CircleInvitationsScreen() {
               if (!inv) return null;
               var statusColor = inv.status === "accepted" ? "#10B981"
                 : inv.status === "declined" ? "#EF4444"
-                : isLight ? "#6D28D9" : "#C4B5FD";
+                : "var(--dp-accent-text)";
               var statusBg = inv.status === "accepted" ? "rgba(16,185,129,0.1)"
                 : inv.status === "declined" ? "rgba(239,68,68,0.1)"
                 : "rgba(139,92,246,0.08)";
@@ -508,36 +334,14 @@ export default function CircleInvitationsScreen() {
                     transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) " + (0.15 + i * 0.06) + "s",
                   }}
                 >
-                  <div
-                    style={{
-                      ...glass,
-                      borderRadius: 18,
-                      padding: 16,
-                      marginBottom: 10,
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
+                  <GlassCard
+                    radius={18}
+                    padding={16}
+                    mb={10}
+                    style={{ display: "flex", alignItems: "center", gap: 12 }}
                   >
                     {/* Avatar */}
-                    <div
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 14,
-                        background: inv.color + "18",
-                        border: "2px solid " + inv.color + "25",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 17,
-                        fontWeight: 700,
-                        color: inv.color,
-                        flexShrink: 0,
-                      }}
-                    >
-                      {inv.initial}
-                    </div>
+                    <Avatar name={inv.name} size={42} color={inv.color} />
 
                     {/* Info */}
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -579,7 +383,7 @@ export default function CircleInvitationsScreen() {
                     >
                       {statusLabel}
                     </span>
-                  </div>
+                  </GlassCard>
                 </div>
               );
             })}

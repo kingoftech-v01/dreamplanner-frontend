@@ -19,14 +19,14 @@ export default function ErrorState({ message }) {
 
       <h3 style={{
         fontSize: 17, fontWeight: 600, color: "var(--dp-text)",
-        fontFamily: "Inter, sans-serif", margin: "0 0 6px",
+        margin: "0 0 6px",
       }}>
         Something went wrong
       </h3>
 
       <p style={{
         fontSize: 13, color: "var(--dp-text-tertiary)",
-        fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+        lineHeight: 1.5,
         maxWidth: 260, margin: "0 0 20px",
       }}>
         {message || "An unexpected error occurred. Please try again."}
@@ -40,7 +40,6 @@ export default function ErrorState({ message }) {
           border: "1px solid var(--dp-input-border)",
           cursor: "pointer",
           color: "var(--dp-text)", fontSize: 13, fontWeight: 500,
-          fontFamily: "Inter, sans-serif",
           display: "flex", alignItems: "center", gap: 8,
         }}
       >

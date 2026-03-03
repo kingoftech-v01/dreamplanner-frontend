@@ -6,10 +6,14 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
+import { BRAND, adaptColor } from "../../styles/colors";
 import {
   ArrowLeft, Phone, Video, PhoneIncoming, PhoneOutgoing,
   PhoneMissed, Clock
 } from "lucide-react";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Call History Screen
@@ -51,15 +55,6 @@ export default function CallHistoryScreen() {
 
   var calls = callsInf.items;
 
-  var iconBtnStyle = {
-    width: 40, height: 40, borderRadius: 12,
-    border: isLight ? "1px solid rgba(139,92,246,0.15)" : "1px solid rgba(255,255,255,0.08)",
-    background: isLight ? "rgba(139,92,246,0.06)" : "rgba(255,255,255,0.05)",
-    color: isLight ? "#1a1535" : "#fff",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    cursor: "pointer", transition: "all 0.2s",
-  };
-
   function getCallInfo(call) {
     var isOutgoing = String(call.callerId) === String(user?.id);
     var name = isOutgoing ? (call.calleeName || "Unknown") : (call.callerName || "Unknown");
@@ -68,27 +63,27 @@ export default function CallHistoryScreen() {
     var isCancelled = call.status === "cancelled";
 
     var Icon = PhoneOutgoing;
-    var color = isLight ? "#059669" : "#5DE5A8";
+    var color = adaptColor(BRAND.green, isLight);
     var label = "Outgoing";
 
     if (!isOutgoing) {
       if (isMissed) {
         Icon = PhoneMissed;
-        color = isLight ? "#DC2626" : "#F69A9A";
+        color = adaptColor(BRAND.red, isLight);
         label = "Missed";
       } else {
         Icon = PhoneIncoming;
-        color = isLight ? "#2563EB" : "#93C5FD";
+        color = adaptColor(BRAND.blueLight, isLight);
         label = "Incoming";
       }
     } else {
       if (isMissed || isCancelled) {
         Icon = PhoneMissed;
-        color = isLight ? "#DC2626" : "#F69A9A";
+        color = adaptColor(BRAND.red, isLight);
         label = isCancelled ? "Cancelled" : "No answer";
       } else if (isRejected) {
         Icon = PhoneMissed;
-        color = isLight ? "#DC2626" : "#F69A9A";
+        color = adaptColor(BRAND.red, isLight);
         label = "Declined";
       }
     }
@@ -100,7 +95,7 @@ export default function CallHistoryScreen() {
 
   if (callsInf.isLoading) return (
     <div style={{ width: "100%", padding: "80px 16px 0", display: "flex", justifyContent: "center" }}>
-      <div style={{ color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)", fontSize: 14 }}>Loading calls...</div>
+      <div style={{ color: "var(--dp-text-muted)", fontSize: 14 }}>Loading calls...</div>
     </div>
   );
 
@@ -111,23 +106,14 @@ export default function CallHistoryScreen() {
   );
 
   return (
-    <div style={{ position: "fixed", inset: 0, overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif" }}>
+    <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
 
       {/* APP BAR */}
-      <header style={{
-        position: "fixed", top: 0, left: 0, right: 0, zIndex: 100, height: 64,
-        background: isLight ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.03)",
-        backdropFilter: "blur(40px) saturate(1.4)", WebkitBackdropFilter: "blur(40px) saturate(1.4)",
-        borderBottom: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.05)",
-        display: "flex", alignItems: "center", padding: "0 16px", gap: 12,
-      }}>
-        <button style={iconBtnStyle} onClick={function () { navigate(-1); }} aria-label="Go back">
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <div style={{ fontSize: 17, fontWeight: 700, color: isLight ? "#1a1535" : "#fff", letterSpacing: "-0.3px" }}>
-          Call History
-        </div>
-      </header>
+      <GlassAppBar
+        style={{ position: "fixed", top: 0, left: 0, right: 0 }}
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Go back" />}
+        title="Call History"
+      />
 
       {/* CONTENT */}
       <main style={{
@@ -143,12 +129,12 @@ export default function CallHistoryScreen() {
                 width: 80, height: 80, borderRadius: "50%", margin: "0 auto 20px",
                 background: "rgba(139,92,246,0.08)", display: "flex", alignItems: "center", justifyContent: "center",
               }}>
-                <Phone size={36} color={isLight ? "rgba(26,21,53,0.72)" : "rgba(255,255,255,0.85)"} strokeWidth={1.5} />
+                <Phone size={36} color="var(--dp-text-secondary)" strokeWidth={1.5} />
               </div>
-              <div style={{ fontSize: 17, fontWeight: 600, color: isLight ? "#1a1535" : "#fff", marginBottom: 8 }}>
+              <div style={{ fontSize: 17, fontWeight: 600, color: "var(--dp-text)", marginBottom: 8 }}>
                 No calls yet
               </div>
-              <div style={{ fontSize: 14, color: isLight ? "rgba(26,21,53,0.72)" : "rgba(255,255,255,0.85)", lineHeight: 1.5, maxWidth: 280, margin: "0 auto" }}>
+              <div style={{ fontSize: 14, color: "var(--dp-text-secondary)", lineHeight: 1.5, maxWidth: 280, margin: "0 auto" }}>
                 Your call history will appear here once you make or receive a call
               </div>
             </div>
@@ -164,9 +150,11 @@ export default function CallHistoryScreen() {
                   className={mounted ? "dp-a dp-s" : "dp-a"}
                   style={{ animationDelay: (80 + i * 50) + "ms" }}
                 >
-                  <div
-                    className="dp-g dp-gh"
-                    style={{ padding: 14, marginBottom: 8, cursor: "pointer", position: "relative" }}
+                  <GlassCard
+                    hover
+                    padding={14}
+                    mb={8}
+                    style={{ cursor: "pointer", position: "relative" }}
                     onClick={function () { navigate("/buddy-chat/" + info.buddyId); }}
                   >
                     <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
@@ -183,7 +171,7 @@ export default function CallHistoryScreen() {
                       {/* Info */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
-                          fontSize: 14, fontWeight: 600, color: isLight ? "#1a1535" : "#fff",
+                          fontSize: 14, fontWeight: 600, color: "var(--dp-text)",
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginBottom: 3,
                         }}>
                           {info.name}
@@ -192,13 +180,13 @@ export default function CallHistoryScreen() {
                           <span style={{ fontSize: 12, fontWeight: 500, color: info.color }}>
                             {info.label}
                           </span>
-                          <span style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>
+                          <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>
                             {call.callType === "video" ? "Video" : "Voice"}
                           </span>
                           {call.durationSeconds > 0 && (
                             <span style={{
                               display: "flex", alignItems: "center", gap: 3,
-                              fontSize: 12, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)",
+                              fontSize: 12, color: "var(--dp-text-muted)",
                             }}>
                               <Clock size={11} strokeWidth={2} /> {formatDuration(call.durationSeconds)}
                             </span>
@@ -208,7 +196,7 @@ export default function CallHistoryScreen() {
 
                       {/* Time + callback button */}
                       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4, flexShrink: 0 }}>
-                        <span style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>
+                        <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>
                           {formatDate(call.createdAt)}
                         </span>
                         <button
@@ -218,16 +206,17 @@ export default function CallHistoryScreen() {
                           }}
                           style={{
                             width: 32, height: 32, borderRadius: 10, border: "none", cursor: "pointer",
-                            background: isLight ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.15)",
+                            background: "var(--dp-accent-soft)",
                             display: "flex", alignItems: "center", justifyContent: "center",
+                            fontFamily: "inherit",
                           }}
                           aria-label={"Call " + info.name}
                         >
-                          <CallTypeIcon size={16} color={isLight ? "#7C3AED" : "#C4B5FD"} strokeWidth={2} />
+                          <CallTypeIcon size={16} color="var(--dp-accent)" strokeWidth={2} />
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </GlassCard>
                 </div>
               );
             })
@@ -236,7 +225,7 @@ export default function CallHistoryScreen() {
           {/* Infinite scroll sentinel */}
           <div ref={callsInf.sentinelRef} />
           {callsInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>Loading more...</div>
+            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
           )}
         </div>
       </main>

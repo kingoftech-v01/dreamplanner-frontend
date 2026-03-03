@@ -25,7 +25,7 @@ export default class ErrorBoundary extends Component {
       return (
         <div style={{
           position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "#03010a", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+          background: "#03010a",
         }}>
           <div style={{
             maxWidth: 360, padding: 32, borderRadius: 24, textAlign: "center",

@@ -5,39 +5,15 @@ import PageLayout from "../../components/shared/PageLayout";
 import { apiPost } from "../../services/api";
 import { AUTH } from "../../services/endpoints";
 import { isValidEmail } from "../../utils/sanitize";
-
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-};
-
-const inputStyle = {
-  width: "100%",
-  background: "var(--dp-input-bg)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 14,
-  padding: "14px 16px",
-  color: "var(--dp-text)",
-  fontSize: 15,
-  fontFamily: "Inter, sans-serif",
-  outline: "none",
-  transition: "border-color 0.25s ease, box-shadow 0.25s ease",
-  boxSizing: "border-box",
-};
-
-const inputFocusStyle = {
-  borderColor: "rgba(139,92,246,0.5)",
-  boxShadow: "0 0 0 3px rgba(139,92,246,0.15)",
-};
+import IconButton from "../../components/shared/IconButton";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassCard from "../../components/shared/GlassCard";
 
 export default function ForgotPasswordScreen() {
   var navigate = useNavigate();
   var [mounted, setMounted] = useState(false);
   var [email, setEmail] = useState("");
-  var [focused, setFocused] = useState(false);
   var [sent, setSent] = useState(false);
   var [serverError, setServerError] = useState("");
   var [submitting, setSubmitting] = useState(false);
@@ -87,9 +63,7 @@ export default function ForgotPasswordScreen() {
           alignSelf: "flex-start",
           marginBottom: 32,
         }}>
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
+          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
         </div>
 
         {/* Icon */}
@@ -116,11 +90,9 @@ export default function ForgotPasswordScreen() {
         </div>
 
         {/* Card */}
-        <div style={{
-          ...glass,
+        <GlassCard padding="32px 24px" style={{
           ...stagger(2),
           width: "100%",
-          padding: "32px 24px",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
         }}>
           {!sent ? (
@@ -129,13 +101,13 @@ export default function ForgotPasswordScreen() {
               <div style={{ textAlign: "center", marginBottom: 28 }}>
                 <h1 style={{
                   fontSize: 26, fontWeight: 700, color: "var(--dp-text)",
-                  fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+                  margin: 0, letterSpacing: "-0.5px",
                 }}>
                   Reset Password
                 </h1>
                 <p style={{
                   fontSize: 14, color: "var(--dp-text-tertiary)",
-                  fontFamily: "Inter, sans-serif", marginTop: 10, lineHeight: 1.6,
+                  marginTop: 10, lineHeight: 1.6,
                 }}>
                   Enter your email and we'll send you a reset link
                 </p>
@@ -146,7 +118,7 @@ export default function ForgotPasswordScreen() {
                   <div style={{
                     background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
                     borderRadius: 12, padding: "12px 16px", marginBottom: 16,
-                    fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+                    fontSize: 13, color: "var(--dp-danger)", lineHeight: 1.5,
                   }}>
                     {serverError}
                   </div>
@@ -155,70 +127,31 @@ export default function ForgotPasswordScreen() {
                 <div style={{ ...stagger(3), marginBottom: 24 }}>
                   <label style={{
                     fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                    fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                    display: "block", marginBottom: 8,
                   }}>
                     Email Address
                   </label>
-                  <div style={{ position: "relative" }}>
-                    <Mail size={18} color="var(--dp-text-muted)" style={{
-                      position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                      pointerEvents: "none",
-                    }} />
-                    <input
-                      type="email"
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      onFocus={() => setFocused(true)}
-                      onBlur={() => setFocused(false)}
-                      style={{
-                        ...inputStyle,
-                        paddingLeft: 42,
-                        ...(focused ? inputFocusStyle : {}),
-                      }}
-                    />
-                  </div>
+                  <GlassInput
+                    type="email"
+                    icon={Mail}
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
 
                 <div style={stagger(4)}>
-                  <button
+                  <GradientButton
                     type="submit"
+                    gradient="primary"
+                    fullWidth
                     disabled={submitting}
-                    style={{
-                      width: "100%", height: 50, borderRadius: 14,
-                      background: submitting
-                        ? "linear-gradient(135deg, rgba(139,92,246,0.5), rgba(124,58,237,0.5))"
-                        : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                      border: "none", cursor: submitting ? "not-allowed" : "pointer",
-                      color: "#fff", fontSize: 15, fontWeight: 700,
-                      fontFamily: "Inter, sans-serif",
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                      transition: "transform 0.2s ease, box-shadow 0.2s ease, background 0.25s ease",
-                    }}
-                    onMouseEnter={function (e) {
-                      if (!submitting) {
-                        e.currentTarget.style.transform = "translateY(-1px)";
-                        e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
-                      }
-                    }}
-                    onMouseLeave={function (e) {
-                      e.currentTarget.style.transform = "translateY(0)";
-                      e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
-                    }}
+                    loading={submitting}
+                    icon={submitting ? undefined : ArrowRight}
+                    style={{ height: 50 }}
                   >
-                    {submitting ? (
-                      <>
-                        <Loader2 size={18} className="dp-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        Send Reset Link
-                        <ArrowRight size={18} />
-                      </>
-                    )}
-                  </button>
+                    {submitting ? "Sending..." : "Send Reset Link"}
+                  </GradientButton>
                 </div>
               </form>
             </>
@@ -228,56 +161,40 @@ export default function ForgotPasswordScreen() {
               <div style={{ textAlign: "center" }}>
                 <h1 style={{
                   fontSize: 26, fontWeight: 700, color: "var(--dp-text)",
-                  fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+                  margin: 0, letterSpacing: "-0.5px",
                 }}>
                   Email Sent!
                 </h1>
                 <p style={{
                   fontSize: 14, color: "var(--dp-text-tertiary)",
-                  fontFamily: "Inter, sans-serif", marginTop: 12, lineHeight: 1.7,
+                  marginTop: 12, lineHeight: 1.7,
                 }}>
                   We've sent a password reset link to{" "}
-                  <span style={{ color: "#C4B5FD", fontWeight: 500 }}>
+                  <span style={{ color: "var(--dp-accent)", fontWeight: 500 }}>
                     {email || "your email"}
                   </span>
                   . Check your inbox and follow the instructions to reset your password.
                 </p>
                 <p style={{
                   fontSize: 13, color: "var(--dp-text-muted)",
-                  fontFamily: "Inter, sans-serif", marginTop: 8, lineHeight: 1.5,
+                  marginTop: 8, lineHeight: 1.5,
                 }}>
                   Didn't receive it? Check your spam folder or try again.
                 </p>
 
-                <button
+                <GradientButton
+                  gradient="primary"
+                  fullWidth
                   onClick={() => navigate("/login")}
-                  style={{
-                    width: "100%", height: 50, borderRadius: 14,
-                    background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                    border: "none", cursor: "pointer",
-                    color: "#fff", fontSize: 15, fontWeight: 700,
-                    fontFamily: "Inter, sans-serif",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                    boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                    marginTop: 28,
-                    transition: "transform 0.2s ease, box-shadow 0.2s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = "translateY(0)";
-                    e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
-                  }}
+                  icon={ArrowRight}
+                  style={{ height: 50, marginTop: 28 }}
                 >
                   Back to Login
-                  <ArrowRight size={18} />
-                </button>
+                </GradientButton>
               </div>
             </>
           )}
-        </div>
+        </GlassCard>
 
         {/* Back to login (request state) */}
         {!sent && (
@@ -291,11 +208,11 @@ export default function ForgotPasswordScreen() {
               style={{
                 background: "none", border: "none", cursor: "pointer",
                 color: "var(--dp-text-tertiary)", fontSize: 14,
-                fontFamily: "Inter, sans-serif", padding: 0,
+                padding: 0,
               }}
             >
               Remember your password?{" "}
-              <span style={{ color: "#C4B5FD", fontWeight: 600 }}>Sign In</span>
+              <span style={{ color: "var(--dp-accent)", fontWeight: 600 }}>Sign In</span>
             </button>
           </div>
         )}

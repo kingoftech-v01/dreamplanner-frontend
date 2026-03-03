@@ -13,6 +13,9 @@ import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
+import { adaptColor } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
 
 var ICON_MAP = {
   flame: Flame, star: Star, target: Target, award: Award,
@@ -95,17 +98,15 @@ export default function AchievementsScreen() {
 
   return (
     <PageLayout>
-      <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
+      <div style={{ paddingTop: 20, paddingBottom: 40 }}>
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, ...stagger(0) }}>
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
+          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
           <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Achievements</span>
           <span style={{
             marginLeft: "auto", padding: "4px 10px", borderRadius: 10,
             background: "rgba(139,92,246,0.12)", border: "1px solid rgba(139,92,246,0.2)",
-            fontSize: 12, fontWeight: 600, color: isLight ? "#6D28D9" : "#C4B5FD",
+            fontSize: 12, fontWeight: 600, color: "var(--dp-accent)",
           }}>
             {unlockedCount}/{achievements.length}
           </span>
@@ -118,15 +119,13 @@ export default function AchievementsScreen() {
             { icon: Zap, val: totalXP, label: "XP Earned", color: "#5DE5A8" },
             { icon: Flame, val: streak + "d", label: "Streak", color: "#F69A9A" },
           ].map(({ icon: I, val, label, color }, i) => (
-            <div key={i} style={{
-              flex: 1, padding: "14px 8px", textAlign: "center", borderRadius: 16,
-              background: "var(--dp-glass-bg)", border: "1px solid var(--dp-glass-border)",
-              backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            <GlassCard key={i} padding="14px 8px" radius={16} style={{
+              flex: 1, textAlign: "center",
             }}>
-              <I size={18} color={isLight ? ({ "#FCD34D": "#B45309", "#5DE5A8": "#059669", "#F69A9A": "#DC2626" }[color] || color) : color} strokeWidth={2} style={{ marginBottom: 6 }} />
+              <I size={18} color={adaptColor(color, isLight)} strokeWidth={2} style={{ marginBottom: 6 }} />
               <div style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)" }}>{val}</div>
               <div style={{ fontSize: 10, color: "var(--dp-text-tertiary)", fontWeight: 500 }}>{label}</div>
-            </div>
+            </GlassCard>
           ))}
         </div>
 
@@ -141,11 +140,8 @@ export default function AchievementsScreen() {
 
         {/* Empty State */}
         {!achievementsInf.isLoading && achievements.length === 0 && (
-          <div style={{
-            textAlign: "center", padding: "48px 24px",
-            background: "var(--dp-glass-bg)", borderRadius: 20,
-            border: "1px solid var(--dp-glass-border)",
-            backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+          <GlassCard padding="48px 24px" radius={20} style={{
+            textAlign: "center",
             ...stagger(2),
           }}>
             <Trophy size={40} color="var(--dp-text-muted)" strokeWidth={1.5} style={{ marginBottom: 16 }} />
@@ -155,7 +151,7 @@ export default function AchievementsScreen() {
             <div style={{ fontSize: 13, color: "var(--dp-text-muted)", lineHeight: 1.5 }}>
               Keep working on your dreams and tasks to unlock achievements!
             </div>
-          </div>
+          </GlassCard>
         )}
 
         {/* Unlocked Section */}
@@ -163,7 +159,7 @@ export default function AchievementsScreen() {
           <>
             <div style={{ marginBottom: 8, ...stagger(2) }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12 }}>
-                <Trophy size={14} color={isLight ? "#B45309" : "#FCD34D"} strokeWidth={2.5} />
+                <Trophy size={14} color={adaptColor("#FCD34D", isLight)} strokeWidth={2.5} />
                 <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}>Unlocked</span>
                 <span style={{ fontSize: 12, color: "var(--dp-text-muted)", fontWeight: 500 }}>
                   ({achievements.filter(function (a) { return a.unlocked; }).length})
@@ -175,12 +171,8 @@ export default function AchievementsScreen() {
               {achievements.filter(function (a) { return a.unlocked; }).map(function (a, i) {
                 var Icon = a.icon;
                 return (
-                  <div key={a.id} style={{
+                  <GlassCard key={a.id} padding={16} radius={18} style={{
                     ...stagger(3 + i),
-                    padding: 16, borderRadius: 18,
-                    background: "var(--dp-glass-bg)",
-                    border: "1px solid var(--dp-glass-border)",
-                    backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
                     display: "flex", flexDirection: "column", alignItems: "center",
                     gap: 10, textAlign: "center",
                   }}>
@@ -190,7 +182,7 @@ export default function AchievementsScreen() {
                       display: "flex", alignItems: "center", justifyContent: "center",
                       boxShadow: `0 0 20px ${a.color}15`,
                     }}>
-                      <Icon size={24} color={isLight ? ({ "#C4B5FD": "#6D28D9", "#5DE5A8": "#059669", "#5EEAD4": "#0D9488", "#FCD34D": "#B45309", "#F69A9A": "#DC2626" }[a.color] || a.color) : a.color} strokeWidth={1.8} />
+                      <Icon size={24} color={adaptColor(a.color, isLight)} strokeWidth={1.8} />
                     </div>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text)", marginBottom: 3 }}>{a.label}</div>
@@ -200,13 +192,13 @@ export default function AchievementsScreen() {
                       <span style={{
                         padding: "3px 8px", borderRadius: 8,
                         background: "rgba(93,229,168,0.1)", border: "1px solid rgba(93,229,168,0.15)",
-                        fontSize: 11, fontWeight: 600, color: isLight ? "#059669" : "#5DE5A8",
+                        fontSize: 11, fontWeight: 600, color: "var(--dp-success)",
                       }}>
                         +{a.xp} XP
                       </span>
                       <span style={{ fontSize: 10, color: "var(--dp-text-muted)" }}>{a.date}</span>
                     </div>
-                  </div>
+                  </GlassCard>
                 );
               })}
             </div>
@@ -231,23 +223,19 @@ export default function AchievementsScreen() {
                 var Icon = a.icon;
                 var base = 4 + achievements.filter(function (x) { return x.unlocked; }).length;
                 return (
-                  <div key={a.id} style={{
+                  <GlassCard key={a.id} padding={16} radius={18} style={{
                     ...stagger(base + i),
-                    padding: 16, borderRadius: 18,
-                    background: "var(--dp-glass-bg)",
-                    border: "1px solid var(--dp-glass-bg)",
                     display: "flex", flexDirection: "column", alignItems: "center",
                     gap: 10, textAlign: "center", opacity: mounted ? 0.55 : 0,
                     transition: `all 0.5s cubic-bezier(0.4,0,0.2,1) ${(base + i) * 60}ms`,
                   }}>
                     <div style={{ position: "relative" }}>
-                      <div style={{
-                        width: 52, height: 52, borderRadius: 16,
-                        background: "var(--dp-glass-bg)", border: "1px solid var(--dp-glass-border)",
+                      <GlassCard radius={16} style={{
+                        width: 52, height: 52,
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
                         <Icon size={24} color="var(--dp-text-muted)" strokeWidth={1.8} />
-                      </div>
+                      </GlassCard>
                       <div style={{
                         position: "absolute", bottom: -3, right: -3,
                         width: 20, height: 20, borderRadius: 7,
@@ -261,14 +249,13 @@ export default function AchievementsScreen() {
                       <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-tertiary)", marginBottom: 3 }}>{a.label}</div>
                       <div style={{ fontSize: 11, color: "var(--dp-text-muted)", lineHeight: 1.4 }}>{a.desc}</div>
                     </div>
-                    <span style={{
-                      padding: "3px 8px", borderRadius: 8, marginTop: "auto",
-                      background: "var(--dp-glass-bg)", border: "1px solid var(--dp-glass-border)",
+                    <GlassCard radius={8} style={{
+                      padding: "3px 8px", marginTop: "auto",
                       fontSize: 11, fontWeight: 600, color: "var(--dp-text-muted)",
                     }}>
                       +{a.xp} XP
-                    </span>
-                  </div>
+                    </GlassCard>
+                  </GlassCard>
                 );
               })}
             </div>

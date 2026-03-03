@@ -1,88 +1,191 @@
 // ─── DreamPlanner API Client ────────────────────────────────────────
-// Enhanced fetch wrapper with auth, CORS, case transforms, and error handling.
+// Enhanced fetch wrapper with JWT auth, CORS, case transforms, and error handling.
+// Access token: memory-only (web) / Capacitor Preferences (native)
+// Refresh token: httpOnly cookie (web) / Capacitor Preferences (native)
 
 import { snakeToCamel, camelToSnake } from "./transforms";
 import { Capacitor } from "@capacitor/core";
 import { getUserMessage } from "../utils/errorMessages";
 
 var API_BASE = import.meta.env.VITE_API_BASE || "";
+var REFRESH_URL = "/api/auth/token/refresh/";
 
-// ─── Token helpers ──────────────────────────────────────────────────
+// ─── Token helpers (JWT) ─────────────────────────────────────────
 
-var _tokenCache = localStorage.getItem("dp-token") || "";
+var _accessToken = "";  // Memory only on web — never persisted to localStorage
 
 /**
  * Initialize token from Capacitor Preferences (native) at startup.
- * Must be called before rendering the app.
+ * On web, access token lives only in memory — callers should use
+ * refreshAccessToken() to obtain a new one via the httpOnly cookie.
  */
 export function initToken() {
   if (!Capacitor.isNativePlatform()) {
-    _tokenCache = localStorage.getItem("dp-token") || "";
-    return Promise.resolve(_tokenCache);
+    // Web: access token is memory-only. Check for legacy dp-token to migrate.
+    var legacy = localStorage.getItem("dp-token");
+    if (legacy) {
+      _accessToken = legacy;
+      localStorage.removeItem("dp-token");  // Clean up legacy storage
+    }
+    return Promise.resolve(_accessToken);
   }
+  // Native: load from Capacitor Preferences (secure storage)
   return import("@capacitor/preferences").then(function (mod) {
-    return mod.Preferences.get({ key: "dp-token" });
+    return mod.Preferences.get({ key: "dp-access-token" });
   }).then(function (result) {
-    _tokenCache = result.value || "";
-    // Keep localStorage in sync as fallback
-    if (_tokenCache) localStorage.setItem("dp-token", _tokenCache);
-    return _tokenCache;
+    _accessToken = result.value || "";
+    // Migrate legacy key if present
+    if (!_accessToken) {
+      return import("@capacitor/preferences").then(function (mod) {
+        return mod.Preferences.get({ key: "dp-token" });
+      }).then(function (legacyResult) {
+        if (legacyResult.value) {
+          _accessToken = legacyResult.value;
+          return import("@capacitor/preferences").then(function (mod) {
+            mod.Preferences.remove({ key: "dp-token" });
+          });
+        }
+      });
+    }
+  }).then(function () {
+    return _accessToken;
   }).catch(function () {
-    _tokenCache = localStorage.getItem("dp-token") || "";
-    return _tokenCache;
+    _accessToken = "";
+    return "";
   });
 }
 
 export function getToken() {
-  return _tokenCache;
+  return _accessToken;
 }
 
-export function setToken(token) {
-  _tokenCache = token || "";
-  if (token) localStorage.setItem("dp-token", token);
-  else localStorage.removeItem("dp-token");
+/** Exported for WebSocket auth — returns the current in-memory access token */
+export function getAccessTokenForWS() {
+  return _accessToken;
+}
+
+/**
+ * Store JWT tokens after login/register/refresh.
+ * @param {string} access - JWT access token (stored in memory on web)
+ * @param {string} [refresh] - JWT refresh token (native only — web uses httpOnly cookie)
+ */
+export function setToken(access, refresh) {
+  _accessToken = access || "";
   if (Capacitor.isNativePlatform()) {
     import("@capacitor/preferences").then(function (mod) {
-      if (token) {
-        mod.Preferences.set({ key: "dp-token", value: token });
-      } else {
-        mod.Preferences.remove({ key: "dp-token" });
-      }
+      if (access) mod.Preferences.set({ key: "dp-access-token", value: access });
+      else mod.Preferences.remove({ key: "dp-access-token" });
+      if (refresh) mod.Preferences.set({ key: "dp-refresh-token", value: refresh });
+      else if (refresh === null) mod.Preferences.remove({ key: "dp-refresh-token" });
     }).catch(function () {});
   }
+  // Web: refresh token is in httpOnly cookie — no JS action needed
 }
 
 export function clearAuth() {
-  _tokenCache = "";
-  // Clear all sensitive localStorage items
+  _accessToken = "";
+  // Clean up localStorage (legacy + non-sensitive app data)
   localStorage.removeItem("dp-token");
   localStorage.removeItem("dp-splash-shown");
+  localStorage.removeItem("dp-offline-queue");
+  localStorage.removeItem("dp-recent-searches");
+  localStorage.removeItem("dp-dream-draft");
   if (Capacitor.isNativePlatform()) {
     import("@capacitor/preferences").then(function (mod) {
-      mod.Preferences.remove({ key: "dp-token" });
+      mod.Preferences.remove({ key: "dp-access-token" });
+      mod.Preferences.remove({ key: "dp-refresh-token" });
+      mod.Preferences.remove({ key: "dp-token" });  // legacy
     }).catch(function () {});
   }
 }
 
-// ─── CSRF (for same-origin fallback) ────────────────────────────────
+// ─── Silent Token Refresh ────────────────────────────────────────
+
+var _isRefreshing = false;
+var _refreshQueue = [];  // Callbacks waiting for refresh to complete
+
+/**
+ * Refresh the access token using the refresh token.
+ * Web: refresh cookie is sent automatically by the browser.
+ * Native: refresh token is read from Capacitor Preferences and sent in body.
+ */
+export async function refreshAccessToken() {
+  if (Capacitor.isNativePlatform()) {
+    var mod = await import("@capacitor/preferences");
+    var result = await mod.Preferences.get({ key: "dp-refresh-token" });
+    var refreshToken = result.value;
+    if (!refreshToken) throw new Error("No refresh token");
+    var resp = await fetch(API_BASE + REFRESH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh: refreshToken }),
+    });
+    if (!resp.ok) throw new Error("Refresh failed");
+    var data = await resp.json();
+    setToken(data.access, data.refresh || refreshToken);
+    return data.access;
+  }
+  // Web: httpOnly cookie is sent automatically with credentials: "include"
+  var resp = await fetch(API_BASE + REFRESH_URL, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  if (!resp.ok) throw new Error("Refresh failed");
+  var data = await resp.json();
+  _accessToken = data.access;
+  return data.access;
+}
+
+/**
+ * Coordinate refresh across concurrent 401 responses.
+ * Only one refresh request is made at a time; others wait for the result.
+ */
+function silentRefresh() {
+  if (_isRefreshing) {
+    return new Promise(function (resolve, reject) {
+      _refreshQueue.push({ resolve: resolve, reject: reject });
+    });
+  }
+  _isRefreshing = true;
+  return refreshAccessToken().then(function (newToken) {
+    _isRefreshing = false;
+    for (var i = 0; i < _refreshQueue.length; i++) {
+      _refreshQueue[i].resolve(newToken);
+    }
+    _refreshQueue = [];
+    return newToken;
+  }).catch(function (err) {
+    _isRefreshing = false;
+    for (var i = 0; i < _refreshQueue.length; i++) {
+      _refreshQueue[i].reject(err);
+    }
+    _refreshQueue = [];
+    throw err;
+  });
+}
+
+// ─── CSRF (for same-origin fallback) ────────────────────────────
 
 function getCsrfToken() {
   var match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/);
   return match ? decodeURIComponent(match[1]) : "";
 }
 
-// ─── Core request function ──────────────────────────────────────────
+// ─── Core request function ──────────────────────────────────────
 
 async function request(url, options) {
   if (!options) options = {};
   var method = (options.method || "GET").toUpperCase();
   var headers = Object.assign({}, options.headers || {});
   var isFormData = options.body instanceof FormData;
+  var _skipRefresh = options._skipRefresh || false;
 
   // Auth header
   var token = getToken();
   if (token) {
-    headers["Authorization"] = "Token " + token;
+    headers["Authorization"] = "Bearer " + token;
   }
 
   // CSRF for non-GET
@@ -139,6 +242,31 @@ async function request(url, options) {
 
   // ─── Error handling ─────────────────────────────────────────
   if (!response.ok) {
+    // 401 — try silent refresh before giving up (unless already retrying)
+    if (response.status === 401 && !_skipRefresh && !url.includes(REFRESH_URL)) {
+      try {
+        var newToken = await silentRefresh();
+        // Retry the original request with fresh access token
+        var retryHeaders = Object.assign({}, options.headers || {});
+        retryHeaders["Authorization"] = "Bearer " + newToken;
+        // Re-serialize body if it was an object (it's already stringified)
+        return request(url, {
+          ...options,
+          headers: retryHeaders,
+          _skipRefresh: true,
+        });
+      } catch (refreshErr) {
+        // Refresh failed — clear auth and redirect
+        clearAuth();
+        if (window.location.pathname !== "/login" && window.location.pathname !== "/register") {
+          window.location.replace("/login");
+        }
+        var authError = new Error("Session expired. Please log in again.");
+        authError.status = 401;
+        throw authError;
+      }
+    }
+
     var errorBody = null;
     try { errorBody = await response.json(); } catch (e) { /* ignore */ }
 
@@ -166,11 +294,6 @@ async function request(url, options) {
 
     // User-friendly message (safe to display in UI)
     error.userMessage = getUserMessage(error);
-
-    // 401 → clear auth (caller handles redirect)
-    if (response.status === 401) {
-      clearAuth();
-    }
 
     throw error;
   }
@@ -238,7 +361,15 @@ export function getOfflineQueueCount() {
 }
 
 export function enqueueOfflineMutation(url, options) {
-  var queue = getQueue();
+  // Never queue sensitive authentication/account endpoints
+  var sensitivePatterns = ["/auth/", "/2fa/", "/password/", "/delete-account", "/conversations/"];
+  for (var i = 0; i < sensitivePatterns.length; i++) {
+    if (url.indexOf(sensitivePatterns[i]) !== -1) return;
+  }
+  // Expire stale entries older than 24 hours
+  var queue = getQueue().filter(function (item) {
+    return Date.now() - item.timestamp < 86400000;
+  });
   queue.push({
     url: url,
     method: options.method || "POST",

@@ -8,7 +8,8 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="DreamPlanner" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://localhost capacitor:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://localhost capacitor: https://appleid.cdn-apple.com https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://localhost capacitor: https:; connect-src 'self' https://localhost capacitor: https://api.dreamplanner.com wss://api.dreamplanner.com https://dpapi.jhpetitfrere.com wss://dpapi.jhpetitfrere.com https://accounts.google.com https://appleid.apple.com https://*.agora.io:* wss://*.agora.io:* https://*.edge.agora.io:* wss://*.edge.agora.io:* https://*.sd-rtn.com:* wss://*.sd-rtn.com:* https://*.edge.sd-rtn.com:* wss://*.edge.sd-rtn.com:* https://*.ap.sd-rtn.com:* wss://*.ap.sd-rtn.com:* https://*.statscollector.sd-rtn.com wss://*.statscollector.sd-rtn.com; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com;" />
+    <!-- CSP: 'unsafe-eval' required by Agora SDK; 'unsafe-inline' needed for Vite PWA inline scripts. -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' https://localhost capacitor:; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://localhost capacitor: https://appleid.cdn-apple.com https://static.cloudflareinsights.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https://localhost capacitor: https:; connect-src 'self' https://localhost capacitor: https://api.dreamplanner.com wss://api.dreamplanner.com https://dpapi.jhpetitfrere.com wss://dpapi.jhpetitfrere.com https://accounts.google.com https://appleid.apple.com https://*.agora.io:* wss://*.agora.io:* https://*.edge.agora.io:* wss://*.edge.agora.io:* https://*.sd-rtn.com:* wss://*.sd-rtn.com:* https://*.edge.sd-rtn.com:* wss://*.edge.sd-rtn.com:* https://*.ap.sd-rtn.com:* wss://*.ap.sd-rtn.com:* https://*.statscollector.sd-rtn.com wss://*.statscollector.sd-rtn.com; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com https://appleid.apple.com; upgrade-insecure-requests;" />
     <link rel="apple-touch-icon" href="./icons/icon-192.png" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -20,37 +21,11 @@
       "dp-language"). If full i18n is added later, this should be managed
       by the i18n framework instead.
     -->
-    <script>
-      (function() {
-        try {
-          var lang = localStorage.getItem("dp-language");
-          if (lang) document.documentElement.lang = lang;
-        } catch(e) {}
-      })();
-    </script>
+    <script type="module" src="/src/early-lang.js"></script>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      // Disable pinch-to-zoom on touch devices
-      document.addEventListener('touchmove', function(e) {
-        if (e.touches.length > 1) e.preventDefault();
-      }, { passive: false });
-      // Disable double-tap zoom
-      var lastTouchEnd = 0;
-      document.addEventListener('touchend', function(e) {
-        var now = Date.now();
-        if (now - lastTouchEnd <= 300) e.preventDefault();
-        lastTouchEnd = now;
-      }, false);
-      // Disable Ctrl+/Ctrl- and Ctrl+scroll zoom
-      document.addEventListener('keydown', function(e) {
-        if ((e.ctrlKey || e.metaKey) && (e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0')) e.preventDefault();
-      });
-      document.addEventListener('wheel', function(e) {
-        if (e.ctrlKey || e.metaKey) e.preventDefault();
-      }, { passive: false });
-    </script>
+    <script type="module" src="/src/disable-zoom.js"></script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>

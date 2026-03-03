@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost } from "../../services/api";
 import { joinRTMChannel } from "../../services/agora";
+import useAgoraPresence from "../../hooks/useAgoraPresence";
 import { CONVERSATIONS, BUDDIES, USERS } from "../../services/endpoints";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
@@ -10,7 +11,13 @@ import { useToast } from "../../context/ToastContext";
 import { useT } from "../../context/I18nContext";
 import { clipboardWrite } from "../../services/native";
 import { sanitizeText } from "../../utils/sanitize";
+import { GRADIENTS } from "../../styles/colors";
 import ErrorState from "../../components/shared/ErrorState";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GlassCard from "../../components/shared/GlassCard";
+import IconButton from "../../components/shared/IconButton";
+import Avatar from "../../components/shared/Avatar";
+import GlassInput from "../../components/shared/GlassInput";
 import {
   ArrowLeft, Users, Send, ChevronDown, MoreVertical, Pin,
   Heart, Copy, Check, CheckCheck, Search, X, Phone, Video,
@@ -34,7 +41,7 @@ import {
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 function formatTime(d){return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
-function fmtMd(t,isLight){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\*\*(.*?)\*\*/g,`<strong style="color:${isLight?'#1a1535':'#fff'};font-weight:600">$1</strong>`).replace(/\n/g,"<br/>");}
+function fmtMd(t){return t.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/\*\*(.*?)\*\*/g,`<strong style="color:var(--dp-text);font-weight:600">$1</strong>`).replace(/\n/g,"<br/>");}
 function dateLabel(d,t){const now=new Date(),td=new Date(now.getFullYear(),now.getMonth(),now.getDate()),md=new Date(d.getFullYear(),d.getMonth(),d.getDate()),diff=Math.floor((td-md)/(864e5));if(!diff)return t("chat.today");if(diff===1)return t("chat.yesterday");if(diff<7)return d.toLocaleDateString([],{weekday:'long'});return d.toLocaleDateString([],{month:'short',day:'numeric',year:'numeric'});}
 function showDate(msgs,i){if(!i)return true;return msgs[i-1].time.toDateString()!==msgs[i].time.toDateString();}
 
@@ -97,8 +104,14 @@ export default function BuddyChatScreen(){
 
   var buddyName = (buddyInfo && buddyInfo.displayName) || t("chat.buddy");
   var buddyInitial = (buddyName[0] || "B").toUpperCase();
-  var buddyOnline = !!(buddyInfo && buddyInfo.isOnline);
   var mutualDream = (buddyInfo && buddyInfo.mutualDream) || "";
+
+  // Real-time online status via Agora RTM Presence
+  var buddyIdForPresence = useMemo(function () {
+    return buddyInfo && buddyInfo.id ? [String(buddyInfo.id)] : [];
+  }, [buddyInfo && buddyInfo.id]);
+  var presenceMap = useAgoraPresence(buddyIdForPresence);
+  var buddyOnline = buddyInfo && buddyInfo.id ? !!presenceMap[String(buddyInfo.id)] : false;
 
   // ─── Fetch messages (paginated) ────────────────────────────────
   var BUDDY_PAGE_SIZE=50;
@@ -357,8 +370,8 @@ export default function BuddyChatScreen(){
   // ─── Loading / Error states ────────────────────────────────────
   if(initLoading||messagesQuery.isLoading){
     return(
-      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif"}}>
-        <Loader size={28} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2} style={{animation:"spin 1s linear infinite"}}/>
+      <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <Loader size={28} color="var(--dp-accent)" strokeWidth={2} style={{animation:"spin 1s linear infinite"}}/>
         <style>{"@keyframes spin{to{transform:rotate(360deg);}}"}</style>
       </div>
     );
@@ -368,68 +381,66 @@ export default function BuddyChatScreen(){
   }
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* ═══ APP BAR ═══ */}
-      <header style={{position:"relative",zIndex:100,flexShrink:0,background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <button className="dp-ib" onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2}/></button>
-            {/* Buddy avatar */}
-            <div style={{position:"relative"}}>
-              <div style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(20,184,166,0.15)",border:"1px solid rgba(20,184,166,0.25)",fontSize:16,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>
-                {BUDDY.initial}
-              </div>
-              {BUDDY.online&&<div style={{position:"absolute",bottom:-1,right:-1,width:10,height:10,borderRadius:"50%",background:"#5DE5A8",border:isLight?"2px solid #fff":"2px solid #0c081a",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>}
-            </div>
+      <div style={{flexShrink:0}}>
+        <GlassAppBar
+          left={
+            <>
+              <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+              <Avatar name={BUDDY.displayName} size={38} color="var(--dp-teal)" online={BUDDY.online} />
+            </>
+          }
+          title={
             <div>
-              <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{BUDDY.displayName}</div>
-              <div style={{fontSize:12,color:BUDDY.online?(isLight?"#059669":"#5DE5A8"):isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{BUDDY.online?t("chat.online"):t("chat.offline")}</div>
+              <div style={{fontSize:15,fontWeight:600,color:"var(--dp-text)"}}>{BUDDY.displayName}</div>
+              <div style={{fontSize:12,color:BUDDY.online?"var(--dp-success)":"var(--dp-text-tertiary)"}}>{BUDDY.online?t("chat.online"):t("chat.offline")}</div>
             </div>
-          </div>
-          <div style={{display:"flex",gap:6}}>
-            <button className="dp-ib" aria-label="Call" onClick={function(){
-              apiPost(CONVERSATIONS.CALLS.INITIATE,{calleeId:buddyInfo&&buddyInfo.id||id,callType:"voice"}).then(function(data){
-                navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-              }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
-            }}><Phone size={17} strokeWidth={2}/></button>
-            <button className="dp-ib" aria-label="Video call" onClick={function(){
-              apiPost(CONVERSATIONS.CALLS.INITIATE,{calleeId:buddyInfo&&buddyInfo.id||id,callType:"video"}).then(function(data){
-                navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-              }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
-            }}><Video size={17} strokeWidth={2}/></button>
-            <div style={{position:"relative"}}>
-              <button className="dp-ib" onClick={()=>setMenuOpen(!menuOpen)} aria-label="More options"><MoreVertical size={18} strokeWidth={2}/></button>
-              {menuOpen&&(
-                <div style={{position:"absolute",top:44,right:0,zIndex:200,background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
-                  {[
-                    {icon:Pin,label:t("chat.pinnedMessages"),count:pinnedMsgs.length,act:()=>{setPanel("pinned");setMenuOpen(false);}},
-                    {icon:Heart,label:t("chat.likedMessages"),count:likedMsgs.length,act:()=>{setPanel("liked");setMenuOpen(false);}},
-                    {icon:Search,label:t("chat.searchMessages"),count:null,act:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
-                  ].map(({icon:I,label,count,act},i)=>(
-                    <button key={i} onClick={act} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",borderRadius:10,cursor:"pointer",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"background 0.15s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}
-                      onMouseLeave={e=>e.currentTarget.style.background="none"}>
-                      <I size={16} strokeWidth={2}/>{label}
-                      {count!==null&&<span style={{marginLeft:"auto",fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",padding:"2px 7px",borderRadius:8}}>{count}</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
+          }
+          right={
+            <div style={{display:"flex",gap:6}}>
+              <IconButton icon={Phone} label="Call" onClick={function(){
+                apiPost(CONVERSATIONS.CALLS.INITIATE,{callee_id:buddyInfo&&buddyInfo.id||id,call_type:"voice"}).then(function(data){
+                  navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
+                }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
+              }} />
+              <IconButton icon={Video} label="Video call" onClick={function(){
+                apiPost(CONVERSATIONS.CALLS.INITIATE,{callee_id:buddyInfo&&buddyInfo.id||id,call_type:"video"}).then(function(data){
+                  navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
+                }).catch(function(err){showToast(err.message||t("chat.failedCall"),"error");});
+              }} />
+              <div style={{position:"relative"}}>
+                <IconButton icon={MoreVertical} onClick={()=>setMenuOpen(!menuOpen)} label="More options" />
+                {menuOpen&&(
+                  <div style={{position:"absolute",top:44,right:0,zIndex:200,background:"var(--dp-card-solid)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:"1px solid var(--dp-accent-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
+                    {[
+                      {icon:Pin,label:t("chat.pinnedMessages"),count:pinnedMsgs.length,act:()=>{setPanel("pinned");setMenuOpen(false);}},
+                      {icon:Heart,label:t("chat.likedMessages"),count:likedMsgs.length,act:()=>{setPanel("liked");setMenuOpen(false);}},
+                      {icon:Search,label:t("chat.searchMessages"),count:null,act:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
+                    ].map(({icon:I,label,count,act},i)=>(
+                      <button key={i} onClick={act} className="dp-gh" style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",borderRadius:10,cursor:"pointer",color:"var(--dp-text-primary)",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"background 0.15s"}}>
+                        <I size={16} strokeWidth={2}/>{label}
+                        {count!==null&&<span style={{marginLeft:"auto",fontSize:12,color:"var(--dp-text-tertiary)",background:"var(--dp-accent-soft)",padding:"2px 7px",borderRadius:8}}>{count}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        </div>
+          }
+        />
         {/* Shared dream banner */}
         {BUDDY.mutualDream ? (
-        <div style={{padding:"0 16px 10px",display:"flex",alignItems:"center",gap:8}}>
+        <div style={{padding:"0 16px 10px",display:"flex",alignItems:"center",gap:8,background:"var(--dp-header-bg)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:"1px solid var(--dp-header-border)"}}>
           <div style={{flex:1,display:"flex",alignItems:"center",gap:8,padding:"6px 12px",borderRadius:10,background:"rgba(20,184,166,0.06)",border:"1px solid rgba(20,184,166,0.1)"}}>
-            <Target size={13} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2.5}/>
-            <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{t("chat.sharedDream")}</span>
-            <span style={{fontSize:12,fontWeight:600,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.mutualDream}</span>
+            <Target size={13} color="var(--dp-teal)" strokeWidth={2.5}/>
+            <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{t("chat.sharedDream")}</span>
+            <span style={{fontSize:12,fontWeight:600,color:"var(--dp-teal)"}}>{BUDDY.mutualDream}</span>
           </div>
         </div>
         ) : null}
-      </header>
+      </div>
 
       {/* ═══ MESSAGES ═══ */}
       <div ref={scrollRef} onScroll={handleScroll} onClick={()=>setActiveMsg(null)} style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"12px 16px 80px",display:"flex",flexDirection:"column",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
@@ -437,24 +448,24 @@ export default function BuddyChatScreen(){
           {messages.length===0?(
             <div className={`dp-a ${mounted?"dp-s":""}`} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}>
               <div style={{width:80,height:80,borderRadius:24,margin:"0 auto 24px",background:"rgba(20,184,166,0.08)",border:"1px solid rgba(20,184,166,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Users size={36} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={1.5}/>
+                <Users size={36} color="var(--dp-teal)" strokeWidth={1.5}/>
               </div>
-              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>{t("chat.startChatWith")}</div>
-              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>{BUDDY.mutualDream ? t("chat.workingTowards") : t("chat.encourageEachOther")}</div>
+              <div style={{fontSize:18,fontWeight:600,color:"var(--dp-text)",marginBottom:8}}>{t("chat.startChatWith")}</div>
+              <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.5,maxWidth:300}}>{BUDDY.mutualDream ? t("chat.workingTowards") : t("chat.encourageEachOther")}</div>
             </div>
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
               {hasMore && (
                 <div style={{textAlign:"center",padding:"8px 0 12px"}}>
-                  <button onClick={loadOlderBuddyMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?t("chat.loading"):t("chat.loadOlder")}</button>
+                  <button onClick={loadOlderBuddyMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid var(--dp-accent-border)",background:"var(--dp-accent-soft)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?t("chat.loading"):t("chat.loadOlder")}</button>
                 </div>
               )}
               {messages.map((msg,i)=>(
                 <div key={msg.id}>
                   {showDate(messages,i)&&(
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"16px 0 12px"}}>
-                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{dateLabel(msg.time,t)}</div>
+                      <div style={{padding:"4px 14px",borderRadius:12,background:"var(--dp-pill-bg)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid var(--dp-glass-border)",fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>{dateLabel(msg.time,t)}</div>
                     </div>
                   )}
                   <BuddyBubble msg={msg} showActions={activeMsg===msg.id} copiedId={copiedId}
@@ -467,10 +478,10 @@ export default function BuddyChatScreen(){
               {/* Buddy typing */}
               {buddyTyping&&(
                 <div className="dp-mai" style={{display:"flex",gap:8,marginBottom:20,alignItems:"flex-end"}}>
-                  <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(20,184,166,0.12)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{BUDDY.initial}</div>
+                  <Avatar name={BUDDY.initial} size={30} color="var(--dp-teal)" style={{borderRadius:10}} />
                   <div style={{padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:"rgba(20,184,166,0.06)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:"1px solid rgba(20,184,166,0.1)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontStyle:"italic"}}>{BUDDY.displayName + " " + t("chat.isTyping")}</span>
+                      <span style={{fontSize:12,color:"var(--dp-text-primary)",fontStyle:"italic"}}>{BUDDY.displayName + " " + t("chat.isTyping")}</span>
                       <span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/>
                     </div>
                   </div>
@@ -482,31 +493,31 @@ export default function BuddyChatScreen(){
         </div>
       </div>
 
-      {showScroll&&<button aria-label="Scroll to bottom" onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})} style={{position:"fixed",bottom:162,left:"50%",transform:"translateX(-50%)",zIndex:50,width:36,height:36,borderRadius:"50%",border:isLight?"1px solid rgba(139,92,246,0.18)":"1px solid rgba(255,255,255,0.1)",background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",color:isLight?"#1a1535":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.3)"}}><ChevronDown size={18} strokeWidth={2}/></button>}
+      {showScroll&&<button aria-label="Scroll to bottom" onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})} style={{position:"fixed",bottom:162,left:"50%",transform:"translateX(-50%)",zIndex:50,width:36,height:36,borderRadius:"50%",border:"1px solid var(--dp-glass-border)",background:"var(--dp-card-solid)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",color:"var(--dp-text)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.3)"}}><ChevronDown size={18} strokeWidth={2}/></button>}
 
       {/* ═══ INPUT ═══ */}
-      <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
+      <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:"var(--dp-header-bg)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:"1px solid var(--dp-header-border)"}}>
         <div style={{maxWidth:560,margin:"0 auto",display:"flex",alignItems:"flex-end",gap:8}}>
           <div style={{position:"relative"}}>
-            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?(isLight?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.1)"):undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
+            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-accent-soft)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
             {emojiOpen&&(
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:isLight?"rgba(255,255,255,0.97)":"rgba(20,16,35,0.97)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:"var(--dp-modal-bg)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:"1px solid var(--dp-accent-border)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
                 {['😀','😂','🥹','😍','🤩','😎','🥳','🤔','😅','😢','😤','🔥','💪','👏','❤️','💜','⭐','✨','🎯','🏆','🚀','💡','📝','🌟','👍','👎','🙏','🎉','💯','🌈','🍀','☕','🧠','💭','🎵','✅','🤝','💫','🌙','☀️','🦋','🌻'].map(emoji=>(
                   <button key={emoji} onClick={()=>insertEmoji(emoji)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:6,borderRadius:8,transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background=isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.08)";e.currentTarget.style.transform="scale(1.2)";}}
+                    onMouseEnter={e=>{e.currentTarget.style.background="var(--dp-surface-hover)";e.currentTarget.style.transform="scale(1.2)";}}
                     onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.transform="scale(1)";}}
                   >{emoji}</button>
                 ))}
               </div>
             )}
           </div>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:"var(--dp-surface)",border:"1px solid var(--dp-glass-border)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInput}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
               placeholder={t("chat.typeMessage")} rows={1}
-              style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
+              style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"var(--dp-text)",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
           </div>
-          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:42,height:42,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"linear-gradient(135deg,#14B8A6,#0D9488)":isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(20,184,166,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
+          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:42,height:42,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?GRADIENTS.teal:"var(--dp-surface)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(20,184,166,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
             <Send size={18} strokeWidth={2} style={{transform:"translateX(1px)"}}/>
           </button>
         </div>
@@ -516,28 +527,25 @@ export default function BuddyChatScreen(){
       {/* ═══ PANELS ═══ */}
       {panel&&(
         <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column"}}>
-          <div onClick={()=>{setPanel(null);setSearchQ("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"absolute",top:0,right:0,bottom:0,width:"100%",maxWidth:420,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderLeft:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",flexDirection:"column",animation:"dpSI 0.3s cubic-bezier(0.16,1,0.3,1)"}}>
-            <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
+          <div onClick={()=>{setPanel(null);setSearchQ("");}} style={{position:"absolute",inset:0,background:"var(--dp-overlay-blur)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
+          <div style={{position:"absolute",top:0,right:0,bottom:0,width:"100%",maxWidth:420,background:"var(--dp-modal-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderLeft:"1px solid var(--dp-glass-border)",display:"flex",flexDirection:"column",animation:"dpSI 0.3s cubic-bezier(0.16,1,0.3,1)"}}>
+            <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:"1px solid var(--dp-glass-border)",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.pinnedMessages")}</span></>}
-                {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.likedMessages")}</span></>}
-                {panel==="search"&&<><Search size={18} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.search")}</span></>}
+                {panel==="pinned"&&<><Pin size={18} color="var(--dp-accent)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.pinnedMessages")}</span></>}
+                {panel==="liked"&&<><Heart size={18} color="var(--dp-danger)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.likedMessages")}</span></>}
+                {panel==="search"&&<><Search size={18} color="var(--dp-teal)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.search")}</span></>}
               </div>
-              <button className="dp-ib" onClick={()=>{setPanel(null);setSearchQ("");}} aria-label="Close"><X size={18} strokeWidth={2}/></button>
+              <IconButton icon={X} onClick={()=>{setPanel(null);setSearchQ("");}} label="Close" />
             </div>
             {panel==="search"&&(
-              <div style={{padding:"12px 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.04)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:14,background:"var(--dp-surface)",border:"1px solid var(--dp-input-border)"}}>
-                  <Search size={16} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>
-                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("chat.searchPlaceholder")} autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit"}}/>
-                </div>
+              <div style={{padding:"12px 16px",borderBottom:"1px solid var(--dp-divider)"}}>
+                <GlassInput value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("chat.searchPlaceholder")} autoFocus icon={Search} />
               </div>
             )}
             <div style={{flex:1,overflowY:"auto",padding:16}}>
               {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyP icon={Pin} text={t("chat.noPinned")}/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
               {panel==="liked"&&(likedMsgs.length===0?<EmptyP icon={Heart} text={t("chat.noLiked")}/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>))}
-              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyP icon={Search} text={t("chat.noResults")}/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>{t("chat.typeToSearch")}</div>)}
+              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyP icon={Search} text={t("chat.noResults")}/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} meInitial={ME.initial} buddyInitial={BUDDY.initial} buddyName={BUDDY.displayName}/>):<div style={{textAlign:"center",paddingTop:40,color:"var(--dp-text-tertiary)",fontSize:14}}>{t("chat.typeToSearch")}</div>)}
             </div>
           </div>
         </div>
@@ -578,10 +586,10 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
   const actionBar=(
     <div className="dp-acts" style={{
       display:"flex",gap:4,padding:"4px 6px",
-      background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",
+      background:"var(--dp-card-solid)",
       backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
       borderRadius:14,
-      border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.08)",
+      border:"1px solid var(--dp-accent-border)",
       boxShadow:"0 4px 16px rgba(0,0,0,0.12)",
       position:"absolute",bottom:"100%",marginBottom:6,
       ...(msg.isUser?{right:0}:{left:0}),
@@ -592,18 +600,18 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
       transition:"all 0.2s cubic-bezier(0.16,1,0.3,1)",
     }}>
       {[
-        {icon:Pin,active:msg.pinned,activeColor:isLight?"#7C3AED":"#C4B5FD",action:onPin,tip:"Pin"},
-        {icon:Heart,active:msg.liked,activeColor:isLight?"#DC2626":"#F69A9A",action:onLike,tip:"Like"},
-        {icon:isCopied?Check:Copy,active:isCopied,activeColor:isLight?"#059669":"#5DE5A8",action:onCopy,tip:"Copy"},
+        {icon:Pin,active:msg.pinned,activeColor:"var(--dp-accent)",action:onPin,tip:"Pin"},
+        {icon:Heart,active:msg.liked,activeColor:"var(--dp-danger)",action:onLike,tip:"Like"},
+        {icon:isCopied?Check:Copy,active:isCopied,activeColor:"var(--dp-success)",action:onCopy,tip:"Copy"},
       ].map(({icon:I,active,activeColor,action,tip},j)=>(
         <button key={j} title={tip} aria-label={tip} onClick={e=>{e.stopPropagation();action();}} style={{
           width:32,height:32,borderRadius:10,border:"none",
-          background:active?(isLight?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.1)"):"transparent",
-          color:active?activeColor:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.6)",
+          background:active?"var(--dp-accent-soft)":"transparent",
+          color:active?activeColor:"var(--dp-text-tertiary)",
           display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
           transition:"all 0.15s ease",
         }}
-          onMouseEnter={e=>{if(!active)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)";}}
+          onMouseEnter={e=>{if(!active)e.currentTarget.style.background="var(--dp-surface-hover)";}}
           onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent";}}
         >
           <I size={15} strokeWidth={2.2} fill={active&&tip!=="Copy"?activeColor:"none"}/>
@@ -616,15 +624,15 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
     return(
       <div className="dp-mu dp-bw" style={{display:"flex",justifyContent:"flex-end",marginBottom:16,gap:8,alignItems:"flex-end"}} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",maxWidth:"75%"}}>
-          <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 6px 18px",background:isLight?"rgba(200,120,200,0.1)":"rgba(200,120,200,0.07)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(220,140,220,0.12)",boxShadow:"0 2px 12px rgba(200,120,200,0.08),inset 0 1px 0 rgba(255,200,230,0.05)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
+          <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 6px 18px",background:"rgba(200,120,200,0.08)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(220,140,220,0.12)",boxShadow:"0 2px 12px rgba(200,120,200,0.08),inset 0 1px 0 rgba(255,200,230,0.05)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
             {actionBar}
             {reactionPicker===msg.id&&(
               <div style={{
                 display:"flex",gap:4,padding:"6px 10px",
-                background:isLight?"rgba(255,255,255,0.9)":"rgba(20,15,40,0.9)",
+                background:"var(--dp-card-solid)",
                 backdropFilter:"blur(20px)",
                 borderRadius:20,
-                border:`1px solid ${isLight?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.1)"}`,
+                border:"1px solid var(--dp-accent-border)",
                 boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
                 animation:"dpFadeScale 0.2s ease-out",
                 position:"absolute",
@@ -645,12 +653,12 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
                 ))}
               </div>
             )}
-            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+            <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:6}}>
-              {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
-              {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
-              <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{formatTime(msg.time)}</span>
-              {msg.read?<CheckCheck size={13} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={2}/>:<Check size={13} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>}
+              {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
+              {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}
+              <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{formatTime(msg.time)}</span>
+              {msg.read?<CheckCheck size={13} color="var(--dp-teal)" strokeWidth={2}/>:<Check size={13} color="var(--dp-text-muted)" strokeWidth={2}/>}
             </div>
           </div>
           {msg.reactions&&msg.reactions.length>0&&(
@@ -658,31 +666,31 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
               {msg.reactions.map((r,i)=>(
                 <span key={i} style={{
                   fontSize:14,padding:"2px 6px",
-                  background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.2)",
+                  background:"var(--dp-accent-soft)",
                   borderRadius:10,cursor:"pointer",
                 }} onClick={()=>handleReaction(msg.id,r.emoji)}>{r.emoji}</span>
               ))}
             </div>
           )}
         </div>
-        <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"linear-gradient(135deg,rgba(200,120,200,0.2),rgba(160,80,200,0.2))",border:"1px solid rgba(200,140,220,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{meInitial}</div>
+        <Avatar name={meInitial} size={30} color="rgba(200,120,200,0.8)" style={{borderRadius:10}} />
       </div>
     );
   }
 
   return(
     <div className="dp-mb dp-bw" style={{display:"flex",gap:8,marginBottom:16,alignItems:"flex-end"}} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
-      <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(20,184,166,0.12)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{buddyInitial}</div>
+      <Avatar name={buddyInitial} size={30} color="var(--dp-teal)" style={{borderRadius:10}} />
       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",maxWidth:"75%"}}>
-        <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(20,184,166,0.06)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(20,184,166,0.1)",boxShadow:"0 2px 12px rgba(20,184,166,0.06),inset 0 1px 0 rgba(94,234,212,0.04)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
+        <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(20,184,166,0.1)",boxShadow:"0 2px 12px rgba(20,184,166,0.06),inset 0 1px 0 rgba(94,234,212,0.04)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
           {actionBar}
           {reactionPicker===msg.id&&(
             <div style={{
               display:"flex",gap:4,padding:"6px 10px",
-              background:isLight?"rgba(255,255,255,0.9)":"rgba(20,15,40,0.9)",
+              background:"var(--dp-card-solid)",
               backdropFilter:"blur(20px)",
               borderRadius:20,
-              border:`1px solid ${isLight?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.1)"}`,
+              border:"1px solid var(--dp-accent-border)",
               boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
               animation:"dpFadeScale 0.2s ease-out",
               position:"absolute",
@@ -703,11 +711,11 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
               ))}
             </div>
           )}
-          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
           <div style={{display:"flex",alignItems:"center",gap:5,marginTop:6}}>
-            {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
-            {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
-            <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{formatTime(msg.time)}</span>
+            {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
+            {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}
+            <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{formatTime(msg.time)}</span>
           </div>
         </div>
         {msg.reactions&&msg.reactions.length>0&&(
@@ -715,7 +723,7 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
             {msg.reactions.map((r,i)=>(
               <span key={i} style={{
                 fontSize:14,padding:"2px 6px",
-                background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.2)",
+                background:"var(--dp-accent-soft)",
                 borderRadius:10,cursor:"pointer",
               }} onClick={()=>handleReaction(msg.id,r.emoji)}>{r.emoji}</span>
             ))}
@@ -731,25 +739,25 @@ function PanelMsg({msg,meInitial,buddyInitial,buddyName}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   var{t}=useT();
   return(
-    <div style={{padding:12,marginBottom:8,borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
+    <GlassCard padding={12} mb={8} radius={14}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
         {msg.isUser?(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(200,120,200,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{meInitial}</div>
+          <Avatar name={meInitial} size={22} color="rgba(200,120,200,0.8)" style={{borderRadius:7}} />
         ):(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(20,184,166,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#0D9488":"#5EEAD4"}}>{buddyInitial}</div>
+          <Avatar name={buddyInitial} size={22} color="var(--dp-teal)" style={{borderRadius:7}} />
         )}
-        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?t("chat.you"):buddyName}</span>
-        <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
+        <span style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>{msg.isUser?t("chat.you"):buddyName}</span>
+        <span style={{fontSize:12,color:"var(--dp-text-tertiary)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
       </div>
-      <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content}</div>
-    </div>
+      <div style={{fontSize:13,color:"var(--dp-text-primary)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content}</div>
+    </GlassCard>
   );
 }
 
 function EmptyP({icon:I,text}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   return(<div style={{textAlign:"center",paddingTop:60}}>
-    <div style={{width:56,height:56,borderRadius:16,margin:"0 auto 16px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center"}}><I size={24} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={1.5}/></div>
-    <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{text}</div>
+    <div style={{width:56,height:56,borderRadius:16,margin:"0 auto 16px",background:"var(--dp-glass-bg)",display:"flex",alignItems:"center",justifyContent:"center"}}><I size={24} color="var(--dp-text-muted)" strokeWidth={1.5}/></div>
+    <div style={{fontSize:14,color:"var(--dp-text-tertiary)"}}>{text}</div>
   </div>);
 }

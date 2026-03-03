@@ -5,16 +5,10 @@ import PageLayout from "../../components/shared/PageLayout";
 import { DREAMS } from "../../services/endpoints";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import useInfiniteList from "../../hooks/useInfiniteList";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
 
-var glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-};
-
-var font = "Inter, sans-serif";
 
 export default function SharedDreamsScreen() {
   var navigate = useNavigate();
@@ -39,16 +33,13 @@ export default function SharedDreamsScreen() {
   /* ─── Loading ──────────────────────────────────────── */
   if (sharedInf.isLoading) {
     return (
-      <PageLayout>
-        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", paddingTop: 20, paddingBottom: 24 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-            <button className="dp-ib" onClick={function () { navigate(-1); }}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--dp-text)", fontFamily: font, margin: 0, letterSpacing: "-0.5px" }}>
-              Shared With Me
-            </h1>
-          </div>
+      <PageLayout header={
+        <GlassAppBar
+          left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+          title="Shared With Me"
+        />
+      }>
+        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", paddingBottom: 24 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {[1, 2, 3].map(function (i) { return <SkeletonCard key={i} height={140} />; })}
           </div>
@@ -59,22 +50,14 @@ export default function SharedDreamsScreen() {
 
   /* ─── Content ──────────────────────────────────────── */
   return (
-    <PageLayout>
-      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", paddingTop: 20, paddingBottom: 24 }}>
-        {/* Header */}
-        <div style={{ ...stagger(0), display: "flex", alignItems: "center", gap: 16, marginBottom: 24 }}>
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--dp-text)", fontFamily: font, margin: 0, letterSpacing: "-0.5px" }}>
-              Shared With Me
-            </h1>
-            <p style={{ fontSize: 13, color: "var(--dp-text-tertiary)", fontFamily: font, margin: 0, marginTop: 2 }}>
-              Dreams others have shared with you
-            </p>
-          </div>
-        </div>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title="Shared With Me"
+        subtitle="Dreams others have shared with you"
+      />
+    }>
+      <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh", paddingBottom: 24 }}>
 
         {/* Empty state */}
         {dreams.length === 0 && (
@@ -90,10 +73,10 @@ export default function SharedDreamsScreen() {
             }}>
               <Share2 size={28} color="#8B5CF6" />
             </div>
-            <p style={{ fontSize: 16, fontWeight: 600, color: "var(--dp-text)", fontFamily: font, margin: 0 }}>
+            <p style={{ fontSize: 16, fontWeight: 600, color: "var(--dp-text)", margin: 0 }}>
               No shared dreams yet
             </p>
-            <p style={{ fontSize: 13, color: "var(--dp-text-muted)", fontFamily: font, marginTop: 8, maxWidth: 260, lineHeight: 1.5 }}>
+            <p style={{ fontSize: 13, color: "var(--dp-text-muted)", marginTop: 8, maxWidth: 260, lineHeight: 1.5 }}>
               When someone shares a dream with you, it will appear here.
             </p>
           </div>
@@ -108,19 +91,20 @@ export default function SharedDreamsScreen() {
             var sharedBy = dream.sharedBy?.displayName || dream.sharedBy?.username || dream.owner?.displayName || dream.owner?.username || "Someone";
 
             return (
-              <div
+              <GlassCard
                 key={dream.id}
+                hover
+                padding={18}
                 onClick={function () { navigate("/dream/" + dream.id); }}
                 style={{
-                  ...stagger(1 + idx), ...glass,
-                  padding: 18, cursor: "pointer",
+                  ...stagger(1 + idx),
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
                   transition: "transform 0.25s ease, box-shadow 0.25s ease, opacity 0.6s cubic-bezier(0.4,0,0.2,1), transform 0.6s cubic-bezier(0.4,0,0.2,1)",
                 }}
               >
                 {/* Top row: title + chevron */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--dp-text)", fontFamily: font, margin: 0, flex: 1 }}>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--dp-text)", margin: 0, flex: 1 }}>
                     {dream.title}
                   </h3>
                   <ChevronRight size={18} color="var(--dp-text-muted)" style={{ flexShrink: 0, marginTop: 2 }} />
@@ -128,7 +112,7 @@ export default function SharedDreamsScreen() {
 
                 {/* Description */}
                 {description && (
-                  <p style={{ fontSize: 13, color: "var(--dp-text-tertiary)", fontFamily: font, margin: "6px 0 0", lineHeight: 1.5 }}>
+                  <p style={{ fontSize: 13, color: "var(--dp-text-tertiary)", margin: "6px 0 0", lineHeight: 1.5 }}>
                     {description}
                   </p>
                 )}
@@ -141,7 +125,7 @@ export default function SharedDreamsScreen() {
                       padding: "3px 10px", borderRadius: 50,
                       background: "rgba(139,92,246,0.1)", border: "1px solid rgba(139,92,246,0.2)",
                     }}>
-                      <span style={{ fontSize: 11, fontWeight: 600, color: "#C4B5FD", fontFamily: font }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dp-accent)" }}>
                         {dream.category}
                       </span>
                     </div>
@@ -150,14 +134,14 @@ export default function SharedDreamsScreen() {
                   {dream.targetDate && (
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <Calendar size={12} color="var(--dp-text-muted)" />
-                      <span style={{ fontSize: 12, color: "var(--dp-text-tertiary)", fontFamily: font }}>
+                      <span style={{ fontSize: 12, color: "var(--dp-text-tertiary)" }}>
                         {new Date(dream.targetDate).toLocaleDateString()}
                       </span>
                     </div>
                   )}
                   <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                     <Share2 size={12} color="var(--dp-text-muted)" />
-                    <span style={{ fontSize: 12, color: "var(--dp-text-tertiary)", fontFamily: font }}>{sharedBy}</span>
+                    <span style={{ fontSize: 12, color: "var(--dp-text-tertiary)" }}>{sharedBy}</span>
                   </div>
                 </div>
 
@@ -166,11 +150,11 @@ export default function SharedDreamsScreen() {
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                       <Target size={12} color="#8B5CF6" />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-text-secondary)", fontFamily: font }}>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-text-secondary)" }}>
                         Progress
                       </span>
                     </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: "#C4B5FD", fontFamily: font }}>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-accent)" }}>
                       {progress}%
                     </span>
                   </div>
@@ -182,12 +166,12 @@ export default function SharedDreamsScreen() {
                     }} />
                   </div>
                 </div>
-              </div>
+              </GlassCard>
             );
           })}
           <div ref={sharedInf.sentinelRef} />
           {sharedInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-tertiary)", fontFamily: font }}>Loading more...</div>
+            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-tertiary)" }}>Loading more...</div>
           )}
         </div>
       </div>

@@ -2,15 +2,23 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import useInfiniteList from "../../hooks/useInfiniteList";
-import { ArrowLeft, Zap, Heart, Check, X, Star, ShoppingBag, Package, RotateCcw, Clock } from "lucide-react";
+import { ArrowLeft, Zap, Heart, Check, X, Star, ShoppingBag, Package, RotateCcw, Clock, Gift } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import PillTabs from "../../components/shared/PillTabs";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassModal from "../../components/shared/GlassModal";
+import GlassInput from "../../components/shared/GlassInput";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { apiGet, apiPost, apiDelete } from "../../services/api";
 import { STORE } from "../../services/endpoints";
+import { BRAND, GRADIENTS, adaptColor } from "../../styles/colors";
 
 var CATEGORIES = [
   { id: "all", label: "All" },
@@ -29,14 +37,6 @@ var RARITY_CONFIG = {
   legendary: { color: "#FCD34D", label: "Legendary", glow: "0 0 18px rgba(252,211,77,0.6)" },
 };
 
-var glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
 
 export default function StoreScreen() {
   var navigate = useNavigate();
@@ -89,7 +89,7 @@ export default function StoreScreen() {
     }
   }, [mounted]);
 
-  var displayItems = activeTab === "inventory" ? inventoryItems : items;
+  var displayItems = activeTab === "inventory" ? inventoryItems : activeTab === "history" ? [] : items;
   var filteredItems = displayItems.filter(function (item) {
     var matchCategory = activeCategory === "all" || item.type === activeCategory;
     return matchCategory;
@@ -99,7 +99,7 @@ export default function StoreScreen() {
 
   var purchaseMut = useMutation({
     mutationFn: function (itemId) {
-      return apiPost(STORE.PURCHASE_XP, { itemId: itemId });
+      return apiPost(STORE.PURCHASE_XP, { item_id: itemId });
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-items"] });
@@ -114,11 +114,12 @@ export default function StoreScreen() {
 
   var equipMut = useMutation({
     mutationFn: function (itemId) {
-      return apiPost(STORE.EQUIP(itemId));
+      return apiPost(STORE.EQUIP(itemId), { equip: true });
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-items"] });
       queryClient.invalidateQueries({ queryKey: ["store-inventory"] });
+      refreshUser();
       showToast("Item equipped!", "success");
     },
     onError: function (err) {
@@ -128,7 +129,7 @@ export default function StoreScreen() {
 
   var wishlistAddMut = useMutation({
     mutationFn: function (itemId) {
-      return apiPost(STORE.WISHLIST, { itemId: itemId });
+      return apiPost(STORE.WISHLIST, { item_id: itemId });
     },
     onSuccess: function () {
       queryClient.invalidateQueries({ queryKey: ["store-wishlist"] });
@@ -184,9 +185,9 @@ export default function StoreScreen() {
           style={{
             display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
             padding: "8px 0", width: "100%", borderRadius: 12,
-            background: "#14B8A6", border: "none",
-            color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-            cursor: "pointer", transition: "all 0.25s ease",
+            background: BRAND.teal, border: "none",
+            color: BRAND.white, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.25s ease",
+            fontFamily: "inherit",
           }}
           onClick={function (e) { e.stopPropagation(); handleEquip(item.id); }}
         >
@@ -199,9 +200,9 @@ export default function StoreScreen() {
         <button
           style={{
             padding: "8px 0", width: "100%", borderRadius: 12,
-            background: "transparent", border: "1px solid #14B8A6",
-            color: "#14B8A6", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-            cursor: "pointer", transition: "all 0.25s ease",
+            background: "transparent", border: "1px solid " + BRAND.teal,
+            color: BRAND.teal, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.25s ease",
+            fontFamily: "inherit",
           }}
           onClick={function (e) { e.stopPropagation(); handleEquip(item.id); }}
         >
@@ -213,10 +214,10 @@ export default function StoreScreen() {
       <button
         style={{
           padding: "8px 0", width: "100%", borderRadius: 12,
-          background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+          background: GRADIENTS.primaryDark,
           border: "none",
-          color: "#fff", fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-          cursor: "pointer", transition: "all 0.25s ease",
+          color: BRAND.white, fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.25s ease",
+          fontFamily: "inherit",
           opacity: userXp < item.price ? 0.5 : 1,
         }}
         onClick={function (e) { e.stopPropagation(); handleBuy(item.id); }}
@@ -239,7 +240,22 @@ export default function StoreScreen() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Go back" />}
+        title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Store</h1>}
+        right={<div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <IconButton icon={Gift} onClick={function () { navigate("/store/gifts"); }} label="Send Gift" />
+
+          <div style={{ display: "flex", alignItems: "center", gap: 6, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", borderRadius: 14, padding: "8px 14px" }}>
+            <Zap size={16} color={adaptColor(BRAND.yellow, isLight)} fill={adaptColor(BRAND.yellow, isLight)} />
+            <span style={{ fontSize: 14, fontWeight: 700, color: adaptColor(BRAND.yellow, isLight) }}>
+              {userXp.toLocaleString()} XP
+            </span>
+          </div>
+        </div>}
+      />
+    }>
       {/* Shimmer animation for legendary items */}
       <style>{`
         @keyframes legendaryShimmer {
@@ -269,105 +285,28 @@ export default function StoreScreen() {
         }
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-        paddingTop: 16, paddingBottom: 12,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <h1 style={{
-            fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-            fontFamily: "Inter, sans-serif", margin: 0,
-          }}>
-            Store
-          </h1>
-        </div>
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6,
-          ...glassStyle, borderRadius: 14,
-          padding: "8px 14px",
-        }}>
-          <Zap size={16} color={isLight ? "#B45309" : "#FCD34D"} fill={isLight ? "#B45309" : "#FCD34D"} />
-          <span style={{
-            fontSize: 14, fontWeight: 700, color: isLight ? "#B45309" : "#FCD34D",
-            fontFamily: "Inter, sans-serif",
-          }}>
-            {userXp.toLocaleString()} XP
-          </span>
-        </div>
-      </div>
-
       {/* Category Tabs */}
-      <div style={{
-        display: "flex", gap: 8, overflowX: "auto", paddingBottom: 12,
-        WebkitOverflowScrolling: "touch",
-        scrollbarWidth: "none",
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
-      }}>
-        {CATEGORIES.map(function (cat) {
-          return (
-            <button
-              key={cat.id}
-              onClick={function () { setActiveCategory(cat.id); }}
-              style={{
-                padding: "8px 16px", borderRadius: 12, whiteSpace: "nowrap",
-                background: activeCategory === cat.id
-                  ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                  : "var(--dp-surface)",
-                border: activeCategory === cat.id
-                  ? "1px solid rgba(139,92,246,0.3)"
-                  : "1px solid var(--dp-input-border)",
-                color: activeCategory === cat.id ? "var(--dp-text)" : "var(--dp-text-secondary)",
-                fontSize: 13, fontWeight: 500, fontFamily: "Inter, sans-serif",
-                cursor: "pointer", transition: "all 0.25s ease", flexShrink: 0,
-              }}
-            >
-              {cat.label}
-            </button>
-          );
-        })}
-      </div>
+      <PillTabs
+        tabs={CATEGORIES.map(function (cat) { return { key: cat.id, label: cat.label }; })}
+        active={activeCategory}
+        onChange={setActiveCategory}
+        scrollable
+        style={{ paddingBottom: 12 }}
+      />
 
       {/* Shop / Inventory Tabs */}
-      <div style={{
-        display: "flex", gap: 4, marginBottom: 16,
-        ...glassStyle, borderRadius: 14, padding: 4,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.15s",
-      }}>
-        {[
-          { id: "shop", label: "Shop", icon: ShoppingBag },
-          { id: "inventory", label: "Inventory", icon: Package },
-          { id: "history", label: "History", icon: Clock },
-        ].map(function (tab) {
-          var Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={function () { setActiveTab(tab.id); }}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "10px 0", borderRadius: 12, border: "none",
-                background: activeTab === tab.id
-                  ? "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.2))"
-                  : "transparent",
-                color: activeTab === tab.id ? "var(--dp-text)" : "var(--dp-text-tertiary)",
-                fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                cursor: "pointer", transition: "all 0.25s ease",
-              }}
-            >
-              <Icon size={16} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <GlassCard padding={4} mb={16} style={{ borderRadius: 14 }}>
+        <PillTabs
+          tabs={[
+            { key: "shop", label: "Shop", icon: ShoppingBag },
+            { key: "inventory", label: "Inventory", icon: Package },
+            { key: "history", label: "History", icon: Clock },
+          ]}
+          active={activeTab}
+          onChange={setActiveTab}
+          style={{ gap: 4 }}
+        />
+      </GlassCard>
 
       {/* Item Grid */}
       <div style={{
@@ -378,11 +317,10 @@ export default function StoreScreen() {
         {/* Skeleton loading placeholders */}
         {(showSkeletons || (activeTab === "inventory" ? inventoryInf.isLoading : itemsInf.isLoading)) && Array.from({ length: 4 }).map(function (_, i) {
           return (
-            <div
+            <GlassCard
               key={"skeleton-" + i}
+              padding={16}
               style={{
-                ...glassStyle,
-                padding: 16,
                 animation: "skeletonPulse 1.5s ease-in-out infinite",
                 animationDelay: i * 0.15 + "s",
               }}
@@ -426,22 +364,20 @@ export default function StoreScreen() {
                 animation: "skeletonShimmer 1.8s ease-in-out infinite",
                 animationDelay: "0.4s",
               }} />
-            </div>
+            </GlassCard>
           );
         })}
 
         {filteredItems.map(function (item, index) {
           var rarity = RARITY_CONFIG[item.rarity] || RARITY_CONFIG.common;
-          var rarityTextColor = isLight
-            ? (rarity.color === "#9CA3AF" ? "#4B5563" : rarity.color === "#FCD34D" ? "#B45309" : rarity.color)
-            : rarity.color;
+          var rarityTextColor = adaptColor(rarity.color, isLight);
           return (
-            <div
+            <GlassCard
+              hover
               key={item.id}
               onClick={function () { setSelectedItem(item); }}
+              padding={16}
               style={{
-                ...glassStyle,
-                padding: 16, cursor: "pointer",
                 transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                 opacity: mounted ? 1 : 0,
                 transform: mounted ? "translateY(0) scale(1)" : "translateY(20px) scale(0.95)",
@@ -455,13 +391,13 @@ export default function StoreScreen() {
                 style={{
                   position: "absolute", top: 10, right: 10, zIndex: 2,
                   background: "none", border: "none", cursor: "pointer",
-                  padding: 4, transition: "all 0.25s ease",
+                  padding: 4, transition: "all 0.25s ease", fontFamily: "inherit",
                 }}
               >
                 <Heart
                   size={16}
-                  color={wishlistSet.has(item.id) ? "#EC4899" : "var(--dp-text-muted)"}
-                  fill={wishlistSet.has(item.id) ? "#EC4899" : "none"}
+                  color={wishlistSet.has(item.id) ? BRAND.pink : "var(--dp-text-muted)"}
+                  fill={wishlistSet.has(item.id) ? BRAND.pink : "none"}
                   style={{ transition: "all 0.25s ease" }}
                 />
               </button>
@@ -483,7 +419,7 @@ export default function StoreScreen() {
               {/* Item name */}
               <div style={{
                 fontSize: 13, fontWeight: 600, color: "var(--dp-text)", textAlign: "center",
-                fontFamily: "Inter, sans-serif", marginBottom: 6,
+                marginBottom: 6,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
               }}>
                 {item.name}
@@ -495,8 +431,7 @@ export default function StoreScreen() {
               }}>
                 <span style={{
                   fontSize: 10, fontWeight: 700, textTransform: "uppercase",
-                  letterSpacing: "0.5px", fontFamily: "Inter, sans-serif",
-                  padding: "3px 8px", borderRadius: 6,
+                  letterSpacing: "0.5px", padding: "3px 8px", borderRadius: 6,
                   color: rarityTextColor,
                   background: item.rarity === "legendary"
                     ? "linear-gradient(90deg, transparent, rgba(252,211,77,0.15), transparent)"
@@ -518,11 +453,10 @@ export default function StoreScreen() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   gap: 4, marginBottom: 10,
                 }}>
-                  <Zap size={12} color={isLight ? "#B45309" : "#FCD34D"} fill={isLight ? "#B45309" : "#FCD34D"} />
+                  <Zap size={12} color={adaptColor(BRAND.yellow, isLight)} fill={adaptColor(BRAND.yellow, isLight)} />
                   <span style={{
-                    fontSize: 13, fontWeight: 700, color: isLight ? "#B45309" : "#FCD34D",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    fontSize: 13, fontWeight: 700, color: adaptColor(BRAND.yellow, isLight),
+                    }}>
                     {item.price}
                   </span>
                 </div>
@@ -531,7 +465,7 @@ export default function StoreScreen() {
                 <div style={{
                   textAlign: "center", marginBottom: 10,
                   fontSize: 11, color: "var(--dp-text-muted)",
-                  fontFamily: "Inter, sans-serif", fontWeight: 500,
+                  fontWeight: 500,
                 }}>
                   Owned
                 </div>
@@ -539,7 +473,7 @@ export default function StoreScreen() {
 
               {/* Action button */}
               {renderButton(item)}
-            </div>
+            </GlassCard>
           );
         })}
       </div>
@@ -547,10 +481,10 @@ export default function StoreScreen() {
       {activeTab === "shop" && <div ref={itemsInf.sentinelRef} style={{ height: 1 }} />}
       {activeTab === "inventory" && <div ref={inventoryInf.sentinelRef} style={{ height: 1 }} />}
       {activeTab === "shop" && itemsInf.loadingMore && (
-        <div style={{ textAlign: "center", padding: 16, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)", fontSize: 13 }}>Loading more…</div>
+        <div style={{ textAlign: "center", padding: 16, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading more…</div>
       )}
       {activeTab === "inventory" && inventoryInf.loadingMore && (
-        <div style={{ textAlign: "center", padding: 16, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)", fontSize: 13 }}>Loading more…</div>
+        <div style={{ textAlign: "center", padding: 16, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading more…</div>
       )}
 
       {/* Empty state */}
@@ -562,14 +496,13 @@ export default function StoreScreen() {
           <Package size={48} color="var(--dp-text-muted)" style={{ marginBottom: 16 }} />
           <div style={{
             fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif", marginBottom: 8,
+            marginBottom: 8,
           }}>
             {activeTab === "inventory" ? "No items in inventory" : "No items found"}
           </div>
           <div style={{
             fontSize: 13, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             {activeTab === "inventory"
               ? "Purchase items from the shop to see them here"
               : "Try a different category"}
@@ -582,8 +515,7 @@ export default function StoreScreen() {
         <div style={{ display: "flex", flexDirection: "column", gap: 12, paddingBottom: 32 }}>
           {historyInf.isLoading && Array.from({ length: 3 }).map(function (_, i) {
             return (
-              <div key={"hist-skel-" + i} style={{
-                ...glassStyle, padding: 16,
+              <GlassCard key={"hist-skel-" + i} padding={16} style={{
                 animation: "skeletonPulse 1.5s ease-in-out infinite",
                 animationDelay: i * 0.15 + "s",
               }}>
@@ -604,7 +536,7 @@ export default function StoreScreen() {
                     }} />
                   </div>
                 </div>
-              </div>
+              </GlassCard>
             );
           })}
           {!historyInf.isLoading && historyItems.length === 0 && (
@@ -615,22 +547,20 @@ export default function StoreScreen() {
               <Clock size={48} color="var(--dp-text-muted)" style={{ marginBottom: 16 }} />
               <div style={{
                 fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)",
-                fontFamily: "Inter, sans-serif", marginBottom: 8,
+                marginBottom: 8,
               }}>
                 No purchase history
               </div>
               <div style={{
                 fontSize: 13, color: "var(--dp-text-muted)",
-                fontFamily: "Inter, sans-serif",
-              }}>
+                }}>
                 Your past purchases will appear here
               </div>
             </div>
           )}
           {historyItems.map(function (item, index) {
             return (
-              <div key={item.id || index} style={{
-                ...glassStyle, padding: 16,
+              <GlassCard key={item.id || index} padding={16} style={{
                 opacity: mounted ? 1 : 0,
                 transform: mounted ? "translateY(0)" : "translateY(10px)",
                 transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -649,49 +579,48 @@ export default function StoreScreen() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{
                       fontSize: 14, fontWeight: 600, color: "var(--dp-text)",
-                      fontFamily: "Inter, sans-serif", marginBottom: 4,
+                      marginBottom: 4,
                       whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                     }}>
                       {item.name || item.itemName || "Unknown Item"}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <span style={{
-                        fontSize: 12, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif",
-                      }}>
+                        fontSize: 12, color: "var(--dp-text-muted)", }}>
                         {item.purchasedAt ? new Date(item.purchasedAt).toLocaleDateString() : item.date || "—"}
                       </span>
                       <span style={{
                         display: "flex", alignItems: "center", gap: 3,
-                        fontSize: 12, fontWeight: 600, color: isLight ? "#B45309" : "#FCD34D",
-                        fontFamily: "Inter, sans-serif",
-                      }}>
-                        <Zap size={10} color={isLight ? "#B45309" : "#FCD34D"} fill={isLight ? "#B45309" : "#FCD34D"} />
+                        fontSize: 12, fontWeight: 600, color: adaptColor(BRAND.yellow, isLight),
+                        }}>
+                        <Zap size={10} color={adaptColor(BRAND.yellow, isLight)} fill={adaptColor(BRAND.yellow, isLight)} />
                         {item.price || item.pricePaid || 0} XP
                       </span>
                     </div>
                   </div>
                   {/* Refund button */}
                   <button
+                    className="dp-gh"
                     onClick={function () { setRefundModal(item); }}
                     style={{
                       display: "flex", alignItems: "center", gap: 4,
                       padding: "8px 12px", borderRadius: 10,
                       background: "transparent", border: "1px solid var(--dp-input-border)",
                       color: "var(--dp-text-secondary)", fontSize: 12, fontWeight: 600,
-                      fontFamily: "Inter, sans-serif", cursor: "pointer",
-                      transition: "all 0.25s ease", flexShrink: 0,
+                      cursor: "pointer",
+                      transition: "all 0.25s ease", flexShrink: 0, fontFamily: "inherit",
                     }}
                   >
                     <RotateCcw size={12} />
                     Refund
                   </button>
                 </div>
-              </div>
+              </GlassCard>
             );
           })}
           <div ref={historyInf.sentinelRef} style={{ height: 1 }} />
           {historyInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: 16, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)", fontSize: 13 }}>Loading more…</div>
+            <div style={{ textAlign: "center", padding: 16, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading more…</div>
           )}
         </div>
       )}
@@ -700,51 +629,26 @@ export default function StoreScreen() {
       {selectedItem && (function () {
         var rarity = RARITY_CONFIG[selectedItem.rarity] || RARITY_CONFIG.common;
         return (
-          <div
-            onClick={function () { setSelectedItem(null); }}
-            style={{
-              position: "fixed", inset: 0, zIndex: 200,
-              background: "rgba(0,0,0,0.7)", backdropFilter: "blur(10px)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              padding: 24, animation: "overlayFadeIn 0.25s ease",
-            }}
+          <GlassModal
+            open={!!selectedItem}
+            onClose={function () { setSelectedItem(null); }}
+            variant="center"
+            maxWidth={360}
           >
-            <div
-              onClick={function (e) { e.stopPropagation(); }}
-              style={{
-                ...glassStyle,
-                background: "var(--dp-modal-bg)",
-                padding: 28, width: "100%", maxWidth: 360,
-                animation: "modalFadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
-                position: "relative",
-              }}
-            >
-              {/* Close button */}
-              <button
-                onClick={function () { setSelectedItem(null); }}
-                style={{
-                  position: "absolute", top: 14, right: 14,
-                  width: 32, height: 32, borderRadius: 10,
-                  background: "var(--dp-surface-hover)", border: "none",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer",
-                }}
-              >
-                <X size={16} color="var(--dp-text-tertiary)" />
-              </button>
-
+            <div style={{ padding: 28, position: "relative" }}>
               {/* Wishlist */}
               <button
                 onClick={function () { toggleWishlist(selectedItem.id); }}
                 style={{
                   position: "absolute", top: 14, left: 14,
                   background: "none", border: "none", cursor: "pointer", padding: 4,
+                  fontFamily: "inherit",
                 }}
               >
                 <Heart
                   size={20}
-                  color={wishlistSet.has(selectedItem.id) ? "#EC4899" : "var(--dp-text-muted)"}
-                  fill={wishlistSet.has(selectedItem.id) ? "#EC4899" : "none"}
+                  color={wishlistSet.has(selectedItem.id) ? BRAND.pink : "var(--dp-text-muted)"}
+                  fill={wishlistSet.has(selectedItem.id) ? BRAND.pink : "none"}
                 />
               </button>
 
@@ -763,7 +667,7 @@ export default function StoreScreen() {
               {/* Name */}
               <div style={{
                 fontSize: 20, fontWeight: 700, color: "var(--dp-text)", textAlign: "center",
-                fontFamily: "Inter, sans-serif", marginBottom: 8,
+                marginBottom: 8,
               }}>
                 {selectedItem.name}
               </div>
@@ -774,8 +678,7 @@ export default function StoreScreen() {
               }}>
                 <span style={{
                   fontSize: 11, fontWeight: 700, textTransform: "uppercase",
-                  letterSpacing: "0.5px", fontFamily: "Inter, sans-serif",
-                  padding: "4px 12px", borderRadius: 8,
+                  letterSpacing: "0.5px", padding: "4px 12px", borderRadius: 8,
                   color: rarity.color,
                   background: rarity.color + "15",
                   border: "1px solid " + rarity.color + "30",
@@ -789,7 +692,7 @@ export default function StoreScreen() {
               {/* Description */}
               <div style={{
                 fontSize: 14, color: "var(--dp-text-secondary)", textAlign: "center",
-                fontFamily: "Inter, sans-serif", lineHeight: 1.5, marginBottom: 20,
+                lineHeight: 1.5, marginBottom: 20,
                 padding: "0 8px",
               }}>
                 {selectedItem.description}
@@ -801,11 +704,10 @@ export default function StoreScreen() {
                   display: "flex", alignItems: "center", justifyContent: "center",
                   gap: 6, marginBottom: 20,
                 }}>
-                  <Zap size={18} color="#FCD34D" fill="#FCD34D" />
+                  <Zap size={18} color={BRAND.yellow} fill={BRAND.yellow} />
                   <span style={{
-                    fontSize: 22, fontWeight: 800, color: "#FCD34D",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    fontSize: 22, fontWeight: 800, color: BRAND.yellow,
+                    }}>
                     {selectedItem.price} XP
                   </span>
                 </div>
@@ -814,21 +716,18 @@ export default function StoreScreen() {
               {/* Action button */}
               <div style={{ padding: "0 8px" }}>
                 {selectedItem.equipped ? (
-                  <button
+                  <GradientButton
+                    gradient="teal"
                     onClick={function () {
                       handleEquip(selectedItem.id);
                       setSelectedItem(Object.assign({}, selectedItem, { equipped: false }));
                     }}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      padding: "14px 0", width: "100%", borderRadius: 14,
-                      background: "#14B8A6", border: "none",
-                      color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                      cursor: "pointer", transition: "all 0.25s ease",
-                    }}
+                    icon={Check}
+                    fullWidth
+                    size="lg"
                   >
-                    <Check size={18} /> Equipped
-                  </button>
+                    Equipped
+                  </GradientButton>
                 ) : selectedItem.owned ? (
                   <button
                     onClick={function () {
@@ -837,67 +736,68 @@ export default function StoreScreen() {
                     }}
                     style={{
                       padding: "14px 0", width: "100%", borderRadius: 14,
-                      background: "transparent", border: "2px solid #14B8A6",
-                      color: "#14B8A6", fontSize: 15, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                      cursor: "pointer", transition: "all 0.25s ease",
+                      background: "transparent", border: "2px solid " + BRAND.teal,
+                      color: BRAND.teal, fontSize: 15, fontWeight: 700, cursor: "pointer", transition: "all 0.25s ease",
+                      fontFamily: "inherit",
                     }}
                   >
                     Equip Item
                   </button>
                 ) : (
-                  <button
+                  <GradientButton
+                    gradient="primaryDark"
                     onClick={function () {
                       handleBuy(selectedItem.id);
                       if (userXp >= selectedItem.price) {
                         setSelectedItem(Object.assign({}, selectedItem, { owned: true }));
                       }
                     }}
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      padding: "14px 0", width: "100%", borderRadius: 14,
-                      background: userXp >= selectedItem.price
-                        ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                        : "var(--dp-surface-hover)",
-                      border: "none",
-                      color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                      cursor: userXp >= selectedItem.price ? "pointer" : "not-allowed",
-                      opacity: userXp >= selectedItem.price ? 1 : 0.5,
-                      transition: "all 0.25s ease",
-                    }}
+                    icon={Zap}
+                    fullWidth
+                    size="lg"
                     disabled={userXp < selectedItem.price || purchaseMut.isPending}
                   >
-                    <Zap size={16} fill="#FCD34D" color="#FCD34D" />
                     Buy for {selectedItem.price} XP
-                  </button>
+                  </GradientButton>
                 )}
               </div>
             </div>
-          </div>
+          </GlassModal>
         );
       })()}
       {/* Refund Modal */}
-      {refundModal && (
-        <div onClick={function () { setRefundModal(null); setRefundReason(""); }} style={{
-          position: "fixed", inset: 0, zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(8px)",
-        }}>
-          <div onClick={function (e) { e.stopPropagation(); }} style={{
-            ...glassStyle, background: "var(--dp-modal-bg)", padding: 24, width: "90%", maxWidth: 360,
-            animation: "modalFadeIn 0.3s ease",
-          }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: "var(--dp-text)", fontFamily: "Inter, sans-serif", marginBottom: 12 }}>Request Refund</h3>
-            <p style={{ fontSize: 13, color: "var(--dp-text-secondary)", fontFamily: "Inter, sans-serif", marginBottom: 14, lineHeight: 1.5 }}>
-              Refund for: <strong>{refundModal.name || refundModal.itemName}</strong>
-            </p>
-            <textarea value={refundReason} onChange={function (e) { setRefundReason(e.target.value); }} placeholder="Reason for refund..." rows={3}
-              style={{ width: "100%", padding: "10px 14px", borderRadius: 12, background: "var(--dp-input-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 14, fontFamily: "Inter, sans-serif", outline: "none", resize: "none", marginBottom: 14 }} />
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={function () { setRefundModal(null); setRefundReason(""); }} style={{ flex: 1, padding: "12px", borderRadius: 12, border: "1px solid var(--dp-input-border)", background: "var(--dp-glass-bg)", color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "Inter, sans-serif" }}>Cancel</button>
-              <button disabled={!refundReason.trim()} onClick={function () { refundMut.mutate({ purchaseId: refundModal.id, reason: refundReason.trim() }); }} style={{ flex: 1, padding: "12px", borderRadius: 12, border: "none", background: refundReason.trim() ? "linear-gradient(135deg, #8B5CF6, #6D28D9)" : "var(--dp-surface-hover)", color: refundReason.trim() ? "#fff" : "var(--dp-text-muted)", fontSize: 14, fontWeight: 600, cursor: refundReason.trim() ? "pointer" : "not-allowed", fontFamily: "Inter, sans-serif" }}>Submit</button>
-            </div>
+      <GlassModal
+        open={!!refundModal}
+        onClose={function () { setRefundModal(null); setRefundReason(""); }}
+        variant="center"
+        title="Request Refund"
+        maxWidth={360}
+      >
+        <div style={{ padding: 24 }}>
+          <p style={{ fontSize: 13, color: "var(--dp-text-secondary)", marginBottom: 14, lineHeight: 1.5 }}>
+            Refund for: <strong>{refundModal && (refundModal.name || refundModal.itemName)}</strong>
+          </p>
+          <GlassInput
+            value={refundReason}
+            onChange={function (e) { setRefundReason(e.target.value); }}
+            placeholder="Reason for refund..."
+            multiline
+            style={{ marginBottom: 14 }}
+            inputStyle={{ minHeight: 72 }}
+          />
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={function () { setRefundModal(null); setRefundReason(""); }} style={{ flex: 1, padding: "12px", borderRadius: 12, border: "1px solid var(--dp-input-border)", background: "var(--dp-glass-bg)", color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Cancel</button>
+            <GradientButton
+              gradient="primaryDark"
+              onClick={function () { refundMut.mutate({ purchaseId: refundModal && refundModal.id, reason: refundReason.trim() }); }}
+              disabled={!refundReason.trim()}
+              style={{ flex: 1 }}
+            >
+              Submit
+            </GradientButton>
           </div>
         </div>
-      )}
+      </GlassModal>
     </PageLayout>
   );
 }

@@ -6,33 +6,9 @@ import { isValidEmail, sanitizeText } from "../../utils/sanitize";
 import { useAuth } from "../../context/AuthContext";
 import { openBrowser, isNative } from "../../services/native";
 import { AUTH } from "../../services/endpoints";
-
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-};
-
-const inputStyle = {
-  width: "100%",
-  background: "var(--dp-input-bg)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 14,
-  padding: "14px 16px",
-  color: "var(--dp-text)",
-  fontSize: 15,
-  fontFamily: "Inter, sans-serif",
-  outline: "none",
-  transition: "border-color 0.25s ease, box-shadow 0.25s ease",
-  boxSizing: "border-box",
-};
-
-const inputFocusStyle = {
-  borderColor: "rgba(139,92,246,0.5)",
-  boxShadow: "0 0 0 3px rgba(139,92,246,0.15)",
-};
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassCard from "../../components/shared/GlassCard";
 
 function getPasswordStrength(password) {
   if (!password) return { level: 0, label: "", color: "transparent" };
@@ -59,7 +35,6 @@ export default function RegisterScreen() {
   var [showPassword, setShowPassword] = useState(false);
   var [showConfirm, setShowConfirm] = useState(false);
   var [agreedToTerms, setAgreedToTerms] = useState(false);
-  var [focusedField, setFocusedField] = useState(null);
   var [errors, setErrors] = useState({});
   var [serverError, setServerError] = useState("");
   var [submitting, setSubmitting] = useState(false);
@@ -91,6 +66,12 @@ export default function RegisterScreen() {
       return;
     }
 
+    // Generate cryptographic state parameter for CSRF protection
+    var stateBytes = new Uint8Array(32);
+    crypto.getRandomValues(stateBytes);
+    var oauthState = Array.from(stateBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
+    sessionStorage.setItem("oauth_state", oauthState);
+
     if (isNative) {
       var nativeRedirectUri = "com.dreamplanner.app://auth/google/callback";
       var nativeScope = "openid email profile";
@@ -98,7 +79,8 @@ export default function RegisterScreen() {
         "?client_id=" + encodeURIComponent(googleClientId) +
         "&redirect_uri=" + encodeURIComponent(nativeRedirectUri) +
         "&response_type=token" +
-        "&scope=" + encodeURIComponent(nativeScope);
+        "&scope=" + encodeURIComponent(nativeScope) +
+        "&state=" + encodeURIComponent(oauthState);
       openBrowser(nativeAuthUrl);
       return;
     }
@@ -109,7 +91,8 @@ export default function RegisterScreen() {
       "?client_id=" + encodeURIComponent(googleClientId) +
       "&redirect_uri=" + encodeURIComponent(redirectUri) +
       "&response_type=token" +
-      "&scope=" + encodeURIComponent(scope);
+      "&scope=" + encodeURIComponent(scope) +
+      "&state=" + encodeURIComponent(oauthState);
 
     var popup = window.open(authUrl, "google-register", "width=500,height=600");
     if (!popup) {
@@ -125,6 +108,13 @@ export default function RegisterScreen() {
           popup.close();
           clearInterval(interval);
           var params = new URLSearchParams(hash.replace("#", ""));
+          var returnedState = params.get("state");
+          var expectedState = sessionStorage.getItem("oauth_state");
+          sessionStorage.removeItem("oauth_state");
+          if (returnedState !== expectedState) {
+            setServerError("OAuth state mismatch. Please try again.");
+            return;
+          }
           var accessToken = params.get("access_token");
           if (accessToken) {
             setSubmitting(true);
@@ -162,11 +152,15 @@ export default function RegisterScreen() {
     var existingScript = document.querySelector('script[src*="appleid.auth.js"]');
     var loadAndSignIn = function () {
       try {
+        var appleStateBytes = new Uint8Array(32);
+        crypto.getRandomValues(appleStateBytes);
+        var appleState = Array.from(appleStateBytes, function (b) { return b.toString(16).padStart(2, "0"); }).join("");
         window.AppleID.auth.init({
           clientId: appleClientId,
           scope: "name email",
           redirectURI: window.location.origin + "/auth/apple/callback",
           usePopup: true,
+          state: appleState,
         });
         window.AppleID.auth.signIn()
           .then(function (response) {
@@ -275,31 +269,29 @@ export default function RegisterScreen() {
           </div>
           <span style={{
             fontSize: 20, fontWeight: 700, color: "var(--dp-text)",
-            fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px",
+            letterSpacing: "-0.5px",
           }}>
             DreamPlanner
           </span>
         </div>
 
         {/* Card */}
-        <div style={{
-          ...glass,
+        <GlassCard padding="28px 24px" style={{
           ...stagger(1),
           width: "100%",
-          padding: "28px 24px",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
         }}>
           {/* Heading */}
           <div style={{ ...stagger(2), textAlign: "center", marginBottom: 24 }}>
             <h1 style={{
               fontSize: 26, fontWeight: 700, color: "var(--dp-text)",
-              fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+              margin: 0, letterSpacing: "-0.5px",
             }}>
               Create Account
             </h1>
             <p style={{
               fontSize: 14, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif", marginTop: 8, lineHeight: 1.5,
+              marginTop: 8, lineHeight: 1.5,
             }}>
               Start turning your dreams into reality
             </p>
@@ -311,7 +303,7 @@ export default function RegisterScreen() {
               <div style={{
                 background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
                 borderRadius: 12, padding: "12px 16px", marginBottom: 16,
-                fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+                fontSize: 13, color: "var(--dp-danger)", lineHeight: 1.5,
               }}>
                 {serverError}
               </div>
@@ -321,104 +313,53 @@ export default function RegisterScreen() {
             <div style={{ ...stagger(3), marginBottom: 14 }}>
               <label style={{
                 fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                display: "block", marginBottom: 8,
               }}>
                 Display Name
               </label>
-              <div style={{ position: "relative" }}>
-                <User size={18} color="var(--dp-text-muted)" style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }} />
-                <input
-                  type="text"
-                  placeholder="Your name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  onFocus={() => setFocusedField("name")}
-                  onBlur={() => setFocusedField(null)}
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: 42,
-                    ...(focusedField === "name" ? inputFocusStyle : {}),
-                  }}
-                />
-              </div>
-              {errors.name && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.name}</p>}
+              <GlassInput
+                type="text"
+                icon={User}
+                placeholder="Your name"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+              />
+              {errors.name && <p style={{ color: "var(--dp-danger)", fontSize: 12, marginTop: 6 }}>{errors.name}</p>}
             </div>
 
             {/* Email */}
             <div style={{ ...stagger(4), marginBottom: 14 }}>
               <label style={{
                 fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                display: "block", marginBottom: 8,
               }}>
                 Email
               </label>
-              <div style={{ position: "relative" }}>
-                <Mail size={18} color="var(--dp-text-muted)" style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }} />
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onFocus={() => setFocusedField("email")}
-                  onBlur={() => setFocusedField(null)}
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: 42,
-                    ...(focusedField === "email" ? inputFocusStyle : {}),
-                  }}
-                />
-              </div>
-              {errors.email && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.email}</p>}
+              <GlassInput
+                type="email"
+                icon={Mail}
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+              {errors.email && <p style={{ color: "var(--dp-danger)", fontSize: 12, marginTop: 6 }}>{errors.email}</p>}
             </div>
 
             {/* Password */}
             <div style={{ ...stagger(5), marginBottom: 6 }}>
               <label style={{
                 fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                display: "block", marginBottom: 8,
               }}>
                 Password
               </label>
-              <div style={{ position: "relative" }}>
-                <Lock size={18} color="var(--dp-text-muted)" style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }} />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Create a password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onFocus={() => setFocusedField("password")}
-                  onBlur={() => setFocusedField(null)}
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: 42,
-                    paddingRight: 44,
-                    ...(focusedField === "password" ? inputFocusStyle : {}),
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", padding: 4,
-                    display: "flex", alignItems: "center",
-                  }}
-                >
-                  {showPassword
-                    ? <EyeOff size={18} color="var(--dp-text-tertiary)" />
-                    : <Eye size={18} color="var(--dp-text-tertiary)" />
-                  }
-                </button>
-              </div>
+              <GlassInput
+                type={showPassword ? "text" : "password"}
+                icon={Lock}
+                placeholder="Create a password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
 
             {/* Password Strength */}
@@ -439,57 +380,29 @@ export default function RegisterScreen() {
                 </div>
                 <span style={{
                   fontSize: 11, fontWeight: 500, color: strength.color,
-                  fontFamily: "Inter, sans-serif",
-                }}>
+                  }}>
                   {strength.label}
                 </span>
               </div>
             )}
-            {errors.password && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, marginBottom: 8, fontFamily: "Inter, sans-serif" }}>{errors.password}</p>}
+            {errors.password && <p style={{ color: "var(--dp-danger)", fontSize: 12, marginTop: 6, marginBottom: 8 }}>{errors.password}</p>}
 
             {/* Confirm Password */}
             <div style={{ ...stagger(6), marginBottom: 18 }}>
               <label style={{
                 fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                display: "block", marginBottom: 8,
               }}>
                 Confirm Password
               </label>
-              <div style={{ position: "relative" }}>
-                <Lock size={18} color="var(--dp-text-muted)" style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }} />
-                <input
-                  type={showConfirm ? "text" : "password"}
-                  placeholder="Confirm your password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  onFocus={() => setFocusedField("confirm")}
-                  onBlur={() => setFocusedField(null)}
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: 42,
-                    paddingRight: 44,
-                    ...(focusedField === "confirm" ? inputFocusStyle : {}),
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirm(!showConfirm)}
-                  style={{
-                    position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", padding: 4,
-                    display: "flex", alignItems: "center",
-                  }}
-                >
-                  {showConfirm
-                    ? <EyeOff size={18} color="var(--dp-text-tertiary)" />
-                    : <Eye size={18} color="var(--dp-text-tertiary)" />
-                  }
-                </button>
-              </div>
-              {errors.confirm && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.confirm}</p>}
+              <GlassInput
+                type={showConfirm ? "text" : "password"}
+                icon={Lock}
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+              />
+              {errors.confirm && <p style={{ color: "var(--dp-danger)", fontSize: 12, marginTop: 6 }}>{errors.confirm}</p>}
             </div>
 
             {/* Terms */}
@@ -497,6 +410,7 @@ export default function RegisterScreen() {
               <button
                 type="button"
                 onClick={() => setAgreedToTerms(!agreedToTerms)}
+                aria-label={agreedToTerms ? "Uncheck terms agreement" : "Agree to Terms of Service and Privacy Policy"}
                 style={{
                   display: "flex", alignItems: "center", gap: 12,
                   background: "none", border: "none", cursor: "pointer",
@@ -518,58 +432,30 @@ export default function RegisterScreen() {
                 </div>
                 <span style={{
                   fontSize: 13, color: "var(--dp-text-secondary)",
-                  fontFamily: "Inter, sans-serif", lineHeight: 1.4,
+                  lineHeight: 1.4,
                 }}>
                   I agree to the{" "}
-                  <span style={{ color: "#C4B5FD", fontWeight: 500 }}>Terms of Service</span>
+                  <span style={{ color: "var(--dp-accent)", fontWeight: 500 }}>Terms of Service</span>
                   {" "}and{" "}
-                  <span style={{ color: "#C4B5FD", fontWeight: 500 }}>Privacy Policy</span>
+                  <span style={{ color: "var(--dp-accent)", fontWeight: 500 }}>Privacy Policy</span>
                 </span>
               </button>
-              {errors.terms && <p style={{ color: "#FCA5A5", fontSize: 12, marginTop: 6, fontFamily: "Inter, sans-serif" }}>{errors.terms}</p>}
+              {errors.terms && <p style={{ color: "var(--dp-danger)", fontSize: 12, marginTop: 6 }}>{errors.terms}</p>}
             </div>
 
             {/* Create Account Button */}
             <div style={stagger(8)}>
-              <button
+              <GradientButton
                 type="submit"
+                gradient="primary"
+                fullWidth
                 disabled={submitting || !agreedToTerms}
-                style={{
-                  width: "100%", height: 50, borderRadius: 14,
-                  background: (submitting || !agreedToTerms)
-                    ? "linear-gradient(135deg, rgba(139,92,246,0.5), rgba(124,58,237,0.5))"
-                    : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                  border: "none", cursor: (submitting || !agreedToTerms) ? "not-allowed" : "pointer",
-                  color: "#fff", fontSize: 15, fontWeight: 700,
-                  fontFamily: "Inter, sans-serif",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease, background 0.25s ease",
-                  opacity: agreedToTerms ? 1 : 0.5,
-                }}
-                onMouseEnter={function (e) {
-                  if (!submitting && agreedToTerms) {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
-                  }
-                }}
-                onMouseLeave={function (e) {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
-                }}
+                loading={submitting}
+                icon={submitting ? undefined : ArrowRight}
+                style={{ height: 50 }}
               >
-                {submitting ? (
-                  <>
-                    <Loader2 size={18} className="dp-spin" />
-                    Creating Account...
-                  </>
-                ) : (
-                  <>
-                    Create Account
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
+                {submitting ? "Creating Account..." : "Create Account"}
+              </GradientButton>
             </div>
           </form>
 
@@ -582,7 +468,7 @@ export default function RegisterScreen() {
             <div style={{ flex: 1, height: 1, background: "var(--dp-input-border)" }} />
             <span style={{
               fontSize: 12, color: "var(--dp-text-muted)",
-              fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+              whiteSpace: "nowrap",
             }}>
               or sign up with
             </span>
@@ -596,8 +482,10 @@ export default function RegisterScreen() {
           }}>
             <button
               type="button"
+              className="dp-gh"
               onClick={handleGoogleLogin}
               disabled={submitting}
+              aria-label="Sign up with Google"
               style={{
                 flex: 1, height: 48, borderRadius: 14,
                 background: "var(--dp-glass-bg)",
@@ -605,12 +493,10 @@ export default function RegisterScreen() {
                 cursor: submitting ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 color: "var(--dp-text)", fontSize: 14, fontWeight: 500,
-                fontFamily: "Inter, sans-serif",
-                transition: "background 0.25s ease",
+                transition: "all 0.25s ease",
                 opacity: submitting ? 0.6 : 1,
+                fontFamily: "inherit",
               }}
-              onMouseEnter={function (e) { if (!submitting) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-              onMouseLeave={function (e) { e.currentTarget.style.background = "var(--dp-glass-bg)"; }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -622,8 +508,10 @@ export default function RegisterScreen() {
             </button>
             <button
               type="button"
+              className="dp-gh"
               onClick={handleAppleLogin}
               disabled={submitting}
+              aria-label="Sign up with Apple"
               style={{
                 flex: 1, height: 48, borderRadius: 14,
                 background: "var(--dp-glass-bg)",
@@ -631,12 +519,10 @@ export default function RegisterScreen() {
                 cursor: submitting ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 color: "var(--dp-text)", fontSize: 14, fontWeight: 500,
-                fontFamily: "Inter, sans-serif",
-                transition: "background 0.25s ease",
+                transition: "all 0.25s ease",
                 opacity: submitting ? 0.6 : 1,
+                fontFamily: "inherit",
               }}
-              onMouseEnter={function (e) { if (!submitting) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-              onMouseLeave={function (e) { e.currentTarget.style.background = "var(--dp-glass-bg)"; }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
@@ -644,7 +530,7 @@ export default function RegisterScreen() {
               Apple
             </button>
           </div>
-        </div>
+        </GlassCard>
 
         {/* Sign in link */}
         <div style={{
@@ -653,8 +539,7 @@ export default function RegisterScreen() {
         }}>
           <span style={{
             fontSize: 14, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             Already have an account?{" "}
           </span>
           <button
@@ -662,8 +547,8 @@ export default function RegisterScreen() {
             onClick={() => navigate("/login")}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              color: "#C4B5FD", fontSize: 14, fontWeight: 600,
-              fontFamily: "Inter, sans-serif", padding: 0,
+              color: "var(--dp-accent)", fontSize: 14, fontWeight: 600,
+              padding: 0,
             }}
           >
             Sign In

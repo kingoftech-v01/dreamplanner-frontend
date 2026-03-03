@@ -8,10 +8,17 @@ import { apiPut, apiPost } from "../../services/api";
 import { USERS } from "../../services/endpoints";
 import { takePicture, isNative } from "../../services/native";
 import { sanitizeText, sanitizeUrl, isValidEmail } from "../../utils/sanitize";
+import { GRADIENTS, adaptColor } from "../../styles/colors";
 import {
   ArrowLeft, Camera, User, Mail, Clock, MapPin,
   FileText, Check, X, Image, Loader
 } from "lucide-react";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassModal from "../../components/shared/GlassModal";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Edit Profile Screen v1
@@ -36,7 +43,6 @@ export default function EditProfileScreen(){
   const[avatarFile,setAvatarFile]=useState(null);
   const[showPicker,setShowPicker]=useState(false);
   const[errors,setErrors]=useState({});
-  const[focused,setFocused]=useState(null);
   const fileRef=useRef(null);
 
   var userEmail = (user && user.email) || "";
@@ -121,40 +127,38 @@ export default function EditProfileScreen(){
     });
   };
 
-  const Field=({icon:I,label,value,onChange,error,placeholder,disabled,multiline,maxLen,name:fName})=>(
+  const Field=({icon:I,label,value,onChange,error,placeholder,disabled,multiline,maxLen})=>(
     <div style={{marginBottom:16}}>
-      <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block",paddingLeft:4}}>{label}</label>
-      <div style={{display:"flex",alignItems:"flex-start",gap:10,padding:multiline?"12px 14px":"0 14px",borderRadius:14,background:isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.03)",border:`1px solid ${error?"rgba(239,68,68,0.3)":focused===fName?"rgba(139,92,246,0.3)":isLight?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.06)"}`,transition:"all 0.2s",boxShadow:focused===fName?"0 0 0 3px rgba(139,92,246,0.08)":"none"}}>
-        {!multiline&&<div style={{display:"flex",alignItems:"center",height:46}}><I size={16} color={error?"rgba(239,68,68,0.7)":(isLight?"#6D28D9":"#C4B5FD")} strokeWidth={2}/></div>}
-        {multiline?(
-          <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
-            onFocus={()=>setFocused(fName)} onBlur={()=>setFocused(null)}
-            rows={3} style={{flex:1,background:"none",border:"none",outline:"none",color:disabled?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),fontSize:14,fontFamily:"inherit",resize:"none",lineHeight:1.5}}/>
-        ):(
-          <input value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
-            onFocus={()=>setFocused(fName)} onBlur={()=>setFocused(null)}
-            style={{flex:1,height:46,background:"none",border:"none",outline:"none",color:disabled?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),fontSize:14,fontFamily:"inherit"}}/>
-        )}
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",paddingLeft:4,marginTop:4}}>
-        {error?<span style={{fontSize:12,color:"rgba(239,68,68,0.8)"}}>{error}</span>:<span/>}
-        {maxLen&&<span style={{fontSize:12,color:value.length>maxLen?"rgba(239,68,68,0.8)":isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{value.length}/{maxLen}</span>}
-      </div>
+      <GlassInput
+        icon={multiline?undefined:I}
+        label={label}
+        value={value}
+        onChange={function(e){onChange(e.target.value);}}
+        placeholder={placeholder}
+        disabled={disabled}
+        multiline={multiline}
+        maxLength={maxLen}
+        showCount={!!maxLen}
+        error={error}
+      />
     </div>
   );
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
 
       {/* APPBAR */}
-      <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button className="dp-ib" aria-label="Go back" onClick={()=>navigate(-1)}><ArrowLeft size={20} strokeWidth={2}/></button>
-          <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>Edit Profile</span>
-        </div>
-        {hasChanges&&!saving&&<span style={{fontSize:12,color:isLight?"#B45309":"#FCD34D",fontWeight:500}}>Unsaved changes</span>}
-        {saving&&<span style={{fontSize:12,color:isLight?"#059669":"#5DE5A8",fontWeight:600,display:"flex",alignItems:"center",gap:4}}><Loader size={14} strokeWidth={2.5} className="dp-spin"/>Saving...</span>}
-      </header>
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Go back" />}
+        title="Edit Profile"
+        right={
+          hasChanges && !saving
+            ? <span style={{fontSize:12,color:"var(--dp-warning)",fontWeight:500}}>Unsaved changes</span>
+            : saving
+            ? <span style={{fontSize:12,color:"var(--dp-success)",fontWeight:600,display:"flex",alignItems:"center",gap:4}}><Loader size={14} strokeWidth={2.5} className="dp-spin"/>Saving...</span>
+            : null
+        }
+      />
 
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"24px 16px 32px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{maxWidth:440,margin:"0 auto"}}>
@@ -172,124 +176,104 @@ export default function EditProfileScreen(){
                 ):userAvatarUrl?(
                   <img src={userAvatarUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                 ):(
-                  <span style={{fontSize:42,fontWeight:700,color:isLight?"#6D28D9":"#C4B5FD"}}>{userInitial}</span>
+                  <span style={{fontSize:42,fontWeight:700,color:"var(--dp-accent-text)"}}>{userInitial}</span>
                 )}
               </div>
               {/* Camera button */}
-              <button aria-label="Change profile photo" onClick={()=>setShowPicker(true)} style={{position:"absolute",bottom:0,right:0,width:38,height:38,borderRadius:"50%",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",border:isLight?"3px solid #f5f3ff":"3px solid #0c081a",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 12px rgba(139,92,246,0.4)",transition:"all 0.2s"}}
-                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
-                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+              <button aria-label="Change profile photo" className="dp-gh" onClick={()=>setShowPicker(true)} style={{position:"absolute",bottom:0,right:0,width:38,height:38,borderRadius:"50%",background:GRADIENTS.primaryDark,border:isLight?"3px solid #f5f3ff":"3px solid #0c081a",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 12px rgba(139,92,246,0.4)",transition:"all 0.2s",fontFamily:"inherit"}}>
                 <Camera size={16} strokeWidth={2.5}/>
               </button>
             </div>
-            <div style={{marginTop:12,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>Tap the camera to change your photo</div>
+            <div style={{marginTop:12,fontSize:12,color:"var(--dp-text-tertiary)"}}>Tap the camera to change your photo</div>
           </div>
 
           {/* ── Form ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"100ms"}}>
-            <div className="dp-g" style={{padding:20}}>
+            <GlassCard padding={20}>
               <Field icon={User} label="Display Name" name="name" value={name} onChange={setName} error={errors.name} placeholder="Your name"/>
               <Field icon={Mail} label="Email" name="email" value={userEmail} onChange={()=>{}} disabled placeholder="" />
               <Field icon={Clock} label="Timezone" name="tz" value={timezone} onChange={setTimezone} placeholder="e.g. America/New_York"/>
               <Field icon={FileText} label="Bio" name="bio" value={bio} onChange={setBio} placeholder="Tell others about yourself..." multiline maxLen={200}/>
-            </div>
+            </GlassCard>
           </div>
 
           {/* ── Save Button ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"200ms"}}>
-            <button onClick={handleSave} disabled={saving||!hasChanges} style={{
-              width:"100%",marginTop:24,padding:"15px 0",borderRadius:16,
-              border:hasChanges&&!saving?"none":(isLight?"1px solid rgba(139,92,246,0.2)":"1px solid rgba(255,255,255,0.1)"),
-              background:hasChanges&&!saving?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(139,92,246,0.18)":"rgba(255,255,255,0.08)"),
-              color:hasChanges&&!saving?"#fff":(isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.4)"),
-              fontSize:15,fontWeight:600,cursor:hasChanges&&!saving?"pointer":"not-allowed",
-              fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,
-              boxShadow:hasChanges&&!saving?"0 4px 20px rgba(139,92,246,0.3)":"none",
-              transition:"all 0.3s cubic-bezier(0.16,1,0.3,1)",
-            }}
-              onMouseEnter={e=>{if(hasChanges&&!saving)e.currentTarget.style.transform="translateY(-2px)";}}
-              onMouseLeave={e=>{if(hasChanges&&!saving)e.currentTarget.style.transform="translateY(0)";}}>
-              {saving?(
-                <><Loader size={18} strokeWidth={2} className="dp-spin"/>Saving...</>
-              ):(
-                <><Check size={18} strokeWidth={2}/>Save Changes</>
-              )}
-            </button>
+            <GradientButton
+              gradient="primaryDark"
+              fullWidth
+              onClick={handleSave}
+              disabled={saving || !hasChanges}
+              loading={saving}
+              icon={saving ? undefined : Check}
+              style={{ marginTop: 24, padding: "15px 0", borderRadius: 16 }}
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </GradientButton>
           </div>
 
         </div>
       </main>
 
       {/* ═══ IMAGE PICKER BOTTOM SHEET ═══ */}
-      {showPicker&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"flex-end",justifyContent:"center"}}>
-          <div onClick={()=>setShowPicker(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"100%",maxWidth:420,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:"22px 22px 0 0",border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",borderBottom:"none",animation:"dpSlideUp 0.3s cubic-bezier(0.16,1,0.3,1)",padding:"16px 0 24px"}}>
-            {/* Handle */}
-            <div style={{width:40,height:4,borderRadius:2,background:isLight?"rgba(26,21,53,0.15)":"rgba(255,255,255,0.15)",margin:"0 auto 16px"}}/>
-            <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff",textAlign:"center",marginBottom:16}}>Change Profile Photo</div>
-            
-            {[
-              {Icon:Camera,label:"Take Photo",color:"#C4B5FD",action:()=>{
-                if (isNative) {
-                  takePicture({ source: "camera" }).then(function (photo) {
-                    if (photo && photo.dataUrl) {
-                      setAvatarPreview(photo.dataUrl);
-                      // Convert dataUrl to File for upload
-                      fetch(photo.dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
-                        var file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
-                        setAvatarFile(file);
-                      });
-                    }
-                    setShowPicker(false);
-                  }).catch(function () { setShowPicker(false); });
-                } else {
+      <GlassModal open={showPicker} onClose={() => setShowPicker(false)} variant="bottom" title="Change Profile Photo">
+        <div style={{padding:"8px 0 24px"}}>
+          {[
+            {Icon:Camera,label:"Take Photo",color:"#C4B5FD",action:()=>{
+              if (isNative) {
+                takePicture({ source: "camera" }).then(function (photo) {
+                  if (photo && photo.dataUrl) {
+                    setAvatarPreview(photo.dataUrl);
+                    // Convert dataUrl to File for upload
+                    fetch(photo.dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+                      var file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+                      setAvatarFile(file);
+                    });
+                  }
                   setShowPicker(false);
-                  fileRef.current?.click();
-                }
-              }},
-              {Icon:Image,label:"Choose from Gallery",color:"#5DE5A8",action:()=>{
-                if (isNative) {
-                  takePicture({ source: "gallery" }).then(function (photo) {
-                    if (photo && photo.dataUrl) {
-                      setAvatarPreview(photo.dataUrl);
-                      fetch(photo.dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
-                        var file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
-                        setAvatarFile(file);
-                      });
-                    }
-                    setShowPicker(false);
-                  }).catch(function () { setShowPicker(false); });
-                } else {
-                  fileRef.current?.click();
-                }
-              }},
-            ].map(({Icon:I,label,color,action},i)=>(
-              <button key={i} onClick={action} style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit"}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.04)"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{width:40,height:40,borderRadius:12,background:`${color}12`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <I size={18} color={isLight?(color==="#C4B5FD"?"#6D28D9":color==="#5DE5A8"?"#059669":color):color} strokeWidth={2}/>
-                </div>
-                <span style={{fontSize:15,fontWeight:500,color:isLight?"#1a1535":"#fff"}}>{label}</span>
-              </button>
-            ))}
+                }).catch(function () { setShowPicker(false); });
+              } else {
+                setShowPicker(false);
+                fileRef.current?.click();
+              }
+            }},
+            {Icon:Image,label:"Choose from Gallery",color:"#5DE5A8",action:()=>{
+              if (isNative) {
+                takePicture({ source: "gallery" }).then(function (photo) {
+                  if (photo && photo.dataUrl) {
+                    setAvatarPreview(photo.dataUrl);
+                    fetch(photo.dataUrl).then(function (res) { return res.blob(); }).then(function (blob) {
+                      var file = new File([blob], "avatar.jpg", { type: "image/jpeg" });
+                      setAvatarFile(file);
+                    });
+                  }
+                  setShowPicker(false);
+                }).catch(function () { setShowPicker(false); });
+              } else {
+                fileRef.current?.click();
+              }
+            }},
+          ].map(({Icon:I,label,color,action},i)=>(
+            <button key={i} onClick={action} className="dp-gh" style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",transition:"all 0.15s",fontFamily:"inherit"}}>
+              <div style={{width:40,height:40,borderRadius:12,background:`${color}12`,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <I size={18} color={adaptColor(color,isLight)} strokeWidth={2}/>
+              </div>
+              <span style={{fontSize:15,fontWeight:500,color:"var(--dp-text)"}}>{label}</span>
+            </button>
+          ))}
 
-            {avatarPreview&&(
-              <button onClick={()=>{setAvatarPreview(null);setAvatarFile(null);setShowPicker(false);}} style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",fontFamily:"inherit",marginTop:4}}
-                onMouseEnter={e=>e.currentTarget.style.background="rgba(239,68,68,0.04)"}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{width:40,height:40,borderRadius:12,background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <X size={18} color="rgba(239,68,68,0.8)" strokeWidth={2}/>
-                </div>
-                <span style={{fontSize:15,fontWeight:500,color:"rgba(239,68,68,0.8)"}}>Remove Photo</span>
-              </button>
-            )}
+          {avatarPreview&&(
+            <button onClick={()=>{setAvatarPreview(null);setAvatarFile(null);setShowPicker(false);}} className="dp-gh" style={{width:"100%",padding:"14px 20px",border:"none",background:"transparent",display:"flex",alignItems:"center",gap:14,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>
+              <div style={{width:40,height:40,borderRadius:12,background:"rgba(239,68,68,0.08)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <X size={18} color="rgba(239,68,68,0.8)" strokeWidth={2}/>
+              </div>
+              <span style={{fontSize:15,fontWeight:500,color:"rgba(239,68,68,0.8)"}}>Remove Photo</span>
+            </button>
+          )}
 
-            <button onClick={()=>setShowPicker(false)} style={{width:"calc(100% - 32px)",margin:"12px 16px 0",padding:"12px",borderRadius:14,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-          </div>
+          <button onClick={()=>setShowPicker(false)} style={{width:"calc(100% - 32px)",margin:"12px 16px 0",padding:"12px",borderRadius:14,border:"1px solid var(--dp-input-border)",background:"var(--dp-surface)",color:"var(--dp-text-secondary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
         </div>
-      )}
+      </GlassModal>
 
       {/* Hidden file input */}
       <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleFileSelect}/>

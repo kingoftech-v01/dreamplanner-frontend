@@ -6,33 +6,9 @@ import { isValidEmail } from "../../utils/sanitize";
 import { useAuth } from "../../context/AuthContext";
 import { openBrowser, addBrowserListener, isNative } from "../../services/native";
 import { AUTH } from "../../services/endpoints";
-
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-};
-
-const inputStyle = {
-  width: "100%",
-  background: "var(--dp-input-bg)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 14,
-  padding: "14px 16px",
-  color: "var(--dp-text)",
-  fontSize: 15,
-  fontFamily: "Inter, sans-serif",
-  outline: "none",
-  transition: "border-color 0.25s ease, box-shadow 0.25s ease",
-  boxSizing: "border-box",
-};
-
-const inputFocusStyle = {
-  borderColor: "rgba(139,92,246,0.5)",
-  boxShadow: "0 0 0 3px rgba(139,92,246,0.15)",
-};
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassCard from "../../components/shared/GlassCard";
 
 export default function LoginScreen() {
   var navigate = useNavigate();
@@ -41,10 +17,10 @@ export default function LoginScreen() {
   var [email, setEmail] = useState("");
   var [password, setPassword] = useState("");
   var [showPassword, setShowPassword] = useState(false);
-  var [focusedField, setFocusedField] = useState(null);
   var [errors, setErrors] = useState({});
   var [serverError, setServerError] = useState("");
   var [submitting, setSubmitting] = useState(false);
+  var [loginCooldown, setLoginCooldown] = useState(false);
 
   useEffect(function () {
     var timer = setTimeout(function () { setMounted(true); }, 50);
@@ -93,6 +69,9 @@ export default function LoginScreen() {
           setErrors(err.fieldErrors);
         }
         setServerError(err.message || "Login failed. Please check your credentials.");
+        // Brief cooldown after failed login to slow brute-force attempts
+        setLoginCooldown(true);
+        setTimeout(function () { setLoginCooldown(false); }, 2000);
       })
       .finally(function () {
         setSubmitting(false);
@@ -275,31 +254,29 @@ export default function LoginScreen() {
           </div>
           <span style={{
             fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
-            fontFamily: "Inter, sans-serif", letterSpacing: "-0.5px",
+            letterSpacing: "-0.5px",
           }}>
             DreamPlanner
           </span>
         </div>
 
         {/* Card */}
-        <div style={{
-          ...glass,
+        <GlassCard padding="32px 24px" style={{
           ...stagger(1),
           width: "100%",
-          padding: "32px 24px",
           boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
         }}>
           {/* Heading */}
           <div style={{ ...stagger(2), textAlign: "center", marginBottom: 28 }}>
             <h1 style={{
               fontSize: 26, fontWeight: 700, color: "var(--dp-text)",
-              fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+              margin: 0, letterSpacing: "-0.5px",
             }}>
               Welcome Back
             </h1>
             <p style={{
               fontSize: 14, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif", marginTop: 8, lineHeight: 1.5,
+              marginTop: 8, lineHeight: 1.5,
             }}>
               Sign in to continue your journey
             </p>
@@ -312,7 +289,7 @@ export default function LoginScreen() {
                 ...stagger(2.5),
                 background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
                 borderRadius: 12, padding: "12px 16px", marginBottom: 16,
-                fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+                fontSize: 13, color: "var(--dp-danger)", lineHeight: 1.5,
               }}>
                 {serverError}
               </div>
@@ -322,73 +299,34 @@ export default function LoginScreen() {
             <div style={{ ...stagger(3), marginBottom: 16 }}>
               <label style={{
                 fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                display: "block", marginBottom: 8,
               }}>
                 Email
               </label>
-              <div style={{ position: "relative" }}>
-                <Mail size={18} color="var(--dp-text-muted)" style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }} />
-                <input
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onFocus={() => setFocusedField("email")}
-                  onBlur={() => setFocusedField(null)}
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: 42,
-                    ...(focusedField === "email" ? inputFocusStyle : {}),
-                  }}
-                />
-              </div>
+              <GlassInput
+                type="email"
+                icon={Mail}
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
 
             {/* Password */}
             <div style={{ ...stagger(4), marginBottom: 12 }}>
               <label style={{
                 fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
+                display: "block", marginBottom: 8,
               }}>
                 Password
               </label>
-              <div style={{ position: "relative" }}>
-                <Lock size={18} color="var(--dp-text-muted)" style={{
-                  position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
-                  pointerEvents: "none",
-                }} />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  onFocus={() => setFocusedField("password")}
-                  onBlur={() => setFocusedField(null)}
-                  style={{
-                    ...inputStyle,
-                    paddingLeft: 42,
-                    paddingRight: 44,
-                    ...(focusedField === "password" ? inputFocusStyle : {}),
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  style={{
-                    position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                    background: "none", border: "none", cursor: "pointer", padding: 4,
-                    display: "flex", alignItems: "center",
-                  }}
-                >
-                  {showPassword
-                    ? <EyeOff size={18} color="var(--dp-text-tertiary)" />
-                    : <Eye size={18} color="var(--dp-text-tertiary)" />
-                  }
-                </button>
-              </div>
+              <GlassInput
+                type={showPassword ? "text" : "password"}
+                icon={Lock}
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
 
             {/* Forgot password */}
@@ -396,10 +334,10 @@ export default function LoginScreen() {
               <button
                 type="button"
                 onClick={() => navigate("/forgot-password")}
+                aria-label="Forgot password"
                 style={{
                   background: "none", border: "none", cursor: "pointer",
-                  color: "#C4B5FD", fontSize: 13, fontFamily: "Inter, sans-serif",
-                  fontWeight: 500, padding: 0,
+                  color: "var(--dp-accent)", fontSize: 13, fontWeight: 500, padding: 0,
                 }}
               >
                 Forgot Password?
@@ -408,44 +346,17 @@ export default function LoginScreen() {
 
             {/* Sign In Button */}
             <div style={stagger(6)}>
-              <button
+              <GradientButton
                 type="submit"
-                disabled={submitting}
-                style={{
-                  width: "100%", height: 50, borderRadius: 14,
-                  background: submitting
-                    ? "linear-gradient(135deg, rgba(139,92,246,0.5), rgba(124,58,237,0.5))"
-                    : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                  border: "none", cursor: submitting ? "not-allowed" : "pointer",
-                  color: "#fff", fontSize: 15, fontWeight: 700,
-                  fontFamily: "Inter, sans-serif",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                  boxShadow: "0 4px 20px rgba(139,92,246,0.4)",
-                  transition: "transform 0.2s ease, box-shadow 0.2s ease, background 0.25s ease",
-                }}
-                onMouseEnter={function (e) {
-                  if (!submitting) {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 28px rgba(139,92,246,0.5)";
-                  }
-                }}
-                onMouseLeave={function (e) {
-                  e.currentTarget.style.transform = "translateY(0)";
-                  e.currentTarget.style.boxShadow = "0 4px 20px rgba(139,92,246,0.4)";
-                }}
+                gradient="primary"
+                fullWidth
+                disabled={submitting || loginCooldown}
+                loading={submitting}
+                icon={submitting ? undefined : ArrowRight}
+                style={{ height: 50 }}
               >
-                {submitting ? (
-                  <>
-                    <Loader2 size={18} className="dp-spin" />
-                    Signing In...
-                  </>
-                ) : (
-                  <>
-                    Sign In
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </button>
+                {submitting ? "Signing In..." : loginCooldown ? "Please wait..." : "Sign In"}
+              </GradientButton>
             </div>
           </form>
 
@@ -458,7 +369,7 @@ export default function LoginScreen() {
             <div style={{ flex: 1, height: 1, background: "var(--dp-input-border)" }} />
             <span style={{
               fontSize: 12, color: "var(--dp-text-muted)",
-              fontFamily: "Inter, sans-serif", whiteSpace: "nowrap",
+              whiteSpace: "nowrap",
             }}>
               or continue with
             </span>
@@ -472,8 +383,10 @@ export default function LoginScreen() {
           }}>
             <button
               type="button"
+              className="dp-gh"
               onClick={handleGoogleLogin}
               disabled={submitting}
+              aria-label="Sign in with Google"
               style={{
                 flex: 1, height: 48, borderRadius: 14,
                 background: "var(--dp-glass-bg)",
@@ -481,12 +394,10 @@ export default function LoginScreen() {
                 cursor: submitting ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 color: "var(--dp-text)", fontSize: 14, fontWeight: 500,
-                fontFamily: "Inter, sans-serif",
-                transition: "background 0.25s ease",
+                transition: "all 0.25s ease",
                 opacity: submitting ? 0.6 : 1,
+                fontFamily: "inherit",
               }}
-              onMouseEnter={function (e) { if (!submitting) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-              onMouseLeave={function (e) { e.currentTarget.style.background = "var(--dp-glass-bg)"; }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
@@ -498,8 +409,10 @@ export default function LoginScreen() {
             </button>
             <button
               type="button"
+              className="dp-gh"
               onClick={handleAppleLogin}
               disabled={submitting}
+              aria-label="Sign in with Apple"
               style={{
                 flex: 1, height: 48, borderRadius: 14,
                 background: "var(--dp-glass-bg)",
@@ -507,12 +420,10 @@ export default function LoginScreen() {
                 cursor: submitting ? "not-allowed" : "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
                 color: "var(--dp-text)", fontSize: 14, fontWeight: 500,
-                fontFamily: "Inter, sans-serif",
-                transition: "background 0.25s ease",
+                transition: "all 0.25s ease",
                 opacity: submitting ? 0.6 : 1,
+                fontFamily: "inherit",
               }}
-              onMouseEnter={function (e) { if (!submitting) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-              onMouseLeave={function (e) { e.currentTarget.style.background = "var(--dp-glass-bg)"; }}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M17.05 20.28c-.98.95-2.05.88-3.08.4-1.09-.5-2.08-.48-3.24 0-1.44.62-2.2.44-3.06-.4C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z" />
@@ -520,7 +431,7 @@ export default function LoginScreen() {
               Apple
             </button>
           </div>
-        </div>
+        </GlassCard>
 
         {/* Sign up link */}
         <div style={{
@@ -529,8 +440,7 @@ export default function LoginScreen() {
         }}>
           <span style={{
             fontSize: 14, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             Don't have an account?{" "}
           </span>
           <button
@@ -538,8 +448,8 @@ export default function LoginScreen() {
             onClick={() => navigate("/register")}
             style={{
               background: "none", border: "none", cursor: "pointer",
-              color: "#C4B5FD", fontSize: 14, fontWeight: 600,
-              fontFamily: "Inter, sans-serif", padding: 0,
+              color: "var(--dp-accent)", fontSize: 14, fontWeight: 600,
+              padding: 0,
             }}
           >
             Sign Up

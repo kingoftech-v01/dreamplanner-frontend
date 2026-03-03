@@ -120,7 +120,6 @@ export default function IncomingCallOverlay() {
       background: "rgba(10, 5, 25, 0.95)",
       backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      fontFamily: "Inter, sans-serif",
       animation: "icoFadeIn 0.3s ease-out",
     }}>
       <style>{"\

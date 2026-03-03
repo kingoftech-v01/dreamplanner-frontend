@@ -1,14 +1,8 @@
-import { useTheme } from "../../context/ThemeContext";
-
 function SkeletonBase({ style, ...props }) {
-  const { resolved } = useTheme();
-  const isLight = resolved === "light";
   return (
     <div
       style={{
-        background: isLight
-          ? "linear-gradient(90deg, rgba(26,21,53,0.06) 25%, rgba(26,21,53,0.12) 50%, rgba(26,21,53,0.06) 75%)"
-          : "linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 75%)",
+        background: "linear-gradient(90deg, var(--dp-skeleton-from) 25%, var(--dp-skeleton-to) 50%, var(--dp-skeleton-from) 75%)",
         backgroundSize: "200% 100%",
         animation: "dpShimmer 2s infinite",
         borderRadius: 8,
@@ -32,12 +26,12 @@ export function SkeletonCard({ height = 120, style }) {
 }
 
 // Pre-built skeleton layouts
-export function DreamCardSkeleton({ isLight }) {
+export function DreamCardSkeleton() {
   return (
     <div style={{
       display: "flex", gap: 12, padding: 16,
-      background: isLight ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.03)",
-      borderRadius: 16, border: `1px solid ${isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.05)"}`,
+      background: "var(--dp-glass-bg)",
+      borderRadius: 16, border: "1px solid var(--dp-glass-border)",
     }}>
       <SkeletonCircle size={44} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -53,12 +47,12 @@ export function DreamCardSkeleton({ isLight }) {
   );
 }
 
-export function ConversationSkeleton({ isLight }) {
+export function ConversationSkeleton() {
   return (
     <div style={{
       display: "flex", gap: 12, padding: 14,
-      background: isLight ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.03)",
-      borderRadius: 14, border: `1px solid ${isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.05)"}`,
+      background: "var(--dp-glass-bg)",
+      borderRadius: 14, border: "1px solid var(--dp-glass-border)",
     }}>
       <SkeletonCircle size={42} />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -72,12 +66,12 @@ export function ConversationSkeleton({ isLight }) {
   );
 }
 
-export function FeedItemSkeleton({ isLight }) {
+export function FeedItemSkeleton() {
   return (
     <div style={{
       padding: 16,
-      background: isLight ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.03)",
-      borderRadius: 16, border: `1px solid ${isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.05)"}`,
+      background: "var(--dp-glass-bg)",
+      borderRadius: 16, border: "1px solid var(--dp-glass-border)",
     }}>
       <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
         <SkeletonCircle size={36} />
@@ -92,14 +86,14 @@ export function FeedItemSkeleton({ isLight }) {
   );
 }
 
-export function StatsSkeleton({ isLight }) {
+export function StatsSkeleton() {
   return (
     <div style={{ display: "flex", gap: 12 }}>
       {[1, 2, 3].map(i => (
         <div key={i} style={{
           flex: 1, padding: 16, textAlign: "center",
-          background: isLight ? "rgba(255,255,255,0.4)" : "rgba(255,255,255,0.03)",
-          borderRadius: 16, border: `1px solid ${isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.05)"}`,
+          background: "var(--dp-glass-bg)",
+          borderRadius: 16, border: "1px solid var(--dp-glass-border)",
         }}>
           <SkeletonCircle size={28} style={{ margin: "0 auto 8px" }} />
           <SkeletonLine width="60%" height={20} style={{ margin: "0 auto 4px" }} />

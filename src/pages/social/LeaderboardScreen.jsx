@@ -7,8 +7,14 @@ import useInfiniteList from "../../hooks/useInfiniteList";
 import { ArrowLeft, Flame, Trophy, Globe, Users, Shield, MapPin } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
+import { CONTACT_COLORS, GRADIENTS } from "../../styles/colors";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import PillTabs from "../../components/shared/PillTabs";
+import Avatar from "../../components/shared/Avatar";
 
 const TIME_FILTERS = [
   { id: "weekly", label: "Weekly" },
@@ -29,16 +35,7 @@ const MEDAL_COLORS = {
   3: { bg: "#CD7F32", text: "#451A03", shadow: "0 4px 16px rgba(205,127,50,0.3)", border: "#B45309" },
 };
 
-const AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
-
-const glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
+const AVATAR_COLORS = CONTACT_COLORS;
 
 const MEDAL_DARK_TEXT = {
   1: "#B8860B",  // Gold — dark goldenrod
@@ -108,7 +105,12 @@ export default function LeaderboardScreen() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Leaderboard</h1>}
+      />
+    }>
       <style>{`
         @keyframes crownFloat {
           0%, 100% { transform: translateY(0) rotate(-3deg); }
@@ -124,50 +126,13 @@ export default function LeaderboardScreen() {
         }
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16,
-        paddingTop: 16, paddingBottom: 12,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <button className="dp-ib" onClick={() => navigate(-1)}>
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <h1 style={{
-          fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-          fontFamily: "Inter, sans-serif", margin: 0,
-        }}>
-          Leaderboard
-        </h1>
-      </div>
-
       {/* Time Filter Tabs */}
-      <div style={{
-        display: "flex", gap: 4,
-        ...glassStyle, borderRadius: 14, padding: 4,
-        marginBottom: 12,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
-      }}>
-        {TIME_FILTERS.map((filter) => (
-          <button
-            key={filter.id}
-            onClick={() => setTimeFilter(filter.id)}
-            style={{
-              flex: 1, padding: "9px 0", borderRadius: 11, border: "none",
-              background: timeFilter === filter.id
-                ? "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.2))"
-                : "transparent",
-              color: timeFilter === filter.id ? "var(--dp-text)" : "var(--dp-text-tertiary)",
-              fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-              cursor: "pointer", transition: "all 0.25s ease",
-            }}
-          >
-            {filter.label}
-          </button>
-        ))}
-      </div>
+      <PillTabs
+        tabs={TIME_FILTERS.map((f) => ({ key: f.id, label: f.label }))}
+        active={timeFilter}
+        onChange={setTimeFilter}
+        style={{ marginBottom: 12 }}
+      />
 
       {/* Scope Filter */}
       <div style={{
@@ -190,9 +155,9 @@ export default function LeaderboardScreen() {
                 border: scopeFilter === filter.id
                   ? "1px solid rgba(139,92,246,0.25)"
                   : "1px solid var(--dp-glass-border)",
-                color: scopeFilter === filter.id ? (isLight ? "#6D28D9" : "#C4B5FD") : "var(--dp-text-muted)",
-                fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                cursor: "pointer", transition: "all 0.25s ease",
+                color: scopeFilter === filter.id ? "var(--dp-accent-text)" : "var(--dp-text-muted)",
+                fontSize: 12, fontWeight: 600, cursor: "pointer", transition: "all 0.25s ease",
+                fontFamily: "inherit",
               }}
             >
               <Icon size={14} />
@@ -202,8 +167,29 @@ export default function LeaderboardScreen() {
         })}
       </div>
 
+      {/* Empty state when no users */}
+      {!lbInf.isLoading && EXTENDED_LEADERBOARD.length === 0 && (
+        <div style={{
+          textAlign: "center", padding: "60px 20px",
+          opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.3s",
+        }}>
+          <Trophy size={48} color="var(--dp-text-muted)" style={{ marginBottom: 16 }} />
+          <div style={{
+            fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)",
+            marginBottom: 8,
+          }}>
+            No users on the leaderboard yet
+          </div>
+          <div style={{
+            fontSize: 13, color: "var(--dp-text-muted)",
+            }}>
+            Complete tasks and earn XP to climb the ranks
+          </div>
+        </div>
+      )}
+
       {/* Top 3 Podium */}
-      <div style={{
+      {EXTENDED_LEADERBOARD.length > 0 && <div style={{
         display: "flex", alignItems: "flex-end", justifyContent: "center",
         gap: 10, marginBottom: 28, padding: "0 8px",
         opacity: mounted ? 1 : 0,
@@ -238,26 +224,25 @@ export default function LeaderboardScreen() {
               )}
 
               {/* Avatar */}
-              <div style={{
-                width: avatarSize, height: avatarSize,
-                borderRadius: avatarSize * 0.35,
-                background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}88)`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: isFirst ? 24 : 20, fontWeight: 700, color: "#fff",
-                fontFamily: "Inter, sans-serif",
-                border: `3px solid ${medal.bg}`,
-                boxShadow: medal.shadow,
-                marginBottom: 8,
-                ...(isFirst ? { animation: "goldGlow 3s ease-in-out infinite" } : {}),
-              }}>
-                {entry.initial}
-              </div>
+              <Avatar
+                name={entry.name}
+                size={avatarSize}
+                color={avatarColor}
+                style={{
+                  border: `3px solid ${medal.bg}`,
+                  boxShadow: medal.shadow,
+                  marginBottom: 8,
+                  ...(isFirst ? { animation: "goldGlow 3s ease-in-out infinite" } : {}),
+                }}
+              />
 
               {/* Name */}
               <div style={{
                 fontSize: 13, fontWeight: 600, color: "var(--dp-text)",
-                fontFamily: "Inter, sans-serif", marginBottom: 2,
+                marginBottom: 2,
                 textAlign: "center",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                maxWidth: "100%",
               }}>
                 {entry.name}
               </div>
@@ -265,7 +250,7 @@ export default function LeaderboardScreen() {
               {/* XP */}
               <div style={{
                 fontSize: 12, fontWeight: 700, color: isLight ? MEDAL_DARK_TEXT[rank] : medal.bg,
-                fontFamily: "Inter, sans-serif", marginBottom: 8,
+                marginBottom: 8,
               }}>
                 {entry.xp.toLocaleString()} XP
               </div>
@@ -286,7 +271,6 @@ export default function LeaderboardScreen() {
                   background: medal.bg,
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 14, fontWeight: 800, color: medal.text,
-                  fontFamily: "Inter, sans-serif",
                   boxShadow: `0 2px 8px ${medal.bg}40`,
                 }}>
                   {rank}
@@ -295,16 +279,10 @@ export default function LeaderboardScreen() {
             </div>
           );
         })}
-      </div>
+      </div>}
 
       {/* Full Ranked List */}
-      <div style={{
-        ...glassStyle, borderRadius: 18,
-        overflow: "hidden", marginBottom: 100,
-        opacity: mounted ? 1 : 0,
-        transform: mounted ? "translateY(0)" : "translateY(20px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.4s",
-      }}>
+      {EXTENDED_LEADERBOARD.length > 0 && <GlassCard mb={100} radius={18} style={{ overflow: "hidden" }}>
         {rest.map((entry, index) => {
           if (!entry) return null;
           const avatarColor = getAvatarColor(entry.name);
@@ -317,9 +295,7 @@ export default function LeaderboardScreen() {
                 display: "flex", alignItems: "center", gap: 12,
                 padding: isUser ? "14px 16px" : "12px 16px",
                 background: isUser
-                  ? (isLight
-                    ? "linear-gradient(135deg, rgba(139,92,246,0.12), rgba(109,40,217,0.08))"
-                    : "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(109,40,217,0.12))")
+                  ? "var(--dp-accent-soft)"
                   : index % 2 === 0
                   ? "transparent"
                   : "rgba(255,255,255,0.015)",
@@ -341,26 +317,18 @@ export default function LeaderboardScreen() {
               <div style={{
                 width: 28, textAlign: "center",
                 fontSize: 14, fontWeight: 700,
-                color: isUser ? (isLight ? "#6D28D9" : "#C4B5FD") : "var(--dp-text-muted)",
-                fontFamily: "Inter, sans-serif",
-              }}>
+                color: isUser ? "var(--dp-accent-text)" : "var(--dp-text-muted)",
+                }}>
                 {entry.rank}
               </div>
 
               {/* Avatar */}
-              <div style={{
-                width: 38, height: 38, borderRadius: 12, flexShrink: 0,
-                background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}88)`,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 15, fontWeight: 700, color: "#fff",
-                fontFamily: "Inter, sans-serif",
-                ...(isUser ? {
-                  border: "2px solid rgba(139,92,246,0.4)",
-                  boxShadow: "0 0 12px rgba(139,92,246,0.3)",
-                } : {}),
-              }}>
-                {entry.initial}
-              </div>
+              <Avatar
+                name={entry.name}
+                size={38}
+                color={avatarColor}
+                style={isUser ? { border: "2px solid rgba(139,92,246,0.4)", boxShadow: "0 0 12px rgba(139,92,246,0.3)" } : {}}
+              />
 
               {/* Info */}
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -368,13 +336,13 @@ export default function LeaderboardScreen() {
                   <span style={{
                     fontSize: 14, fontWeight: isUser ? 700 : 500,
                     color: isUser ? "var(--dp-text)" : "var(--dp-text-primary)",
-                    fontFamily: "Inter, sans-serif",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>
                     {entry.name}
                     {isUser && (
                       <span style={{
                         color: "#fff", fontSize: 10, fontWeight: 700, marginLeft: 8,
-                        background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                        background: GRADIENTS.primaryDark,
                         padding: "2px 8px", borderRadius: 6,
                         letterSpacing: "0.3px",
                       }}>
@@ -384,7 +352,6 @@ export default function LeaderboardScreen() {
                   </span>
                   <span style={{
                     fontSize: 10, fontWeight: 700, color: "#8B5CF6",
-                    fontFamily: "Inter, sans-serif",
                     padding: "2px 6px", borderRadius: 5,
                     background: "rgba(139,92,246,0.15)",
                   }}>
@@ -397,17 +364,15 @@ export default function LeaderboardScreen() {
               <div style={{
                 display: "flex", alignItems: "center", gap: 3,
                 fontSize: 11, color: "var(--dp-text-muted)",
-                fontFamily: "Inter, sans-serif",
-              }}>
-                <Flame size={12} color={isLight ? "#DC2626" : "#F69A9A"} />
+                }}>
+                <Flame size={12} color="var(--dp-danger)" />
                 {entry.streak}
               </div>
 
               {/* XP */}
               <div style={{
                 fontSize: 13, fontWeight: 700,
-                color: isUser ? (isLight ? "#6D28D9" : "#C4B5FD") : "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif",
+                color: isUser ? "var(--dp-accent-text)" : "var(--dp-text-secondary)",
                 minWidth: 52, textAlign: "right",
               }}>
                 {entry.xp.toLocaleString()}
@@ -415,9 +380,9 @@ export default function LeaderboardScreen() {
             </div>
           );
         })}
-      </div>
+      </GlassCard>}
       <div ref={lbInf.sentinelRef} style={{height:1}} />
-      {lbInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+      {lbInf.loadingMore && <div style={{textAlign:"center",padding:16,color:"var(--dp-text-tertiary)",fontSize:13}}>Loading more…</div>}
 
     </PageLayout>
   );

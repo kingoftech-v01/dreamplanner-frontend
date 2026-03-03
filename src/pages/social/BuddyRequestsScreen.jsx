@@ -8,21 +8,18 @@ import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
 import { ArrowLeft, UserPlus, Check, X, Users, Clock } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import { CONTACT_COLORS, GRADIENTS } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import PillTabs from "../../components/shared/PillTabs";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Buddy Requests Screen
 // ═══════════════════════════════════════════════════════════════
 
-var AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
-
-var glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
+var AVATAR_COLORS = CONTACT_COLORS;
 
 function getAvatarColor(name) {
   if (!name) return AVATAR_COLORS[0];
@@ -145,7 +142,28 @@ export default function BuddyRequestsScreen() {
     : rejectedRequests;
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)" }}>
+              Buddy Requests
+            </span>
+            {pendingRequests.length > 0 && (
+              <span style={{
+                background: GRADIENTS.primaryDark,
+                color: "#fff", fontSize: 11, fontWeight: 700,
+                padding: "2px 8px", borderRadius: 10,
+                minWidth: 20, textAlign: "center",
+              }}>
+                {pendingRequests.length}
+              </span>
+            )}
+          </div>
+        }
+      />
+    }>
       <style>{`
         @keyframes acceptPulse {
           0% { transform: scale(1); }
@@ -154,88 +172,21 @@ export default function BuddyRequestsScreen() {
         }
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16,
-        paddingTop: 16, paddingBottom: 16,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <button className="dp-ib" onClick={function () { navigate(-1); }}>
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h1 style={{
-            fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-            fontFamily: "Inter, sans-serif", margin: 0,
-          }}>
-            Buddy Requests
-          </h1>
-          {pendingRequests.length > 0 && (
-            <span style={{
-              background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-              color: "#fff", fontSize: 11, fontWeight: 700,
-              fontFamily: "Inter, sans-serif",
-              padding: "2px 8px", borderRadius: 10,
-              minWidth: 20, textAlign: "center",
-            }}>
-              {pendingRequests.length}
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Tabs */}
-      <div style={{
-        display: "flex", gap: 4, marginBottom: 20,
-        ...glassStyle, borderRadius: 14, padding: 4,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
-      }}>
-        {TAB_DATA.map(function (tab) {
-          var Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={function () { setActiveTab(tab.id); }}
-              style={{
-                flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                padding: "10px 0", borderRadius: 12, border: "none",
-                background: activeTab === tab.id
-                  ? "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.2))"
-                  : "transparent",
-                color: activeTab === tab.id ? "var(--dp-text)" : "var(--dp-text-tertiary)",
-                fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                cursor: "pointer", transition: "all 0.25s ease",
-              }}
-            >
-              <Icon size={15} />
-              {tab.label}
-              {tab.count > 0 && (
-                <span style={{
-                  fontSize: 10, fontWeight: 700,
-                  padding: "1px 6px", borderRadius: 6,
-                  background: activeTab === tab.id
-                    ? "rgba(255,255,255,0.15)"
-                    : "var(--dp-surface-hover)",
-                  color: activeTab === tab.id ? "var(--dp-text)" : "var(--dp-text-muted)",
-                }}>
-                  {tab.count}
-                </span>
-              )}
-            </button>
-          );
+      <PillTabs
+        tabs={TAB_DATA.map(function (tab) {
+          return { key: tab.id, label: tab.label, icon: tab.icon, count: tab.count > 0 ? tab.count : undefined };
         })}
-      </div>
+        active={activeTab}
+        onChange={setActiveTab}
+        style={{ marginBottom: 20 }}
+      />
 
       {/* Request List */}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, paddingBottom: 32 }}>
         {historyInf.isLoading && [1, 2, 3].map(function (i) {
           return (
-            <div key={i} style={{
-              ...glassStyle, borderRadius: 16, padding: 16, height: 100,
-              opacity: 0.5,
-            }} />
+            <GlassCard key={i} padding={16} style={{ borderRadius: 16, height: 100, opacity: 0.5 }} />
           );
         })}
 
@@ -260,7 +211,7 @@ export default function BuddyRequestsScreen() {
             </div>
             <div style={{
               fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif", marginBottom: 6,
+              marginBottom: 6,
             }}>
               {activeTab === "pending" ? "No pending requests"
                 : activeTab === "accepted" ? "No accepted buddies yet"
@@ -268,8 +219,7 @@ export default function BuddyRequestsScreen() {
             </div>
             <div style={{
               fontSize: 13, color: "var(--dp-text-muted)",
-              fontFamily: "Inter, sans-serif",
-            }}>
+              }}>
               {activeTab === "pending"
                 ? "Buddy requests will appear here when someone wants to pair up with you"
                 : activeTab === "accepted"
@@ -286,10 +236,11 @@ export default function BuddyRequestsScreen() {
           var compatColor = request.matchScore ? getCompatColor(request.matchScore) : null;
 
           return (
-            <div
+            <GlassCard
               key={request.id || index}
+              padding={16}
               style={{
-                ...glassStyle, borderRadius: 16, padding: 16,
+                borderRadius: 16,
                 opacity: mounted ? 1 : 0,
                 transform: mounted ? "translateY(0)" : "translateY(15px)",
                 transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
@@ -302,30 +253,19 @@ export default function BuddyRequestsScreen() {
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 {/* Avatar */}
-                <div style={{
-                  width: 50, height: 50, borderRadius: 16, flexShrink: 0,
-                  background: "linear-gradient(135deg, " + avatarColor + ", " + avatarColor + "88)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 19, fontWeight: 700, color: "#fff",
-                  fontFamily: "Inter, sans-serif",
-                  boxShadow: "0 4px 12px " + avatarColor + "30",
-                }}>
-                  {request.initial}
-                </div>
+                <Avatar name={request.name} size={50} color={avatarColor} />
 
                 {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
                     <span style={{
                       fontSize: 15, fontWeight: 600, color: "var(--dp-text)",
-                      fontFamily: "Inter, sans-serif",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
                       {request.name}
                     </span>
                     <span style={{
                       fontSize: 10, fontWeight: 700, color: "#8B5CF6",
-                      fontFamily: "Inter, sans-serif",
                       padding: "2px 6px", borderRadius: 6,
                       background: "rgba(139,92,246,0.15)",
                     }}>
@@ -338,15 +278,13 @@ export default function BuddyRequestsScreen() {
                     {request.matchScore && (
                       <span style={{
                         fontSize: 12, fontWeight: 600, color: compatColor,
-                        fontFamily: "Inter, sans-serif",
-                      }}>
+                        }}>
                         {request.matchScore}% match
                       </span>
                     )}
                     <span style={{
                       fontSize: 11, color: "var(--dp-text-tertiary)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {timeAgo(request.time)}
                     </span>
                   </div>
@@ -360,9 +298,9 @@ export default function BuddyRequestsScreen() {
                       disabled={acceptMutation.isPending}
                       style={{
                         width: 38, height: 38, borderRadius: 12, border: "none",
-                        background: "linear-gradient(135deg, #10B981, #059669)",
+                        background: GRADIENTS.success,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", transition: "all 0.25s ease",
+                        cursor: "pointer", transition: "all 0.25s ease", fontFamily: "inherit",
                       }}
                     >
                       <Check size={18} color="#fff" strokeWidth={2.5} />
@@ -372,9 +310,9 @@ export default function BuddyRequestsScreen() {
                       disabled={rejectMutation.isPending}
                       style={{
                         width: 38, height: 38, borderRadius: 12, border: "none",
-                        background: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)",
+                        background: "var(--dp-surface)",
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        cursor: "pointer", transition: "all 0.25s ease",
+                        cursor: "pointer", transition: "all 0.25s ease", fontFamily: "inherit",
                       }}
                     >
                       <X size={18} color="var(--dp-text-secondary)" strokeWidth={2.5} />
@@ -388,8 +326,7 @@ export default function BuddyRequestsScreen() {
                     padding: "4px 10px", borderRadius: 8,
                     background: isAccepted ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.1)",
                     color: isAccepted ? "#10B981" : "#EF4444",
-                    fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                  }}>
+                    fontSize: 12, fontWeight: 600, }}>
                     {isAccepted ? "Accepted" : "Declined"}
                   </div>
                 )}
@@ -401,8 +338,7 @@ export default function BuddyRequestsScreen() {
                     background: actionStates[request.id] === "accepted"
                       ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.1)",
                     color: actionStates[request.id] === "accepted" ? "#10B981" : "#EF4444",
-                    fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                    animation: "acceptPulse 0.5s ease",
+                    fontSize: 12, fontWeight: 600, animation: "acceptPulse 0.5s ease",
                   }}>
                     {actionStates[request.id] === "accepted" ? "Accepted" : "Declined"}
                   </div>
@@ -413,7 +349,7 @@ export default function BuddyRequestsScreen() {
               {request.matchScore && activeTab === "pending" && !actionStates[request.id] && (
                 <div style={{
                   marginTop: 12, height: 4, borderRadius: 2,
-                  background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)",
+                  background: "var(--dp-surface)",
                   overflow: "hidden",
                 }}>
                   <div style={{
@@ -424,14 +360,14 @@ export default function BuddyRequestsScreen() {
                   }} />
                 </div>
               )}
-            </div>
+            </GlassCard>
           );
         })}
 
         {/* Infinite scroll sentinel */}
         <div ref={historyInf.sentinelRef} />
         {historyInf.loadingMore && (
-          <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+          <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
         )}
       </div>
     </PageLayout>

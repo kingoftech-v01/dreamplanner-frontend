@@ -9,8 +9,14 @@ import { apiGet, apiPost } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GradientButton from "../../components/shared/GradientButton";
+import AchievementShareModal from "../../components/shared/AchievementShareModal";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { BRAND, GRADIENTS } from "../../styles/colors";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — 2-Minute Micro Start Screen
@@ -18,14 +24,6 @@ import { useToast } from "../../context/ToastContext";
 
 const TOTAL_SECONDS = 120; // 2 minutes
 
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
 
 export default function MicroStartScreen() {
   const navigate = useNavigate();
@@ -37,6 +35,7 @@ export default function MicroStartScreen() {
   const [seconds, setSeconds] = useState(TOTAL_SECONDS);
   const [xpCount, setXpCount] = useState(0);
   const [showParticles, setShowParticles] = useState(false);
+  const [achievementShare, setAchievementShare] = useState(false);
   const intervalRef = useRef(null);
 
   var queryClient = useQueryClient();
@@ -166,7 +165,7 @@ export default function MicroStartScreen() {
         }}>
           <Loader
             size={28}
-            color={isLight ? "#6D28D9" : "#C4B5FD"}
+            color={"var(--dp-accent-text)"}
             style={{ animation: "spin 1s linear infinite" }}
           />
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
@@ -187,60 +186,22 @@ export default function MicroStartScreen() {
   }
 
   return (
-    <PageLayout showNav={false}>
+    <PageLayout showNav={false} header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Go back" />}
+        title={dream.title}
+        subtitle="2-Minute Start"
+        right={<Timer size={18} color={"var(--dp-accent-text)"} strokeWidth={2} />}
+      />
+    }>
       <div
         style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
           minHeight: "100vh",
           paddingBottom: 40,
           display: "flex",
           flexDirection: "column",
         }}
       >
-        {/* Header */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "20px 0 16px",
-            opacity: mounted ? 1 : 0,
-            transform: mounted ? "translateY(0)" : "translateY(-10px)",
-            transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
-          }}
-        >
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: 10,
-                fontWeight: 600,
-                color: "var(--dp-text-tertiary)",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                marginBottom: 2,
-              }}
-            >
-              2-Minute Start
-            </div>
-            <div
-              style={{
-                fontSize: 16,
-                fontWeight: 700,
-                color: "var(--dp-text)",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                maxWidth: 280,
-              }}
-            >
-              {dream.title}
-            </div>
-          </div>
-          <Timer size={18} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-        </div>
 
         {/* Completed state */}
         {status === "completed" ? (
@@ -278,12 +239,12 @@ export default function MicroStartScreen() {
                       height: 8 + Math.random() * 8,
                       borderRadius: "50%",
                       background: [
-                        "#8B5CF6",
-                        "#C4B5FD",
-                        "#10B981",
-                        "#FCD34D",
-                        "#EC4899",
-                        "#14B8A6",
+                        BRAND.purple,
+                        BRAND.purpleLight,
+                        BRAND.greenSolid,
+                        BRAND.yellow,
+                        BRAND.pink,
+                        BRAND.teal,
                       ][i % 6],
                       animation: `microParticle${i % 4} ${0.8 + Math.random() * 0.8}s ease-out forwards`,
                       animationDelay: `${i * 0.05}s`,
@@ -329,7 +290,7 @@ export default function MicroStartScreen() {
                 animation: "microPulse 2s ease-in-out infinite",
               }}
             >
-              <Sparkles size={36} color="#10B981" strokeWidth={1.5} />
+              <Sparkles size={36} color={BRAND.greenSolid} strokeWidth={1.5} />
             </div>
 
             <h2
@@ -353,24 +314,13 @@ export default function MicroStartScreen() {
             </p>
 
             {/* XP Earned */}
-            <div
-              style={{
-                ...glass,
-                padding: "18px 32px",
-                borderRadius: 16,
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                marginBottom: 24,
-                border: "1px solid rgba(252,211,77,0.15)",
-              }}
-            >
-              <Zap size={22} color={isLight ? "#B45309" : "#FCD34D"} strokeWidth={2} />
+            <GlassCard padding="18px 32px" mb={24} style={{ display: "flex", alignItems: "center", gap: 10, borderRadius: 16, border: "1px solid rgba(252,211,77,0.15)" }}>
+              <Zap size={22} color={"var(--dp-warning)"} strokeWidth={2} />
               <span
                 style={{
                   fontSize: 28,
                   fontWeight: 700,
-                  color: isLight ? "#B45309" : "#FCD34D",
+                  color: "var(--dp-warning)",
                 }}
               >
                 +{xpCount}
@@ -384,20 +334,10 @@ export default function MicroStartScreen() {
               >
                 XP
               </span>
-            </div>
+            </GlassCard>
 
             {/* AI motivational message */}
-            <div
-              style={{
-                ...glass,
-                padding: 20,
-                borderRadius: 18,
-                width: "100%",
-                maxWidth: 360,
-                marginBottom: 28,
-                textAlign: "left",
-              }}
-            >
+            <GlassCard padding={20} mb={28} style={{ width: "100%", maxWidth: 360, textAlign: "left" }}>
               <div
                 style={{
                   display: "flex",
@@ -418,13 +358,13 @@ export default function MicroStartScreen() {
                     justifyContent: "center",
                   }}
                 >
-                  <Bot size={18} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={1.5} />
+                  <Bot size={18} color={"var(--dp-accent-text)"} strokeWidth={1.5} />
                 </div>
                 <span
                   style={{
                     fontSize: 13,
                     fontWeight: 600,
-                    color: isLight ? "#6D28D9" : "#C4B5FD",
+                    color: "var(--dp-accent-text)",
                   }}
                 >
                   AI Coach
@@ -441,33 +381,29 @@ export default function MicroStartScreen() {
                 hardest part. Small consistent actions like this compound into
                 extraordinary results. Keep this energy going tomorrow!
               </p>
-            </div>
+            </GlassCard>
 
-            {/* Back to Dream button */}
-            <button
-              onClick={() => navigate(dreamId ? `/dream/${dreamId}` : "/")}
-              style={{
-                width: "100%",
-                maxWidth: 360,
-                padding: "15px 0",
-                borderRadius: 16,
-                border: "none",
-                background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                color: "#fff",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: "pointer",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                boxShadow: "0 4px 20px rgba(139,92,246,0.35)",
-              }}
+            {/* Share + Back buttons */}
+            <GradientButton
+              gradient="primary"
+              onClick={function () { setAchievementShare(true); }}
+              icon={Sparkles}
+              fullWidth
+              size="lg"
+              style={{ maxWidth: 360, marginBottom: 10 }}
             >
-              <ArrowLeft size={18} strokeWidth={2} />
+              Share Achievement
+            </GradientButton>
+            <GradientButton
+              gradient="primaryDark"
+              onClick={() => navigate(dreamId ? `/dream/${dreamId}` : "/")}
+              icon={ArrowLeft}
+              fullWidth
+              size="lg"
+              style={{ maxWidth: 360 }}
+            >
               Back to Dream
-            </button>
+            </GradientButton>
           </div>
         ) : (
           /* Timer state */
@@ -548,8 +484,8 @@ export default function MicroStartScreen() {
                     x2="1"
                     y2="1"
                   >
-                    <stop offset="0%" stopColor="#8B5CF6" />
-                    <stop offset="100%" stopColor="#C4B5FD" />
+                    <stop offset="0%" stopColor={BRAND.purple} />
+                    <stop offset="100%" stopColor={BRAND.purpleLight} />
                   </linearGradient>
                 </defs>
               </svg>
@@ -602,13 +538,7 @@ export default function MicroStartScreen() {
                 transition: "all 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s",
               }}
             >
-              <div
-                style={{
-                  ...glass,
-                  padding: 20,
-                  marginBottom: 24,
-                }}
-              >
+              <GlassCard padding={20} mb={24}>
                 <div
                   style={{
                     display: "flex",
@@ -617,12 +547,12 @@ export default function MicroStartScreen() {
                     marginBottom: 12,
                   }}
                 >
-                  <Sparkles size={15} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
+                  <Sparkles size={15} color={"var(--dp-accent-text)"} strokeWidth={2} />
                   <span
                     style={{
                       fontSize: 12,
                       fontWeight: 600,
-                      color: isLight ? "#6D28D9" : "#C4B5FD",
+                      color: "var(--dp-accent-text)",
                       textTransform: "uppercase",
                       letterSpacing: "0.5px",
                     }}
@@ -667,19 +597,19 @@ export default function MicroStartScreen() {
                       border: "1px solid rgba(252,211,77,0.12)",
                     }}
                   >
-                    <Zap size={13} color={isLight ? "#B45309" : "#FCD34D"} strokeWidth={2.5} />
+                    <Zap size={13} color={"var(--dp-warning)"} strokeWidth={2.5} />
                     <span
                       style={{
                         fontSize: 12,
                         fontWeight: 700,
-                        color: isLight ? "#B45309" : "#FCD34D",
+                        color: "var(--dp-warning)",
                       }}
                     >
                       +25 XP
                     </span>
                   </div>
                 </div>
-              </div>
+              </GlassCard>
             </div>
 
             {/* Control buttons */}
@@ -694,134 +624,65 @@ export default function MicroStartScreen() {
               }}
             >
               {status === "idle" && (
-                <button
+                <GradientButton
+                  gradient="primaryDark"
                   onClick={startTimer}
-                  style={{
-                    flex: 1,
-                    padding: "16px 0",
-                    borderRadius: 16,
-                    border: "none",
-                    background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                    color: "#fff",
-                    fontSize: 16,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    fontFamily: "inherit",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    boxShadow: "0 4px 20px rgba(139,92,246,0.35)",
-                    transition: "all 0.2s",
-                  }}
+                  icon={Play}
+                  fullWidth
+                  size="lg"
+                  style={{ flex: 1 }}
                 >
-                  <Play size={20} strokeWidth={2} fill="#fff" />
                   Start
-                </button>
+                </GradientButton>
               )}
 
               {status === "running" && (
                 <>
-                  <button
+                  <GradientButton
+                    gradient="teal"
                     onClick={pauseTimer}
-                    style={{
-                      flex: 1,
-                      padding: "16px 0",
-                      borderRadius: 16,
-                      border: "1px solid rgba(249,115,22,0.3)",
-                      background: "rgba(249,115,22,0.08)",
-                      color: "#FB923C",
-                      fontSize: 16,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 10,
-                      transition: "all 0.2s",
-                    }}
+                    icon={Pause}
+                    fullWidth
+                    size="lg"
+                    style={{ flex: 1, background: "rgba(249,115,22,0.08)", border: "1px solid rgba(249,115,22,0.3)", color: "#FB923C", boxShadow: "none" }}
                   >
-                    <Pause size={20} strokeWidth={2} />
                     Pause
-                  </button>
-                  <button
+                  </GradientButton>
+                  <GradientButton
+                    gradient="success"
                     onClick={completeEarly}
-                    style={{
-                      flex: 1,
-                      padding: "16px 0",
-                      borderRadius: 16,
-                      border: "none",
-                      background: "linear-gradient(135deg, #10B981, #059669)",
-                      color: "#fff",
-                      fontSize: 16,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 10,
-                      boxShadow: "0 4px 16px rgba(16,185,129,0.3)",
-                      transition: "all 0.2s",
-                    }}
+                    icon={Check}
+                    fullWidth
+                    size="lg"
+                    style={{ flex: 1 }}
                   >
-                    <Check size={20} strokeWidth={2.5} />
                     Done!
-                  </button>
+                  </GradientButton>
                 </>
               )}
 
               {status === "paused" && (
                 <>
-                  <button
+                  <GradientButton
+                    gradient="primaryDark"
                     onClick={resumeTimer}
-                    style={{
-                      flex: 1,
-                      padding: "16px 0",
-                      borderRadius: 16,
-                      border: "none",
-                      background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                      color: "#fff",
-                      fontSize: 16,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 10,
-                      boxShadow: "0 4px 20px rgba(139,92,246,0.35)",
-                      transition: "all 0.2s",
-                    }}
+                    icon={Play}
+                    fullWidth
+                    size="lg"
+                    style={{ flex: 1 }}
                   >
-                    <Play size={20} strokeWidth={2} fill="#fff" />
                     Resume
-                  </button>
-                  <button
+                  </GradientButton>
+                  <GradientButton
+                    gradient="success"
                     onClick={completeEarly}
-                    style={{
-                      flex: 1,
-                      padding: "16px 0",
-                      borderRadius: 16,
-                      border: "none",
-                      background: "linear-gradient(135deg, #10B981, #059669)",
-                      color: "#fff",
-                      fontSize: 16,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      fontFamily: "inherit",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 10,
-                      boxShadow: "0 4px 16px rgba(16,185,129,0.3)",
-                      transition: "all 0.2s",
-                    }}
+                    icon={Check}
+                    fullWidth
+                    size="lg"
+                    style={{ flex: 1 }}
                   >
-                    <Check size={20} strokeWidth={2.5} />
                     Done!
-                  </button>
+                  </GradientButton>
                 </>
               )}
             </div>
@@ -859,6 +720,15 @@ export default function MicroStartScreen() {
           }
         `}</style>
       </div>
+
+      <AchievementShareModal
+        open={achievementShare}
+        onClose={function () { setAchievementShare(false); }}
+        achievementType="achievement"
+        achievementTitle={microTask ? microTask.title : (dream.title || "")}
+        dreamId={dreamId}
+        taskId={microTask ? microTask.id : undefined}
+      />
     </PageLayout>
   );
 }

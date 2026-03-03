@@ -1,5 +1,6 @@
 import { Routes, Route } from "react-router-dom";
 import { lazy, Suspense, useState, useCallback, useEffect } from "react";
+import useKeyboardShortcuts from "./hooks/useKeyboardShortcuts";
 import PageTransition from "./components/shared/PageTransition";
 import ThemeBackground from "./components/shared/ThemeBackground";
 import ErrorBoundary from "./components/shared/ErrorBoundary";
@@ -8,6 +9,7 @@ import OfflineBanner from "./components/shared/OfflineBanner";
 import TaskCallOverlay from "./components/shared/TaskCallOverlay";
 import IncomingCallOverlay from "./components/shared/IncomingCallOverlay";
 import ProtectedRoute from "./components/shared/ProtectedRoute";
+import GuestRoute from "./components/shared/GuestRoute";
 import { useAuth } from "./context/AuthContext";
 import { useToast } from "./context/ToastContext";
 import { useTaskCall } from "./context/TaskCallContext";
@@ -56,11 +58,11 @@ var UserProfileScreen = lazy(function () { return import("./pages/social/UserPro
 var CirclesScreen = lazy(function () { return import("./pages/social/CirclesScreen"); });
 var CircleDetailScreen = lazy(function () { return import("./pages/social/CircleDetailScreen"); });
 var CircleCreateScreen = lazy(function () { return import("./pages/social/CircleCreateScreen"); });
-var CircleInvitationsScreen = lazy(function () { return import("./pages/social/CircleInvitationsScreen"); });
+// CircleInvitationsScreen removed — now integrated as bottom sheet in CircleDetailScreen
 var CircleChatScreen = lazy(function () { return import("./pages/chat/CircleChatScreen"); });
-var SeasonsScreen = lazy(function () { return import("./pages/social/SeasonsScreen"); });
 var BuddyRequestsScreen = lazy(function () { return import("./pages/social/BuddyRequestsScreen"); });
-var DreamPostsFeedScreen = lazy(function () { return import("./pages/social/DreamPostsFeedScreen"); });
+var SavedPostsScreen = lazy(function () { return import("./pages/social/SavedPostsScreen"); });
+var PostDetailScreen = lazy(function () { return import("./pages/social/PostDetailScreen"); });
 
 // Lazy — Calendar
 var CalendarScreen = lazy(function () { return import("./pages/calendar/CalendarScreen"); });
@@ -154,11 +156,6 @@ function AgoraRTMBridge() {
   return null;
 }
 
-// Wire native push notifications — handled entirely by main.jsx setupPushListeners
-function NativePushBridge() {
-  return null;
-}
-
 // Schedule local notifications for today's tasks on login + app resume (native only)
 function TaskSchedulerBridge() {
   var { isAuthenticated } = useAuth();
@@ -200,6 +197,8 @@ function TaskSchedulerBridge() {
 }
 
 export default function App() {
+  useKeyboardShortcuts();
+
   var [splashDone, setSplashDone] = useState(function () {
     return !!sessionStorage.getItem("dp-splash-shown");
   });
@@ -211,12 +210,12 @@ export default function App() {
 
   return (
     <>
+    <a href="#main-content" className="dp-skip-link">Skip to main content</a>
     {!splashDone && <SplashScreen onDone={handleSplashDone} />}
     <ThemeBackground />
     <OfflineBanner />
     <NotificationSocketBridge />
     <AgoraRTMBridge />
-    <NativePushBridge />
     <TaskSchedulerBridge />
     <ErrorBoundary>
     <Suspense fallback={<LoadingFallback />}>
@@ -224,9 +223,9 @@ export default function App() {
       <Routes>
         {/* Public routes — no auth required */}
         <Route path="/onboarding" element={<OnboardingScreen />} />
-        <Route path="/login" element={<LoginScreen />} />
-        <Route path="/register" element={<RegisterScreen />} />
-        <Route path="/forgot-password" element={<ForgotPasswordScreen />} />
+        <Route path="/login" element={<GuestRoute><LoginScreen /></GuestRoute>} />
+        <Route path="/register" element={<GuestRoute><RegisterScreen /></GuestRoute>} />
+        <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordScreen /></GuestRoute>} />
         <Route path="/change-password" element={<ChangePasswordScreen />} />
         <Route path="/terms" element={<TermsOfServiceScreen />} />
         <Route path="/privacy" element={<PrivacyPolicyScreen />} />
@@ -264,11 +263,11 @@ export default function App() {
         <Route path="/circles" element={<P><CirclesScreen /></P>} />
         <Route path="/circle/:id" element={<P><CircleDetailScreen /></P>} />
         <Route path="/circles/create" element={<P><CircleCreateScreen /></P>} />
-        <Route path="/circle/:id/invitations" element={<P><CircleInvitationsScreen /></P>} />
+        {/* invitations route removed — now a bottom sheet in CircleDetailScreen */}
         <Route path="/circle-chat/:id" element={<P><CircleChatScreen /></P>} />
-        <Route path="/seasons" element={<P><SeasonsScreen /></P>} />
         <Route path="/buddy-requests" element={<P><BuddyRequestsScreen /></P>} />
-        <Route path="/social/feed" element={<P><DreamPostsFeedScreen /></P>} />
+        <Route path="/social/saved" element={<P><SavedPostsScreen /></P>} />
+        <Route path="/post/:id" element={<P><PostDetailScreen /></P>} />
 
         {/* Calendar */}
         <Route path="/calendar" element={<P><CalendarScreen /></P>} />

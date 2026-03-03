@@ -17,7 +17,6 @@ export default function OfflineBanner() {
         background: "rgba(245,158,11,0.12)",
         backdropFilter: "blur(30px)", WebkitBackdropFilter: "blur(30px)",
         borderBottom: "1px solid rgba(245,158,11,0.2)",
-        fontFamily: "'Inter', -apple-system, sans-serif",
       }}>
         <WifiOff size={14} color="#FBBF24" strokeWidth={2.5} />
         <span style={{ fontSize: 12, fontWeight: 600, color: "#FBBF24" }}>

@@ -14,6 +14,8 @@ import { CONVERSATIONS } from "./endpoints";
 var _appId = null;
 var _rtmClient = null;
 var _rtmUid = null;
+var _rtmLoggedIn = false;             // true only while RTM is authenticated
+var _rtmKickCount = 0;                // tracks consecutive remote kicks to prevent infinite loop
 var _rtmTokenRefreshTimer = null;
 var _rtmInitPromise = null;          // guards against concurrent initRTM() calls
 var _rtmChannels = {};               // tracks joined channels by name
@@ -53,6 +55,39 @@ export async function initRTM() {
 
       // Only set _rtmClient AFTER login succeeds (prevents Error 102 race)
       _rtmClient = client;
+      _rtmLoggedIn = true;
+
+      // Handle connection state changes
+      _rtmKickCount = 0;
+      client.on("ConnectionStateChanged", function (newState, reason) {
+        if (newState === "ABORTED" && reason === "REMOTE_LOGIN") {
+          _rtmLoggedIn = false;
+          _rtmClient = null;
+          _rtmInitPromise = null;
+          _rtmKickCount++;
+          // Stop retrying after 2 kicks — another device/tab has priority
+          if (_rtmKickCount > 2) {
+            console.warn("Agora RTM: kicked by remote session repeatedly, giving up (another device is active)");
+            return;
+          }
+          // Exponential backoff: 5s, 15s
+          var delay = 5000 * Math.pow(3, _rtmKickCount - 1);
+          console.warn("Agora RTM: kicked by remote session, retry in " + (delay / 1000) + "s (" + _rtmKickCount + "/2)");
+          setTimeout(function () {
+            initRTM().catch(function () {});
+          }, delay);
+        } else if (newState === "DISCONNECTED") {
+          _rtmLoggedIn = false;
+        } else if (newState === "CONNECTED") {
+          _rtmLoggedIn = true;
+          _rtmKickCount = 0; // Reset on successful stable connection
+        }
+      });
+
+      // Attach presence listener if callbacks were registered before init
+      if (_presenceCallbacks.length > 0) {
+        _attachPresenceListener();
+      }
 
       // Schedule token renewal 1 hour before expiry (token is 24h)
       _scheduleRTMTokenRenewal(tokenRes.expiresIn);
@@ -101,10 +136,12 @@ export async function cleanupRTM() {
     try { _rtmChannels[name].leave(); } catch (_) {}
   }
   _rtmChannels = {};
+  _presenceCallbacks = [];
   if (_rtmClient) {
     try { await _rtmClient.logout(); } catch (_) {}
     _rtmClient = null;
   }
+  _rtmLoggedIn = false;
   _rtmUid = null;
 }
 
@@ -210,6 +247,93 @@ export async function joinRTMChannel(channelName, handlers) {
 }
 
 // ═════════════════════════════════════════════════════════════════
+//  RTM Presence — real-time online/offline status via Agora
+// ═════════════════════════════════════════════════════════════════
+
+var _presenceCallbacks = [];
+
+/**
+ * Subscribe to online status changes for a list of peer UIDs (user IDs as strings).
+ * Must be called after initRTM().
+ * @param {string[]} peerIds - array of user ID strings
+ */
+export async function subscribePresence(peerIds) {
+  if (!_rtmClient || !_rtmLoggedIn || !peerIds || peerIds.length === 0) return;
+  try {
+    await _rtmClient.subscribePeersOnlineStatus(peerIds);
+  } catch (_) {
+    // Silently ignore — RTM may have been disconnected
+  }
+}
+
+/**
+ * Unsubscribe from presence updates.
+ * @param {string[]} peerIds
+ */
+export async function unsubscribePresence(peerIds) {
+  if (!_rtmClient || !_rtmLoggedIn || !peerIds || peerIds.length === 0) return;
+  try {
+    await _rtmClient.unsubscribePeersOnlineStatus(peerIds);
+  } catch (_) {
+    // Ignore — user might already be unsubscribed or RTM disconnected
+  }
+}
+
+/**
+ * One-time query: which of these peers are online right now?
+ * @param {string[]} peerIds
+ * @returns {Object} map of peerId -> boolean
+ */
+export async function queryPresence(peerIds) {
+  if (!_rtmClient || !_rtmLoggedIn || !peerIds || peerIds.length === 0) return {};
+  try {
+    var result = await _rtmClient.queryPeersOnlineStatus(peerIds);
+    // result is { "userId1": true, "userId2": false, ... }
+    return result;
+  } catch (_) {
+    // Silently ignore — RTM may have been disconnected
+    return {};
+  }
+}
+
+/**
+ * Register a callback for presence changes. Returns an unsubscribe function.
+ * @param {function} callback - called with (peerIdMap: { peerId: boolean })
+ * @returns {function} unsubscribe
+ */
+export function onPresenceChange(callback) {
+  _presenceCallbacks.push(callback);
+  // Lazily attach the RTM event listener (only once)
+  if (_rtmClient && _presenceCallbacks.length === 1) {
+    _attachPresenceListener();
+  }
+  return function () {
+    _presenceCallbacks = _presenceCallbacks.filter(function (cb) { return cb !== callback; });
+  };
+}
+
+function _attachPresenceListener() {
+  if (!_rtmClient) return;
+  _rtmClient.on("PeersOnlineStatusChanged", function (statusMap) {
+    // statusMap: { "userId": "online"|"offline" }
+    var boolMap = {};
+    for (var uid in statusMap) {
+      boolMap[uid] = statusMap[uid] === "online";
+    }
+    for (var i = 0; i < _presenceCallbacks.length; i++) {
+      try { _presenceCallbacks[i](boolMap); } catch (_) {}
+    }
+  });
+}
+
+/**
+ * Get the current RTM UID (user ID string).
+ */
+export function getRTMUid() {
+  return _rtmUid;
+}
+
+// ═════════════════════════════════════════════════════════════════
 //  RTC — Real-Time Communication (voice/video calls)
 // ═════════════════════════════════════════════════════════════════
 
@@ -234,6 +358,7 @@ export function createAgoraCallSession(channelName, opts) {
   var localAudioTrack = null;
   var localVideoTrack = null;
   var joined = false;
+  var remoteAudioTracks = [];
 
   client.on("user-published", async function (remoteUser, mediaType) {
     await client.subscribe(remoteUser, mediaType);
@@ -242,13 +367,19 @@ export function createAgoraCallSession(channelName, opts) {
       videoTrack: remoteUser.videoTrack || null,
       audioTrack: remoteUser.audioTrack || null,
     });
-    // Auto-play remote audio
+    // Auto-play remote audio and track for speaker toggle
     if (mediaType === "audio" && remoteUser.audioTrack) {
       remoteUser.audioTrack.play();
+      remoteAudioTracks.push(remoteUser.audioTrack);
     }
   });
 
   client.on("user-unpublished", function (remoteUser, mediaType) {
+    if (mediaType === "audio" && remoteUser.audioTrack) {
+      remoteAudioTracks = remoteAudioTracks.filter(function (t) {
+        return t !== remoteUser.audioTrack;
+      });
+    }
     // When remote unpublishes video, notify with null track
     if (mediaType === "video") {
       onRemoteStream({
@@ -260,6 +391,11 @@ export function createAgoraCallSession(channelName, opts) {
   });
 
   client.on("user-left", function (remoteUser) {
+    if (remoteUser.audioTrack) {
+      remoteAudioTracks = remoteAudioTracks.filter(function (t) {
+        return t !== remoteUser.audioTrack;
+      });
+    }
     onRemoteLeft(remoteUser.uid);
   });
 
@@ -346,11 +482,37 @@ export function createAgoraCallSession(channelName, opts) {
     };
   }
 
+  async function setSpeaker(enabled) {
+    try {
+      var devices = await AgoraRTC.getPlaybackDevices();
+      if (!devices || devices.length === 0) return;
+      var targetDevice = null;
+      if (enabled) {
+        targetDevice = devices.find(function (d) {
+          return /speaker/i.test(d.label);
+        }) || devices[0];
+      } else {
+        targetDevice = devices.find(function (d) {
+          return /earpiece/i.test(d.label);
+        }) || devices[0];
+      }
+      if (!targetDevice) return;
+      for (var i = 0; i < remoteAudioTracks.length; i++) {
+        if (remoteAudioTracks[i].setPlaybackDevice) {
+          await remoteAudioTracks[i].setPlaybackDevice(targetDevice.deviceId);
+        }
+      }
+    } catch (e) {
+      console.warn("setSpeaker failed:", e.message || e);
+    }
+  }
+
   return {
     join: join,
     toggleMute: toggleMute,
     toggleCamera: toggleCamera,
     leave: leave,
     getLocalTracks: getLocalTracks,
+    setSpeaker: setSpeaker,
   };
 }

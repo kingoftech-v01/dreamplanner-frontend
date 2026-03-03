@@ -2,13 +2,22 @@ import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
+import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useT } from "../../context/I18nContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { StatsSkeleton, SkeletonCard, SkeletonLine } from "../../components/shared/Skeleton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassModal from "../../components/shared/GlassModal";
+import GlassInput from "../../components/shared/GlassInput";
+import GradientButton from "../../components/shared/GradientButton";
+import AchievementShareModal from "../../components/shared/AchievementShareModal";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
-import { DREAMS } from "../../services/endpoints";
+import { DREAMS, SOCIAL } from "../../services/endpoints";
 import { exportDreamCard } from "../../utils/exportDreamCard";
 import { saveBlobFile, nativeShare, isNative } from "../../services/native";
 import {
@@ -16,14 +25,15 @@ import {
   ChevronDown, ChevronUp, Plus, Check, Circle, Trash2,
   Edit3, Share2, FileText, Copy, Zap, Flame, Star,
   X, CheckCircle, AlertTriangle, Sparkles, Flag,
-  Globe, Lock, Tag, UserPlus, TrendingUp, Download
+  Globe, Lock, Tag, UserPlus, TrendingUp, Download, Search, Rocket
 } from "lucide-react";
+import { adaptColor, GRADIENTS, STATUS } from "../../styles/colors";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Dream Detail Screen v1
  * ═══════════════════════════════════════════════════════════════════ */
 
-const STATUS_COLORS={active:"#5DE5A8",paused:"#FCD34D",completed:"#C4B5FD",archived:"rgba(255,255,255,0.4)"};
+const STATUS_COLORS=STATUS;
 
 /* ── Reusable truncated text with "Read more" ── */
 function TruncText({ text, maxLen, isLight, style, t }) {
@@ -31,10 +41,10 @@ function TruncText({ text, maxLen, isLight, style, t }) {
   if (!text) return null;
   var need = text.length > maxLen;
   return (
-    <div style={Object.assign({ fontSize: 12, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)", lineHeight: 1.5 }, style || {})}>
+    <div style={Object.assign({ fontSize: 12, color: "var(--dp-text-tertiary)", lineHeight: 1.5 }, style || {})}>
       {need && !exp ? text.slice(0, maxLen) + "..." : text}
       {need && (
-        <span onClick={function (e) { e.stopPropagation(); setExp(!exp); }} style={{ color: isLight ? "#7C3AED" : "#C4B5FD", fontWeight: 600, cursor: "pointer", marginLeft: 4, fontSize: 11 }}>
+        <span onClick={function (e) { e.stopPropagation(); setExp(!exp); }} style={{ color: "var(--dp-accent)", fontWeight: 600, cursor: "pointer", marginLeft: 4, fontSize: 11 }}>
           {exp ? t("dreams.showLess") : t("dreams.readMore")}
         </span>
       )}
@@ -49,9 +59,9 @@ function SeeMoreBtn({ shown, total, onToggle, isLight, expanded, t }) {
   return (
     <button onClick={onToggle} style={{
       width: "100%", padding: "10px 0", marginTop: 4, borderRadius: 12,
-      border: "1px solid " + (isLight ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.2)"),
-      background: isLight ? "rgba(139,92,246,0.04)" : "rgba(139,92,246,0.06)",
-      color: isLight ? "#7C3AED" : "#C4B5FD", fontSize: 13, fontWeight: 600,
+      border: "1px solid var(--dp-glass-border)",
+      background: "var(--dp-pill-bg)",
+      color: "var(--dp-accent)", fontSize: 13, fontWeight: 600,
       cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center",
       justifyContent: "center", gap: 6, transition: "all 0.2s ease",
     }}>
@@ -66,11 +76,13 @@ export default function DreamDetailScreen(){
   const { id } = useParams();
   var queryClient = useQueryClient();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+  var { user: currentUser } = useAuth();
   var { showToast } = useToast();
   var { t } = useT();
 
   var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet(DREAMS.DETAIL(id)); } });
   var DREAM = dreamQuery.data || {};
+  var isOwner = currentUser && DREAM.user && (String(currentUser.id) === String(DREAM.user));
   var MILESTONES = (DREAM.milestones || []).map(function (m, i) {
     var isDone = m.status === "completed" || m.completed;
     var isActive = !isDone && i === 0 || (!isDone && (DREAM.milestones || []).slice(0, i).every(function (pm) { return pm.status === "completed" || pm.completed; }));
@@ -114,7 +126,12 @@ export default function DreamDetailScreen(){
   });
   var milestoneCompleteMut = useMutation({
     mutationFn: function (milestoneId) { return apiPost(DREAMS.MILESTONES.COMPLETE(milestoneId)); },
-    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Milestone completed!", "success"); },
+    onSuccess: function (_data, milestoneId) {
+      queryClient.invalidateQueries({ queryKey: ["dream", id] });
+      showToast("Milestone completed!", "success");
+      var ms = MILESTONES.find(function (m) { return m.id === milestoneId; });
+      setAchievementShare({ type: "milestone", title: ms ? ms.label : "Milestone", milestoneId: milestoneId });
+    },
     onError: function (err) { showToast(err.message || "Failed to complete milestone", "error"); },
   });
 
@@ -140,7 +157,7 @@ export default function DreamDetailScreen(){
 
   // ── Tags mutations ──
   var addTagMut = useMutation({
-    mutationFn: function (tagName) { return apiPost(DREAMS.TAGS(id), { tagName: tagName }); },
+    mutationFn: function (tagName) { return apiPost(DREAMS.TAGS(id), { tag_name: tagName }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); showToast("Tag added", "success"); },
     onError: function (err) { showToast(err.message || "Failed to add tag", "error"); },
   });
@@ -155,7 +172,7 @@ export default function DreamDetailScreen(){
   var collaborators = (collabsQuery.data && collabsQuery.data.collaborators) || collabsQuery.data || [];
 
   var inviteCollabMut = useMutation({
-    mutationFn: function (userId) { return apiPost(DREAMS.COLLABORATORS(id), { userId: userId }); },
+    mutationFn: function (userId) { return apiPost(DREAMS.COLLABORATORS(id), { user_id: userId }); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["collaborators", id] }); showToast("Collaborator invited!", "success"); },
     onError: function (err) { showToast(err.message || "Failed to invite collaborator", "error"); },
   });
@@ -183,10 +200,12 @@ export default function DreamDetailScreen(){
   const[newTitle,setNewTitle]=useState("");
   const[newDesc,setNewDesc]=useState("");
   const[celebration,setCelebration]=useState(null); // null or { milestone: 25|50|75|100, xp }
+  const[achievementShare,setAchievementShare]=useState(null); // null or { type, title, goalId, milestoneId }
   const [shareModal, setShareModal] = useState(false);
   const [shareImage, setShareImage] = useState(null);
   const [shareLoading, setShareLoading] = useState(false);
   const [isPublic, setIsPublic] = useState(false);
+  const [privacyConfirm, setPrivacyConfirm] = useState(null); // null or "public" | "private"
 
   // ── Obstacles state ──
   var [showAddObstacle, setShowAddObstacle] = useState(false);
@@ -208,7 +227,22 @@ export default function DreamDetailScreen(){
 
   // ── Sharing / Collaborators state ──
   var [showShareModal, setShowShareModal] = useState(false);
-  var [shareUserId, setShareUserId] = useState("");
+  var [collabSearch, setCollabSearch] = useState("");
+
+  var friendsQuery = useQuery({
+    queryKey: ["friends-list"],
+    queryFn: function () { return apiGet(SOCIAL.FRIENDS.LIST); },
+    enabled: showShareModal,
+    staleTime: 30000,
+  });
+  var allFriends = friendsQuery.data || [];
+  var filteredFriends = collabSearch.trim().length > 0
+    ? allFriends.filter(function (f) { return (f.username || "").toLowerCase().includes(collabSearch.trim().toLowerCase()); })
+    : allFriends;
+
+  useEffect(function () {
+    if (!showShareModal) setCollabSearch("");
+  }, [showShareModal]);
 
   useEffect(function () {
     if (dreamQuery.data && !goalsInitialized) {
@@ -235,7 +269,7 @@ export default function DreamDetailScreen(){
       setGoals(initGoals);
       var first = initGoals.find(function (g) { return !g.completed; });
       setExpanded(first ? { [first.id]: true } : {});
-      // isPublic not on backend model — keep private for now
+      setIsPublic(dreamQuery.data.is_public || false);
       setGoalsInitialized(true);
     }
   }, [dreamQuery.data, goalsInitialized]);
@@ -268,8 +302,8 @@ export default function DreamDetailScreen(){
     // Persist task toggle to API
     apiPost(DREAMS.TASKS.COMPLETE(tId)).catch(function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); });
   };
-  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost(DREAMS.GOALS.LIST,{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddGoal(false);};
-  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost(DREAMS.TASKS.LIST,{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(){});setNewTitle("");setNewDesc("");setAddTask(null);};
+  const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost(DREAMS.GOALS.LIST,{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to add goal","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddGoal(false);};
+  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost(DREAMS.TASKS.LIST,{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to add task","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddTask(null);};
 
   const handleShare = async () => {
     setShareModal(true);
@@ -298,33 +332,28 @@ export default function DreamDetailScreen(){
 
 
   const Modal=({title,onClose,onSubmit,submitLabel})=>(
-    <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div onClick={onClose} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-      <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid var(--dp-input-border)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-          <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{title}</span>
-          <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={onClose}><X size={16} strokeWidth={2}/></button>
-        </div>
+    <GlassModal open={true} onClose={onClose} variant="center" title={title} maxWidth={380}>
+      <div style={{padding:24}}>
         <div style={{marginBottom:12}}>
-          <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Title</label>
-          <input value={newTitle} onChange={e=>setNewTitle(e.target.value)} autoFocus placeholder="Enter title..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
+          <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Title</label>
+          <GlassInput value={newTitle} onChange={e=>setNewTitle(e.target.value)} autoFocus placeholder="Enter title..." />
         </div>
         <div style={{marginBottom:16}}>
-          <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Description (optional)</label>
-          <textarea value={newDesc} onChange={e=>setNewDesc(e.target.value)} rows={2} placeholder="Add details..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",resize:"none"}}/>
+          <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Description (optional)</label>
+          <GlassInput value={newDesc} onChange={e=>setNewDesc(e.target.value)} multiline placeholder="Add details..." />
         </div>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={onClose} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-          <button onClick={onSubmit} disabled={!newTitle.trim()} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:newTitle.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)"),color:newTitle.trim()?"#fff":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.25)"),fontSize:14,fontWeight:600,cursor:newTitle.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>{submitLabel}</button>
+          <button onClick={onClose} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-pill-bg)",color:"var(--dp-text-secondary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+          <GradientButton gradient="primaryDark" onClick={onSubmit} disabled={!newTitle.trim()} style={{flex:1}}>{submitLabel}</GradientButton>
         </div>
       </div>
-    </div>
+    </GlassModal>
   );
 
   if (dreamQuery.isLoading) return (
       <div style={{ width: "100%", padding: "60px 16px 0" }}>
         <SkeletonCard height={200} style={{ marginBottom: 16 }} />
-        <StatsSkeleton isLight={isLight} />
+        <StatsSkeleton />
         <div style={{ marginTop: 16, display: "flex", flexDirection: "column", gap: 12 }}>
           <SkeletonCard height={60} />
           <SkeletonCard height={60} />
@@ -339,121 +368,127 @@ export default function DreamDetailScreen(){
   );
 
   return(
-    <div style={{width:"100%",height:"100%",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{width:"100%",height:"100%",display:"flex",flexDirection:"column",position:"relative"}}>
 
-      <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button className="dp-ib" aria-label="Go back" onClick={()=>navigate(-1)}><ArrowLeft size={20} strokeWidth={2}/></button>
-          <span style={{fontSize:16,fontWeight:700,color:isLight?"#1a1535":"#fff",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{DREAM.title}</span>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={handleShare} style={{
-            background: isLight ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.06)",
-            border: `1px solid ${isLight ? "rgba(139,92,246,0.12)" : "rgba(255,255,255,0.06)"}`,
-            borderRadius: 12, padding: 8, cursor: "pointer",
-          }}>
-            <Share2 size={18} style={{ color: isLight ? "rgba(26,21,53,0.7)" : "rgba(255,255,255,0.7)" }} />
-          </button>
-          <button className="dp-ib" aria-label="Chat" onClick={()=>navigate("/chat/dream-"+DREAM.id)}><MessageCircle size={17} strokeWidth={2}/></button>
-          <div style={{position:"relative"}}>
-            <button className="dp-ib" aria-label="More options" onClick={()=>setMenu(!menu)}><MoreVertical size={17} strokeWidth={2}/></button>
-            {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
-              {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
-                <button key={i} onClick={action||(()=>setMenu(false))} style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"),transition:"background 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}
-                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <I size={15} strokeWidth={2}/>{label}
-                </button>
-              ))}
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />}
+        title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{DREAM.title}</h1>}
+        right={
+          <div style={{display:"flex",gap:6}}>
+            <IconButton icon={Share2} onClick={handleShare} label="Share" />
+            {isOwner && <IconButton icon={MessageCircle} onClick={()=>navigate("/chat/dream-"+DREAM.id)} label="Chat" />}
+            {isOwner && <div style={{position:"relative"}}>
+              <IconButton icon={MoreVertical} onClick={()=>setMenu(!menu)} label="More options" />
+              {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:"var(--dp-modal-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
+                {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.message||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Rocket,label:t("dreams.microStart")||"Micro Start",action:()=>{setMenu(false);navigate(`/micro-start/${DREAM.id}`);}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
+                  <button key={i} onClick={action||(()=>setMenu(false))} className="dp-gh" style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":("var(--dp-text-primary)"),transition:"background 0.15s"}}>
+                    <I size={15} strokeWidth={2}/>{label}
+                  </button>
+                ))}
+              </div>}
             </div>}
           </div>
-        </div>
-      </header>
+        }
+      />
 
       <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{width:"100%"}}>
 
+          {/* ── Public dream banner for non-owners ── */}
+          {!isOwner && DREAM.owner_name && (
+            <div style={{
+              padding: "10px 16px", borderRadius: 14, marginBottom: 12,
+              background: "var(--dp-accent-soft)", border: "1px solid var(--dp-accent-border)",
+              display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <Globe size={14} color="var(--dp-accent)" />
+              <span style={{ fontSize: 13, color: "var(--dp-text-secondary)" }}>
+                Public dream by <strong style={{ color: "var(--dp-text)" }}>{DREAM.owner_name}</strong>
+              </span>
+            </div>
+          )}
+
           {/* ── Hero Card ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>
-            <div className="dp-g" style={{padding:20,marginBottom:16}}>
+            <GlassCard padding={20} mb={16}>
               <div style={{display:"flex",gap:16,alignItems:"center"}}>
                 <div style={{position:"relative",width:86,height:86,flexShrink:0}}>
                   <svg width={86} height={86} style={{transform:"rotate(-90deg)"}}>
-                    <circle cx={43} cy={43} r={ringR} fill="none" stroke={isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"} strokeWidth={5}/>
+                    <circle cx={43} cy={43} r={ringR} fill="none" stroke={"var(--dp-divider)"} strokeWidth={5}/>
                     <circle cx={43} cy={43} r={ringR} fill="none" stroke="url(#progGrad)" strokeWidth={5} strokeLinecap="round"
                       strokeDasharray={ringC} strokeDashoffset={mounted?ringOff:ringC}
                       style={{transition:"stroke-dashoffset 1.5s cubic-bezier(0.16,1,0.3,1)",filter:"drop-shadow(0 0 6px rgba(93,229,168,0.4))"}}/>
                     <defs><linearGradient id="progGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="#5DE5A8"/><stop offset="100%" stopColor="#14B8A6"/></linearGradient></defs>
                   </svg>
                   <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <span style={{fontSize:22,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{progress}%</span>
+                    <span style={{fontSize:22,fontWeight:700,color:"var(--dp-text)"}}>{progress}%</span>
                   </div>
                 </div>
                 <div style={{flex:1}}>
-                  <span style={{padding:"3px 9px",borderRadius:8,background:`${STATUS_COLORS[DREAM.status]}15`,fontSize:12,fontWeight:700,color:isLight?(STATUS_COLORS[DREAM.status]==="#5DE5A8"?"#059669":STATUS_COLORS[DREAM.status]==="#FCD34D"?"#B45309":STATUS_COLORS[DREAM.status]==="#C4B5FD"?"#6D28D9":STATUS_COLORS[DREAM.status]):STATUS_COLORS[DREAM.status],textTransform:"uppercase"}}>{DREAM.status}</span>
-                  <TruncText text={DREAM.description} maxLen={120} isLight={isLight} style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginTop:8}} t={t} />
+                  <span style={{padding:"3px 9px",borderRadius:8,background:`${STATUS_COLORS[DREAM.status]}15`,fontSize:12,fontWeight:700,color:adaptColor(STATUS_COLORS[DREAM.status],isLight),textTransform:"uppercase"}}>{DREAM.status}</span>
+                  <TruncText text={DREAM.description} maxLen={120} isLight={isLight} style={{fontSize:13,color:"var(--dp-text-secondary)",marginTop:8}} t={t} />
                   <div style={{display:"flex",alignItems:"center",gap:10,marginTop:8,flexWrap:"wrap"}}>
-                    <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:isLight?"#7C3AED":"#C4B5FD"}}>{DREAM.category}</span>
-                    {DREAM.expectedDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"#2563EB":"#60A5FA",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Expected: {new Date(DREAM.expectedDate).toLocaleDateString()}</span>}
-                    {DREAM.deadlineDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"#DC2626":"#F87171",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Deadline: {new Date(DREAM.deadlineDate).toLocaleDateString()}</span>}
-                    {!DREAM.expectedDate && !DREAM.deadlineDate && DREAM.targetDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}><Clock size={11} strokeWidth={2}/>{DREAM.daysLeft != null ? DREAM.daysLeft + " days left" : new Date(DREAM.targetDate).toLocaleDateString()}</span>}
-                    <button onClick={()=>{setIsPublic(!isPublic);}} style={{
+                    <span style={{padding:"3px 9px",borderRadius:8,background:"rgba(196,181,253,0.1)",fontSize:12,fontWeight:500,color:"var(--dp-accent)"}}>{DREAM.category}</span>
+                    {DREAM.expectedDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:"var(--dp-accent)",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Expected: {new Date(DREAM.expectedDate).toLocaleDateString()}</span>}
+                    {DREAM.deadlineDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:"var(--dp-danger)",fontWeight:500}}><Clock size={11} strokeWidth={2}/>Deadline: {new Date(DREAM.deadlineDate).toLocaleDateString()}</span>}
+                    {!DREAM.expectedDate && !DREAM.deadlineDate && DREAM.targetDate && <span style={{display:"flex",alignItems:"center",gap:3,fontSize:12,color:"var(--dp-text-tertiary)"}}><Clock size={11} strokeWidth={2}/>{DREAM.daysLeft != null ? DREAM.daysLeft + " days left" : new Date(DREAM.targetDate).toLocaleDateString()}</span>}
+                    {isOwner && <button aria-label={isPublic?"Make dream private":"Make dream public"} onClick={function(){setPrivacyConfirm(isPublic?"private":"public");}} style={{
                       display:"flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"inherit",
-                      background:isPublic?(isLight?"rgba(16,185,129,0.1)":"rgba(93,229,168,0.1)"):(isLight?"rgba(26,21,53,0.06)":"rgba(255,255,255,0.06)"),
+                      background:isPublic?"var(--dp-success-soft)":"var(--dp-surface)",
                       transition:"all 0.25s ease",
                     }}>
-                      {isPublic?<Globe size={11} strokeWidth={2.5} color={isLight?"#059669":"#5DE5A8"}/>:<Lock size={11} strokeWidth={2.5} color={isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.45)"}/>}
-                      <span style={{fontSize:12,fontWeight:600,color:isPublic?(isLight?"#059669":"#5DE5A8"):(isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.45)")}}>{isPublic?"Public":"Private"}</span>
-                    </button>
+                      {isPublic?<Globe size={11} strokeWidth={2.5} color={"var(--dp-success)"}/>:<Lock size={11} strokeWidth={2.5} color={"var(--dp-text-muted)"}/>}
+                      <span style={{fontSize:12,fontWeight:600,color:isPublic?("var(--dp-success)"):("var(--dp-text-muted)")}}>{isPublic?"Public":"Private"}</span>
+                    </button>}
                   </div>
                 </div>
               </div>
 
               {/* ── Tags ── */}
-              <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,marginTop:14,paddingTop:14,borderTop:isLight?"1px solid rgba(139,92,246,0.08)":"1px solid rgba(255,255,255,0.05)"}}>
-                <Tag size={12} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5} style={{marginRight:2}}/>
+              <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:6,marginTop:14,paddingTop:14,borderTop:"1px solid var(--dp-header-border)"}}>
+                <Tag size={12} color={"var(--dp-accent)"} strokeWidth={2.5} style={{marginRight:2}}/>
                 {(DREAM.tags || []).map(function (t, ti) {
                   return (
-                    <span key={ti} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,background:isLight?"rgba(139,92,246,0.08)":"rgba(139,92,246,0.15)",fontSize:11,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD"}}>
+                    <span key={ti} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"3px 10px",borderRadius:20,background:"var(--dp-divider)",fontSize:11,fontWeight:600,color:"var(--dp-accent)"}}>
                       {t.name}
-                      <button onClick={function () { removeTagMut.mutate(t.name); }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}}>
-                        <X size={10} strokeWidth={2.5} color={isLight?"#7C3AED":"#C4B5FD"}/>
-                      </button>
+                      {isOwner && <button aria-label={"Remove tag " + t.name} onClick={function () { removeTagMut.mutate(t.name); }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",fontFamily:"inherit"}}>
+                        <X size={10} strokeWidth={2.5} color={"var(--dp-accent)"}/>
+                      </button>}
                     </span>
                   );
                 })}
-                {showTagInput ? (
+                {isOwner && showTagInput ? (
                   <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
-                    <input value={newTag} onChange={function (e) { setNewTag(e.target.value); }} onKeyDown={function (e) { if (e.key === "Enter" && newTag.trim()) { addTagMut.mutate(newTag.trim()); setNewTag(""); setShowTagInput(false); } if (e.key === "Escape") { setNewTag(""); setShowTagInput(false); } }} autoFocus placeholder="Tag name..." style={{width:90,padding:"3px 8px",borderRadius:10,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:11,fontFamily:"inherit",outline:"none"}}/>
-                    <button onClick={function () { if (newTag.trim()) { addTagMut.mutate(newTag.trim()); setNewTag(""); setShowTagInput(false); } }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}}>
-                      <Check size={12} strokeWidth={2.5} color={isLight?"#059669":"#5DE5A8"}/>
+                    <GlassInput value={newTag} onChange={function (e) { setNewTag(e.target.value); }} onKeyDown={function (e) { if (e.key === "Enter" && newTag.trim()) { addTagMut.mutate(newTag.trim()); setNewTag(""); setShowTagInput(false); } if (e.key === "Escape") { setNewTag(""); setShowTagInput(false); } }} autoFocus placeholder="Tag name..." style={{width:90}} inputStyle={{padding:"3px 8px",fontSize:11}} />
+                    <button aria-label="Confirm add tag" onClick={function () { if (newTag.trim()) { addTagMut.mutate(newTag.trim()); setNewTag(""); setShowTagInput(false); } }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",fontFamily:"inherit"}}>
+                      <Check size={12} strokeWidth={2.5} color={"var(--dp-success)"}/>
                     </button>
-                    <button onClick={function () { setNewTag(""); setShowTagInput(false); }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center"}}>
-                      <X size={12} strokeWidth={2.5} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}/>
+                    <button aria-label="Cancel add tag" onClick={function () { setNewTag(""); setShowTagInput(false); }} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex",alignItems:"center",fontFamily:"inherit"}}>
+                      <X size={12} strokeWidth={2.5} color={"var(--dp-text-muted)"}/>
                     </button>
                   </span>
-                ) : (
-                  <button onClick={function () { setShowTagInput(true); }} style={{width:22,height:22,borderRadius:"50%",border:"1px dashed rgba(139,92,246,0.25)",background:"rgba(139,92,246,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                    <Plus size={11} strokeWidth={2.5} color={isLight?"#7C3AED":"#C4B5FD"}/>
+                ) : isOwner ? (
+                  <button aria-label="Add tag" onClick={function () { setShowTagInput(true); }} style={{width:22,height:22,borderRadius:"50%",border:"1px dashed rgba(139,92,246,0.25)",background:"rgba(139,92,246,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit"}}>
+                    <Plus size={11} strokeWidth={2.5} color={"var(--dp-accent)"}/>
                   </button>
-                )}
+                ) : null}
               </div>
-            </div>
+          </GlassCard>
           </div>
 
           {/* ── Quick Stats ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"80ms"}}>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
               {[
-                {Icon:Target,val:totalTasks,label:t("dreams.tasks"),color:isLight?"#7C3AED":"#C4B5FD"},
-                {Icon:CheckCircle,val:doneTasks,label:t("dreams.done"),color:isLight?"#059669":"#5DE5A8"},
-                {Icon:Zap,val:0,label:t("profile.xp"),color:isLight?"#B45309":"#FCD34D"},
+                {Icon:Target,val:totalTasks,label:t("dreams.tasks"),color:"var(--dp-accent)"},
+                {Icon:CheckCircle,val:doneTasks,label:t("dreams.done"),color:"var(--dp-success)"},
+                {Icon:Zap,val:0,label:t("profile.xp"),color:"var(--dp-warning)"},
               ].map(({Icon:I,val,label,color},i)=>(
-                <div key={i} className="dp-g" style={{flex:1,padding:"12px 8px",textAlign:"center"}}>
+                <GlassCard key={i} padding="12px 8px" style={{flex:1,textAlign:"center"}}>
                   <I size={16} color={color} strokeWidth={2} style={{marginBottom:4}}/>
-                  <div style={{fontSize:18,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{val}</div>
-                  <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{label}</div>
-                </div>
+                  <div style={{fontSize:18,fontWeight:700,color:"var(--dp-text)"}}>{val}</div>
+                  <div style={{fontSize:12,color:"var(--dp-text-secondary)"}}>{label}</div>
+                </GlassCard>
               ))}
             </div>
           </div>
@@ -462,28 +497,18 @@ export default function DreamDetailScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"160ms"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <Flag size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.milestones")} ({MILESTONES.length})</span>
+                <Flag size={14} color={"var(--dp-warning)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.milestones")} ({MILESTONES.length})</h2>
               </div>
-              {DREAM.milestonesCount > 0 && <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{DREAM.completedMilestonesCount || 0}/{DREAM.milestonesCount} done</span>}
+              {DREAM.milestonesCount > 0 && <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{DREAM.completedMilestonesCount || 0}/{DREAM.milestonesCount} done</span>}
             </div>
-            <div className="dp-g" style={{padding:16,marginBottom:16}}>
+            <GlassCard padding={16} mb={16}>
               {MILESTONES.length === 0 ? (
                 <div style={{textAlign:"center",padding:"16px 0"}}>
-                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",display:"block",marginBottom:12}}>No milestones yet</span>
-                  <button
-                    onClick={function () { navigate("/dream/" + id + "/calibration"); }}
-                    style={{
-                      padding:"10px 24px",borderRadius:12,border:"none",
-                      background:"linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                      color:"#fff",
-                      fontSize:14,fontWeight:600,cursor:"pointer",
-                      fontFamily:"inherit",display:"inline-flex",alignItems:"center",gap:6,
-                      boxShadow:"0 2px 12px rgba(139,92,246,0.3)",
-                    }}
-                  >
-                    <Sparkles size={14} /> {DREAM.calibrationStatus === "completed" ? t("dreams.generatePlan") : t("dreams.startCalibration")}
-                  </button>
+                  <span style={{fontSize:13,color:"var(--dp-text-muted)",display:"block",marginBottom:12}}>No milestones yet</span>
+                  <GradientButton gradient="primaryDark" onClick={function () { navigate("/dream/" + id + "/calibration"); }} icon={Sparkles}>
+                    {DREAM.calibrationStatus === "completed" ? t("dreams.generatePlan") : t("dreams.startCalibration")}
+                  </GradientButton>
                 </div>
               ) : (function () {
                 var MILESTONE_LIMIT = 3;
@@ -491,24 +516,24 @@ export default function DreamDetailScreen(){
                 return visibleMs.map(function (m, i) {
                 return (
                 <div key={m.id || i} style={{display:"flex",gap:12,position:"relative"}}>
-                  {i<visibleMs.length-1&&<div style={{position:"absolute",left:11,top:24,bottom:-4,width:2,background:m.done?"rgba(93,229,168,0.2)":(isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)")}}/>}
-                  <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:!m.done&&m.active?"pointer":"default",background:m.done?"rgba(93,229,168,0.15)":m.active?"rgba(252,211,77,0.12)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),border:m.done?"2px solid rgba(93,229,168,0.3)":m.active?"2px solid rgba(252,211,77,0.3)":(isLight?"2px solid rgba(139,92,246,0.15)":"2px solid rgba(255,255,255,0.08)")}} onClick={function () { if (!m.done && m.active && m.id) milestoneCompleteMut.mutate(m.id); }}>
-                    {m.done?<Check size={12} color={isLight?"#059669":"#5DE5A8"} strokeWidth={3}/>:m.active?<div style={{width:6,height:6,borderRadius:3,background:"#FCD34D"}}/>:null}
+                  {i<visibleMs.length-1&&<div style={{position:"absolute",left:11,top:24,bottom:-4,width:2,background:m.done?"rgba(93,229,168,0.2)":("var(--dp-divider)")}}/>}
+                  <div style={{width:24,height:24,borderRadius:"50%",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",cursor:!m.done&&m.active?"pointer":"default",background:m.done?"rgba(93,229,168,0.15)":m.active?"rgba(252,211,77,0.12)":("var(--dp-pill-bg)"),border:m.done?"2px solid rgba(93,229,168,0.3)":m.active?"2px solid rgba(252,211,77,0.3)":("2px solid var(--dp-input-border)")}} onClick={function () { if (!m.done && m.active && m.id) milestoneCompleteMut.mutate(m.id); }}>
+                    {m.done?<Check size={12} color={"var(--dp-success)"} strokeWidth={3}/>:m.active?<div style={{width:6,height:6,borderRadius:3,background:"#FCD34D"}}/>:null}
                   </div>
                   <div style={{flex:1,paddingBottom:i<visibleMs.length-1?16:0}}>
-                    <div style={{fontSize:13,fontWeight:m.active?600:m.done?500:400,color:m.done?(isLight?"#059669":"#5DE5A8"):m.active?(isLight?"#B45309":"#FCD34D"):(isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)")}}>{m.label}</div>
-                    {m.description && <TruncText text={m.description} maxLen={80} isLight={isLight} style={{marginTop:2,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}} t={t} />}
+                    <div style={{fontSize:13,fontWeight:m.active?600:m.done?500:400,color:m.done?("var(--dp-success)"):m.active?("var(--dp-warning)"):("var(--dp-text-tertiary)"),overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.label}</div>
+                    {m.description && <TruncText text={m.description} maxLen={80} isLight={isLight} style={{marginTop:2,color:"var(--dp-text-muted)"}} t={t} />}
                     <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3,flexWrap:"wrap"}}>
-                      {m.expectedDate && <span style={{fontSize:11,color:isLight?"#2563EB":"#60A5FA",fontWeight:500}}>Expected: {new Date(m.expectedDate).toLocaleDateString()}</span>}
-                      {m.deadlineDate && <span style={{fontSize:11,color:isLight?"#DC2626":"#F87171",fontWeight:500}}>Deadline: {new Date(m.deadlineDate).toLocaleDateString()}</span>}
-                      {!m.expectedDate && !m.deadlineDate && m.date && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{m.date}</div>}
+                      {m.expectedDate && <span style={{fontSize:11,color:"var(--dp-accent)",fontWeight:500}}>Expected: {new Date(m.expectedDate).toLocaleDateString()}</span>}
+                      {m.deadlineDate && <span style={{fontSize:11,color:"var(--dp-danger)",fontWeight:500}}>Deadline: {new Date(m.deadlineDate).toLocaleDateString()}</span>}
+                      {!m.expectedDate && !m.deadlineDate && m.date && <div style={{fontSize:12,color:"var(--dp-text-muted)"}}>{m.date}</div>}
                     </div>
                     {m.progressPercentage > 0 && (
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                        <div style={{flex:1,maxWidth:100,height:3,borderRadius:2,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}}>
-                          <div style={{height:"100%",borderRadius:2,background:m.done?"#5DE5A8":"#C4B5FD",width:m.progressPercentage+"%",transition:"width 0.5s ease"}}/>
+                        <div style={{flex:1,maxWidth:100,height:3,borderRadius:2,background:"var(--dp-divider)"}}>
+                          <div style={{height:"100%",borderRadius:2,background:m.done?"var(--dp-success)":"var(--dp-accent)",width:m.progressPercentage+"%",transition:"width 0.5s ease"}}/>
                         </div>
-                        <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{m.progressPercentage}%</span>
+                        <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{m.progressPercentage}%</span>
                       </div>
                     )}
                   </div>
@@ -516,19 +541,19 @@ export default function DreamDetailScreen(){
                 );
               }); })()}
               <SeeMoreBtn expanded={showAllMilestones} shown={showAllMilestones ? MILESTONES.length : Math.min(3, MILESTONES.length)} total={MILESTONES.length} onToggle={function () { setShowAllMilestones(!showAllMilestones); }} isLight={isLight} t={t} />
-            </div>
+            </GlassCard>
           </div>
 
           {/* ── Goals ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"240ms"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <Star size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.goals")} ({goals.length})</span>
+                <Star size={14} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.goals")} ({goals.length})</h2>
               </div>
-              <button onClick={()=>{setNewTitle("");setNewDesc("");setAddGoal(true);}} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+              {isOwner && <button onClick={()=>{setNewTitle("");setNewDesc("");setAddGoal(true);}} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
                 <Plus size={13} strokeWidth={2.5}/>Add Goal
-              </button>
+              </button>}
             </div>
           </div>
 
@@ -546,47 +571,49 @@ export default function DreamDetailScreen(){
             var visibleTasks = showAllTasks ? g.tasks : g.tasks.slice(0, TASK_LIMIT);
             return(
               <div key={g.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(320+gi*60)+"ms"}}>
-                <div className="dp-g" style={{marginBottom:8,overflow:"hidden"}}>
+                <GlassCard mb={8} style={{overflow:"hidden"}}>
                   {/* Goal header */}
                   <div onClick={function(){toggleExpand(g.id);}} style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
                     <div style={{width:30,height:30,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:allDone?"rgba(93,229,168,0.15)":"rgba(139,92,246,0.1)",border:allDone?"1px solid rgba(93,229,168,0.25)":"1px solid rgba(139,92,246,0.15)"}}>
-                      {allDone?<Check size={14} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/>:<span style={{fontSize:12,fontWeight:700,color:isLight?"#7C3AED":"#C4B5FD"}}>{gi+1}</span>}
+                      {allDone?<Check size={14} color={"var(--dp-success)"} strokeWidth={2.5}/>:<span style={{fontSize:12,fontWeight:700,color:"var(--dp-accent)"}}>{gi+1}</span>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:14,fontWeight:600,color:allDone?(isLight?"#059669":"#5DE5A8"):(isLight?"#1a1535":"#fff"),textDecoration:allDone?"line-through":"none"}}>{g.title}</div>
+                      <div style={{fontSize:14,fontWeight:600,color:allDone?("var(--dp-success)"):("var(--dp-text)"),textDecoration:allDone?"line-through":"none",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{g.title}</div>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginTop:3}}>
-                        <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{gDone}/{gTotal} tasks</span>
-                        <div style={{flex:1,maxWidth:80,height:3,borderRadius:2,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}}>
-                          <div style={{height:"100%",borderRadius:2,background:allDone?"#5DE5A8":"#C4B5FD",width:(gProg*100)+"%",transition:"width 0.5s ease"}}/>
+                        <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{gDone}/{gTotal} tasks</span>
+                        <div style={{flex:1,maxWidth:80,height:3,borderRadius:2,background:"var(--dp-divider)"}}>
+                          <div style={{height:"100%",borderRadius:2,background:allDone?"var(--dp-success)":"var(--dp-accent)",width:(gProg*100)+"%",transition:"width 0.5s ease"}}/>
                         </div>
                       </div>
                     </div>
-                    {isExp?<ChevronUp size={18} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>:<ChevronDown size={18} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>}
+                    {isExp?<ChevronUp size={18} color={"var(--dp-text-muted)"} strokeWidth={2}/>:<ChevronDown size={18} color={"var(--dp-text-muted)"} strokeWidth={2}/>}
                   </div>
 
-                  {/* Tasks */}
+                  {/* Tasks — only visible to owner */}
+                  {isOwner ? (
                   <div style={{maxHeight:isExp?5000:0,opacity:isExp?1:0,transition:"all 0.35s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden"}}>
-                    <div style={{padding:"0 14px 12px",borderTop:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
+                    <div style={{padding:"0 14px 12px",borderTop:"1px solid var(--dp-header-border)"}}>
                       {visibleTasks.map(function(t,ti){return(
-                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:ti<visibleTasks.length-1?(isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)"):"none"}}>
-                          <button onClick={function(){toggleTask(g.id,t.id);}} style={{width:22,height:22,borderRadius:7,border:t.completed?"none":(isLight?"2px solid rgba(139,92,246,0.2)":"2px solid rgba(255,255,255,0.15)"),background:t.completed?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.2s",flexShrink:0}}>
-                            {t.completed&&<Check size={12} color={isLight?"#059669":"#5DE5A8"} strokeWidth={3}/>}
+                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:ti<visibleTasks.length-1?("1px solid var(--dp-header-border)"):"none"}}>
+                          <button aria-label={t.completed ? "Mark task incomplete" : "Mark task complete"} onClick={function(){toggleTask(g.id,t.id);}} style={{width:22,height:22,borderRadius:7,border:t.completed?"none":("2px solid var(--dp-input-border)"),background:t.completed?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",flexShrink:0}}>
+                            {t.completed&&<Check size={12} color={"var(--dp-success)"} strokeWidth={3}/>}
                           </button>
-                          <span style={{flex:1,fontSize:13,color:t.completed?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"),textDecoration:t.completed?"line-through":"none",transition:"all 0.2s"}}>{t.title}</span>
+                          <span style={{flex:1,fontSize:13,color:t.completed?("var(--dp-text-muted)"):("var(--dp-text-primary)"),textDecoration:t.completed?"line-through":"none",transition:"all 0.2s",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.title}</span>
                           <span style={{fontSize:12,color:t.completed?"rgba(93,229,168,0.5)":"rgba(252,211,77,0.6)",fontWeight:600}}>+{t.xp}</span>
                         </div>
                       );})}
                       {g.tasks.length > TASK_LIMIT && (
-                        <button onClick={function(e){e.stopPropagation();setExpanded(function(p){var n={};n["tasks_"+g.id]=!p["tasks_"+g.id];return Object.assign({},p,n);});}} style={{width:"100%",padding:"8px",marginTop:4,borderRadius:10,border:"none",background:"transparent",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                        <button onClick={function(e){e.stopPropagation();setExpanded(function(p){var n={};n["tasks_"+g.id]=!p["tasks_"+g.id];return Object.assign({},p,n);});}} style={{width:"100%",padding:"8px",marginTop:4,borderRadius:10,border:"none",background:"transparent",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
                           {showAllTasks ? t("dreams.showFewerTasks") : t("dreams.seeAllTasks") + " (" + g.tasks.length + ")"}
                         </button>
                       )}
-                      <button onClick={function(){setNewTitle("");setNewDesc("");setAddTask(g.id);}} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:10,border:"1px dashed rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.04)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                      <button onClick={function(){setNewTitle("");setNewDesc("");setAddTask(g.id);}} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:10,border:"1px dashed rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.04)",color:"var(--dp-accent)",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
                         <Plus size={13} strokeWidth={2}/>Add Task
                       </button>
                     </div>
                   </div>
-                </div>
+                  ) : null}
+                </GlassCard>
               </div>
             );
           }); })()}
@@ -600,12 +627,12 @@ export default function DreamDetailScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"400ms",marginTop:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <AlertTriangle size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.obstacles")} ({obstacles.length})</span>
+                <AlertTriangle size={14} color={"var(--dp-warning)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.obstacles")} ({obstacles.length})</h2>
               </div>
-              <button onClick={function () { setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+              {isOwner && <button onClick={function () { setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
                 <Plus size={13} strokeWidth={2.5}/>Add
-              </button>
+              </button>}
             </div>
           </div>
 
@@ -616,30 +643,30 @@ export default function DreamDetailScreen(){
             var isResolved = ob.resolved || ob.status === "resolved";
             return (
               <div key={ob.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(420 + oi * 60) + "ms"}}>
-                <div className="dp-g" style={{marginBottom:8,padding:"12px 14px"}}>
+                <GlassCard mb={8} padding="12px 14px">
                   <div style={{display:"flex",alignItems:"flex-start",gap:10}}>
                     <div style={{width:30,height:30,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:isResolved?"rgba(93,229,168,0.15)":"rgba(252,211,77,0.1)",border:isResolved?"1px solid rgba(93,229,168,0.25)":"1px solid rgba(252,211,77,0.2)"}}>
-                      {isResolved ? <Check size={14} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/> : <AlertTriangle size={14} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2}/>}
+                      {isResolved ? <Check size={14} color={"var(--dp-success)"} strokeWidth={2.5}/> : <AlertTriangle size={14} color={"var(--dp-warning)"} strokeWidth={2}/>}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                        <span style={{fontSize:14,fontWeight:600,color:isResolved?(isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"):(isLight?"#1a1535":"#fff"),textDecoration:isResolved?"line-through":"none",wordBreak:"break-word"}}>{ob.title}</span>
-                        <span style={{padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:700,textTransform:"uppercase",background:isResolved?"rgba(93,229,168,0.12)":"rgba(252,211,77,0.12)",color:isResolved?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D"),flexShrink:0}}>{isResolved?"Resolved":"Active"}</span>
+                        <span style={{fontSize:14,fontWeight:600,color:isResolved?("var(--dp-text-muted)"):("var(--dp-text)"),textDecoration:isResolved?"line-through":"none",wordBreak:"break-word"}}>{ob.title}</span>
+                        <span style={{padding:"2px 8px",borderRadius:8,fontSize:10,fontWeight:700,textTransform:"uppercase",background:isResolved?"rgba(93,229,168,0.12)":"rgba(252,211,77,0.12)",color:isResolved?("var(--dp-success)"):("var(--dp-warning)"),flexShrink:0}}>{isResolved?"Resolved":"Active"}</span>
                       </div>
                       {ob.description && <TruncText text={ob.description} maxLen={100} isLight={isLight} style={{marginTop:4}} t={t} />}
                     </div>
                     <div style={{display:"flex",gap:4,flexShrink:0}}>
                       {!isResolved && (
-                        <button onClick={function () { resolveObstacleMut.mutate(ob.id); }} title="Resolve" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(93,229,168,0.2)",background:"rgba(93,229,168,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
-                          <CheckCircle size={13} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2}/>
+                        <button aria-label="Resolve obstacle" onClick={function () { resolveObstacleMut.mutate(ob.id); }} title="Resolve" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(93,229,168,0.2)",background:"rgba(93,229,168,0.06)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit"}}>
+                          <CheckCircle size={13} color={"var(--dp-success)"} strokeWidth={2}/>
                         </button>
                       )}
-                      <button onClick={function () { deleteObstacleMut.mutate(ob.id); }} title="Delete" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                      {isOwner && <button aria-label="Delete obstacle" onClick={function () { deleteObstacleMut.mutate(ob.id); }} title="Delete" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit"}}>
                         <Trash2 size={13} color="rgba(239,68,68,0.7)" strokeWidth={2}/>
-                      </button>
+                      </button>}
                     </div>
                   </div>
-                </div>
+                </GlassCard>
               </div>
             );
           }); })()}
@@ -653,82 +680,110 @@ export default function DreamDetailScreen(){
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"480ms",marginTop:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <UserPlus size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.collaborators")} ({collaborators.length})</span>
+                <UserPlus size={14} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.collaborators")} ({collaborators.length})</h2>
               </div>
-              <button onClick={function () { setShareUserId(""); setShowShareModal(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+              {isOwner && <button onClick={function () { setCollabSearch(""); setShowShareModal(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
                 <Plus size={13} strokeWidth={2.5}/>Invite
-              </button>
+              </button>}
             </div>
-            <div className="dp-g" style={{padding:collaborators.length > 0 ? 14 : 16,marginBottom:16}}>
+            <GlassCard padding={collaborators.length > 0 ? 14 : 16} mb={16}>
               {collaborators.length === 0 ? (
                 <div style={{textAlign:"center",padding:"8px 0"}}>
-                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No collaborators yet</span>
+                  <span style={{fontSize:13,color:"var(--dp-text-muted)"}}>No collaborators yet</span>
                 </div>
               ) : (function () {
                 var COLLAB_LIMIT = 5;
                 var visibleCollabs = showAllCollabs ? collaborators : collaborators.slice(0, COLLAB_LIMIT);
                 return visibleCollabs.map(function (c, ci) {
                 return (
-                  <div key={c.id || ci} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:ci < visibleCollabs.length - 1 ? (isLight?"1px solid rgba(139,92,246,0.06)":"1px solid rgba(255,255,255,0.03)") : "none"}}>
-                    <div style={{width:30,height:30,borderRadius:"50%",background:"linear-gradient(135deg,#8B5CF6,#6D28D9)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <span style={{fontSize:12,fontWeight:700,color:"#fff"}}>{(c.username || c.email || "U").charAt(0).toUpperCase()}</span>
-                    </div>
+                  <div key={c.id || ci} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:ci < visibleCollabs.length - 1 ? ("1px solid var(--dp-header-border)") : "none"}}>
+                    <Avatar name={c.username || c.email || "U"} size={30} shape="circle" color={GRADIENTS.primaryDark} />
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.username || c.email || "User " + (c.id || ci + 1)}</div>
-                      {c.role && <div style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>{c.role}</div>}
+                      <div style={{fontSize:13,fontWeight:600,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.username || c.email || "User " + (c.id || ci + 1)}</div>
+                      {c.role && <div style={{fontSize:11,color:"var(--dp-text-muted)"}}>{c.role}</div>}
                     </div>
-                    <button onClick={function () { removeCollabMut.mutate(c.id || c.userId); }} title="Remove" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer"}}>
+                    {isOwner && <button aria-label="Remove collaborator" onClick={function () { removeCollabMut.mutate(c.id || c.userId); }} title="Remove" style={{width:28,height:28,borderRadius:8,border:"1px solid rgba(239,68,68,0.15)",background:"rgba(239,68,68,0.04)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit"}}>
                       <X size={13} color="rgba(239,68,68,0.7)" strokeWidth={2}/>
-                    </button>
+                    </button>}
                   </div>
                 );
               }); })()}
               <SeeMoreBtn expanded={showAllCollabs} shown={showAllCollabs ? collaborators.length : Math.min(5, collaborators.length)} total={collaborators.length} onToggle={function () { setShowAllCollabs(!showAllCollabs); }} isLight={isLight} t={t} />
-            </div>
+            </GlassCard>
           </div>
 
-          {/* ── Progress History ── */}
+          {/* ── Progress History Chart ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"560ms",marginTop:16}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <TrendingUp size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                <span style={{fontSize:14,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("dreams.progressHistory")}</span>
+                <TrendingUp size={14} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.progressHistory")}</h2>
               </div>
-            </div>
-            <div className="dp-g" style={{padding:16,marginBottom:16}}>
-              {progressHistory.length === 0 ? (
-                <div style={{textAlign:"center",padding:"8px 0"}}>
-                  <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"}}>No progress entries yet</span>
-                </div>
-              ) : (
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {(function () {
-                    var PROG_LIMIT = 5;
-                    var visibleProg = showAllProgress ? progressHistory : progressHistory.slice(0, PROG_LIMIT);
-                    return visibleProg.map(function (entry, ei) {
-                    return (
-                      <div key={entry.id || ei} style={{display:"flex",alignItems:"center",gap:12}}>
-                        <div style={{width:8,height:8,borderRadius:"50%",flexShrink:0,background:"linear-gradient(135deg,#5DE5A8,#14B8A6)"}}/>
-                        <div style={{flex:1,minWidth:0}}>
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                            <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{entry.progressPercentage != null ? entry.progressPercentage + "%" : entry.progress != null ? entry.progress + "%" : entry.note || "Update"}</span>
-                            <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)",flexShrink:0}}>{(entry.createdAt || entry.date) ? new Date(entry.createdAt || entry.date).toLocaleDateString() : ""}</span>
-                          </div>
-                          {entry.note && entry.progressPercentage != null && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginTop:2}}>{entry.note}</div>}
-                        </div>
-                      </div>
-                    );
-                  }); })()}
-                  <SeeMoreBtn expanded={showAllProgress} shown={showAllProgress ? progressHistory.length : Math.min(5, progressHistory.length)} total={progressHistory.length} onToggle={function () { setShowAllProgress(!showAllProgress); }} isLight={isLight} t={t} />
-                </div>
+              {progressHistory.length > 0 && (
+                <span style={{fontSize:12,fontWeight:600,color:"var(--dp-accent)"}}>{Math.round(DREAM.progress_percentage || DREAM.progressPercentage || 0)}%</span>
               )}
             </div>
+            <GlassCard padding={16} mb={16}>
+              {progressHistory.length === 0 ? (
+                <div style={{textAlign:"center",padding:"8px 0"}}>
+                  <span style={{fontSize:13,color:"var(--dp-text-muted)"}}>No progress entries yet</span>
+                </div>
+              ) : (function () {
+                var data = progressHistory.map(function (e) {
+                  return { pct: e.progressPercentage != null ? Number(e.progressPercentage) : e.progress != null ? Number(e.progress) : 0, date: e.createdAt || e.date || "" };
+                }).sort(function (a, b) { return new Date(a.date) - new Date(b.date); });
+                if (data.length < 2) data = [{ pct: 0, date: "" }].concat(data);
+                var W = 280, H = 100, padX = 30, padY = 10;
+                var cW = W - padX * 2, cH = H - padY * 2;
+                var maxP = Math.max(100, Math.max.apply(null, data.map(function (d) { return d.pct; })));
+                var pts = data.map(function (d, i) {
+                  var x = padX + (data.length > 1 ? (i / (data.length - 1)) * cW : cW / 2);
+                  var y = padY + cH - (d.pct / maxP) * cH;
+                  return { x: x, y: y, pct: d.pct, date: d.date };
+                });
+                var line = pts.map(function (p) { return p.x + "," + p.y; }).join(" ");
+                var area = padX + "," + (padY + cH) + " " + line + " " + pts[pts.length - 1].x + "," + (padY + cH);
+                var gridLines = [0, 25, 50, 75, 100];
+                return (
+                  <div>
+                    <svg viewBox={"0 0 " + W + " " + H} width="100%" height={120} style={{display:"block"}}>
+                      <defs>
+                        <linearGradient id="progGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="var(--dp-accent)" stopOpacity="0.3" />
+                          <stop offset="100%" stopColor="var(--dp-accent)" stopOpacity="0.02" />
+                        </linearGradient>
+                      </defs>
+                      {gridLines.map(function (v) {
+                        var y = padY + cH - (v / maxP) * cH;
+                        return (
+                          <g key={v}>
+                            <line x1={padX} y1={y} x2={W - padX} y2={y} stroke="var(--dp-divider)" strokeWidth="0.5" strokeDasharray="3,3" />
+                            <text x={padX - 4} y={y + 3} textAnchor="end" fontSize="8" fill="var(--dp-text-muted)" fontFamily="inherit">{v}%</text>
+                          </g>
+                        );
+                      })}
+                      <polygon points={area} fill="url(#progGrad)" />
+                      <polyline points={line} fill="none" stroke="var(--dp-accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      {pts.map(function (p, i) {
+                        return <circle key={i} cx={p.x} cy={p.y} r={3} fill="var(--dp-accent)" stroke="var(--dp-card-bg)" strokeWidth="1.5" />;
+                      })}
+                    </svg>
+                    {data.length >= 2 && (
+                      <div style={{display:"flex",justifyContent:"space-between",marginTop:4,paddingLeft:padX,paddingRight:padX}}>
+                        <span style={{fontSize:10,color:"var(--dp-text-muted)"}}>{data[0].date ? new Date(data[0].date).toLocaleDateString(undefined, {month:"short",day:"numeric"}) : ""}</span>
+                        <span style={{fontSize:10,color:"var(--dp-text-muted)"}}>{data[data.length-1].date ? new Date(data[data.length-1].date).toLocaleDateString(undefined, {month:"short",day:"numeric"}) : ""}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </GlassCard>
           </div>
 
           {/* ── Export PDF ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"640ms",marginTop:8,marginBottom:16}}>
-            <button onClick={function () { apiGet(DREAMS.EXPORT_PDF(id), { responseType: "blob" }).then(function (blob) { saveBlobFile(blob, "dream-" + id + ".pdf"); }).catch(function () { showToast("PDF export failed", "error"); }); }} style={{width:"100%",padding:"12px 0",borderRadius:14,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.25s ease"}}>
+            <button onClick={function () { apiGet(DREAMS.EXPORT_PDF(id), { responseType: "blob" }).then(function (blob) { saveBlobFile(blob, "dream-" + id + ".pdf"); }).catch(function () { showToast("PDF export failed", "error"); }); }} style={{width:"100%",padding:"12px 0",borderRadius:14,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:"var(--dp-accent)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.25s ease"}}>
               <Download size={15} strokeWidth={2}/>Export as PDF
             </button>
           </div>
@@ -743,69 +798,85 @@ export default function DreamDetailScreen(){
       {addTask&&<Modal title="Add Task" onClose={()=>setAddTask(null)} onSubmit={()=>handleAddTask(addTask)} submitLabel="Add Task"/>}
 
       {/* ── Add Obstacle Modal ── */}
-      {showAddObstacle && (
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={function () { setShowAddObstacle(false); }} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid var(--dp-input-border)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Add Obstacle</span>
-              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={function () { setShowAddObstacle(false); }}><X size={16} strokeWidth={2}/></button>
-            </div>
-            <div style={{marginBottom:12}}>
-              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Title</label>
-              <input value={obstacleTitle} onChange={function (e) { setObstacleTitle(e.target.value); }} autoFocus placeholder="Obstacle title..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
-            </div>
-            <div style={{marginBottom:16}}>
-              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>Description (optional)</label>
-              <textarea value={obstacleDesc} onChange={function (e) { setObstacleDesc(e.target.value); }} rows={2} placeholder="Describe the obstacle..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none",resize:"none"}}/>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={function () { setShowAddObstacle(false); }} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={function () { if (!obstacleTitle.trim()) return; addObstacleMut.mutate({ dream: id, title: obstacleTitle.trim(), description: obstacleDesc.trim() }); setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(false); }} disabled={!obstacleTitle.trim()} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:obstacleTitle.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)"),color:obstacleTitle.trim()?"#fff":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.25)"),fontSize:14,fontWeight:600,cursor:obstacleTitle.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>Add Obstacle</button>
-            </div>
+      <GlassModal open={showAddObstacle} onClose={function () { setShowAddObstacle(false); }} variant="center" title="Add Obstacle" maxWidth={380}>
+        <div style={{padding:24}}>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Title</label>
+            <GlassInput value={obstacleTitle} onChange={function (e) { setObstacleTitle(e.target.value); }} autoFocus placeholder="Obstacle title..." />
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Description (optional)</label>
+            <GlassInput value={obstacleDesc} onChange={function (e) { setObstacleDesc(e.target.value); }} multiline placeholder="Describe the obstacle..." />
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={function () { setShowAddObstacle(false); }} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-pill-bg)",color:"var(--dp-text-secondary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <GradientButton gradient="primaryDark" onClick={function () { if (!obstacleTitle.trim()) return; addObstacleMut.mutate({ dream: id, title: obstacleTitle.trim(), description: obstacleDesc.trim() }); setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(false); }} disabled={!obstacleTitle.trim()} style={{flex:1}}>Add Obstacle</GradientButton>
           </div>
         </div>
-      )}
+      </GlassModal>
 
       {/* ── Invite Collaborator Modal ── */}
-      {showShareModal && (
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={function () { setShowShareModal(false); }} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",width:"90%",maxWidth:380,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:22,border:"1px solid var(--dp-input-border)",boxShadow:"0 20px 60px rgba(0,0,0,0.5)",padding:24,animation:"dpFS 0.25s ease-out"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
-              <span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>Invite Collaborator</span>
-              <button className="dp-ib" aria-label="Close" style={{width:32,height:32}} onClick={function () { setShowShareModal(false); }}><X size={16} strokeWidth={2}/></button>
-            </div>
-            <div style={{marginBottom:16}}>
-              <label style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:6,display:"block"}}>User ID</label>
-              <input value={shareUserId} onChange={function (e) { setShareUserId(e.target.value); }} autoFocus placeholder="Enter user ID..." style={{width:"100%",padding:"10px 14px",borderRadius:12,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:"1px solid var(--dp-input-border)",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",outline:"none"}}/>
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={function () { setShowShareModal(false); }} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={function () { if (!shareUserId.trim()) return; inviteCollabMut.mutate(shareUserId.trim()); setShareUserId(""); setShowShareModal(false); }} disabled={!shareUserId.trim()} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:shareUserId.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":(isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)"),color:shareUserId.trim()?"#fff":(isLight?"rgba(26,21,53,0.3)":"rgba(255,255,255,0.25)"),fontSize:14,fontWeight:600,cursor:shareUserId.trim()?"pointer":"not-allowed",fontFamily:"inherit"}}>Invite</button>
-            </div>
+      <GlassModal open={showShareModal} onClose={function () { setShowShareModal(false); }} variant="center" title="Invite Collaborator" maxWidth={380}>
+        <div style={{padding:24}}>
+          <div style={{marginBottom:12}}>
+            <GlassInput icon={Search} value={collabSearch} onChange={function (e) { setCollabSearch(e.target.value); }} autoFocus placeholder="Search friends..." />
           </div>
+          {friendsQuery.isLoading && <div style={{textAlign:"center",padding:12,color:"var(--dp-text-muted)",fontSize:13}}>Loading friends...</div>}
+          {!friendsQuery.isLoading && allFriends.length === 0 && (
+            <div style={{textAlign:"center",padding:16,color:"var(--dp-text-muted)",fontSize:13}}>No friends yet. Add friends to invite them as collaborators.</div>
+          )}
+          {!friendsQuery.isLoading && allFriends.length > 0 && filteredFriends.length === 0 && (
+            <div style={{textAlign:"center",padding:12,color:"var(--dp-text-muted)",fontSize:13}}>No matching friends</div>
+          )}
+          {filteredFriends.length > 0 && (
+            <div style={{maxHeight:260,overflowY:"auto",display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+              {filteredFriends.map(function (u) {
+                var alreadyCollab = collaborators.some(function (c) { return String(c.user_id || c.user) === String(u.id); });
+                return (
+                  <div key={u.id} onClick={function () {
+                    if (alreadyCollab) return;
+                    inviteCollabMut.mutate(u.id);
+                    setShowShareModal(false);
+                  }} style={{
+                    display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:12,
+                    background:"var(--dp-surface)",border:"1px solid var(--dp-input-border)",
+                    cursor:alreadyCollab?"default":"pointer",opacity:alreadyCollab?0.5:1,
+                    transition:"all 0.15s"
+                  }}>
+                    <Avatar src={u.avatar} name={u.username} size={34} />
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:14,fontWeight:600,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.username}</div>
+                      {u.title && <div style={{fontSize:11,color:"var(--dp-text-muted)"}}>{u.title}</div>}
+                    </div>
+                    {alreadyCollab ? (
+                      <span style={{fontSize:11,color:"var(--dp-text-muted)",fontWeight:600}}>Already added</span>
+                    ) : (
+                      <UserPlus size={16} color="var(--dp-accent)" />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button onClick={function () { setShowShareModal(false); }} style={{width:"100%",padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-pill-bg)",color:"var(--dp-text-secondary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",marginTop:4}}>Cancel</button>
         </div>
-      )}
+      </GlassModal>
 
-      {showDeleteConfirm&&(
-        <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          <div onClick={()=>setShowDeleteConfirm(false)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div className="dp-g" style={{position:"relative",width:"90%",maxWidth:360,padding:24,animation:"dpFS 0.25s ease-out"}}>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:12}}>
-              <div style={{width:48,height:48,borderRadius:14,background:"rgba(239,68,68,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Trash2 size={22} color="#EF4444" strokeWidth={2}/>
-              </div>
-              <span style={{fontSize:18,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>Delete Dream?</span>
-              <span style={{fontSize:14,lineHeight:1.5,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.6)"}}>This action cannot be undone. All goals and progress will be lost.</span>
+      <GlassModal open={showDeleteConfirm} onClose={()=>setShowDeleteConfirm(false)} variant="center" maxWidth={360}>
+        <div style={{padding:24}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",textAlign:"center",gap:12}}>
+            <div style={{width:48,height:48,borderRadius:14,background:"rgba(239,68,68,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <Trash2 size={22} color="#EF4444" strokeWidth={2}/>
             </div>
-            <div style={{display:"flex",gap:10,marginTop:20}}>
-              <button onClick={()=>setShowDeleteConfirm(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",color:isLight?"rgba(26,21,53,0.7)":"rgba(255,255,255,0.85)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-              <button onClick={()=>{setShowDeleteConfirm(false);apiDelete(DREAMS.DETAIL(id)).then(function(){queryClient.invalidateQueries({queryKey:["dreams"]});}).catch(function(){});navigate("/");}} style={{flex:1,padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#EF4444,#DC2626)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Delete</button>
-            </div>
+            <span style={{fontSize:18,fontWeight:700,color:"var(--dp-text)"}}>Delete Dream?</span>
+            <span style={{fontSize:14,lineHeight:1.5,color:"var(--dp-text-secondary)"}}>This action cannot be undone. All goals and progress will be lost.</span>
+          </div>
+          <div style={{display:"flex",gap:10,marginTop:20}}>
+            <button onClick={()=>setShowDeleteConfirm(false)} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-pill-bg)",color:"var(--dp-text-primary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <GradientButton gradient="danger" disabled={deleteDreamMut.isPending} onClick={()=>{setShowDeleteConfirm(false);deleteDreamMut.mutate();}} style={{flex:1}}>Delete</GradientButton>
           </div>
         </div>
-      )}
+      </GlassModal>
 
       {celebration && (
         <div style={{
@@ -840,14 +911,14 @@ export default function DreamDetailScreen(){
 
           {/* Modal card */}
           <div style={{
-            background: isLight ? "rgba(255,255,255,0.9)" : "rgba(20,15,40,0.9)",
+            background: "var(--dp-modal-bg)",
             backdropFilter: "blur(40px)",
             borderRadius: 24,
             padding: "40px 32px",
             textAlign: "center",
             maxWidth: 320,
             width: "90%",
-            border: `1px solid ${isLight ? "rgba(139,92,246,0.15)" : "rgba(255,255,255,0.1)"}`,
+            border: "1px solid var(--dp-input-border)",
             boxShadow: "0 20px 60px rgba(139,92,246,0.3)",
             animation: "dpCelebPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
             zIndex: 1002,
@@ -857,13 +928,13 @@ export default function DreamDetailScreen(){
             <div style={{ fontSize: 48, marginBottom: 16 }}>&#127881;</div>
             <h2 style={{
               fontSize: 24, fontWeight: 800, margin: "0 0 8px",
-              color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)",
+              color: "var(--dp-text)",
             }}>
               {celebration.milestone === 100 ? t("dreams.dreamComplete") : t("dreams.milestoneReached")}
             </h2>
             <p style={{
               fontSize: 16, margin: "0 0 16px",
-              color: isLight ? "rgba(26,21,53,0.6)" : "rgba(255,255,255,0.6)",
+              color: "var(--dp-text-secondary)",
             }}>
               {celebration.milestone}% {t("dreams.ofDreamAchieved")}
             </p>
@@ -871,6 +942,7 @@ export default function DreamDetailScreen(){
               display: "inline-flex", alignItems: "center", gap: 6,
               background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(139,92,246,0.05))",
               borderRadius: 12, padding: "8px 16px",
+              marginBottom: 16,
             }}>
               <span style={{ fontSize: 16 }}>&#9889;</span>
               <span style={{
@@ -878,67 +950,114 @@ export default function DreamDetailScreen(){
                 color: "#8B5CF6",
               }}>+{celebration.xp} XP</span>
             </div>
+            <div>
+              <button onClick={function (e) {
+                e.stopPropagation();
+                setCelebration(null);
+                setAchievementShare({ type: celebration.milestone === 100 ? "achievement" : "milestone", title: DREAM.title || "" });
+              }} style={{
+                padding: "10px 24px", borderRadius: 14, border: "none", cursor: "pointer",
+                background: "linear-gradient(135deg, #8B5CF6, #7C3AED)", color: "#fff",
+                fontSize: 14, fontWeight: 600, fontFamily: "inherit",
+              }}>
+                Share Achievement
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {shareModal && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 500,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.6)", backdropFilter: "blur(12px)",
-        }} onClick={() => { setShareModal(false); if (shareImage) URL.revokeObjectURL(shareImage); setShareImage(null); }}>
-          <div style={{
-            background: isLight ? "rgba(255,255,255,0.9)" : "rgba(20,15,40,0.95)",
-            borderRadius: 24, padding: 24, maxWidth: 340, width: "90%",
-            border: `1px solid ${isLight ? "rgba(139,92,246,0.15)" : "rgba(255,255,255,0.1)"}`,
-            animation: "dpFadeScale 0.3s ease-out",
-          }} onClick={e => e.stopPropagation()}>
-            <h3 style={{
-              fontSize: 18, fontWeight: 700, marginBottom: 16, textAlign: "center",
-              color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)",
-            }}>Share Your Progress</h3>
-
-            {shareLoading ? (
-              <div style={{ textAlign: "center", padding: 40 }}>
-                <div className="dp-spin" style={{
-                  width: 32, height: 32, border: "3px solid rgba(139,92,246,0.2)",
-                  borderTopColor: "#8B5CF6", borderRadius: "50%", margin: "0 auto",
-                }} />
-                <p style={{ marginTop: 12, fontSize: 13, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>Generating card...</p>
-              </div>
-            ) : shareImage ? (
-              <div>
-                <img src={shareImage} alt="Dream progress card" style={{
-                  width: "100%", borderRadius: 12, marginBottom: 16,
-                }} />
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button onClick={function () {
-                      fetch(shareImage).then(function (res) { return res.blob(); }).then(function (blob) {
-                        saveBlobFile(blob, "dream-progress.png");
-                      });
-                    }} style={{
-                      flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                      color: "#fff", borderRadius: 14, padding: "12px 0",
-                      border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600,
-                      fontFamily: "Inter, sans-serif",
-                    }}>Download</button>
-                  <button onClick={function () {
-                      nativeShare({ title: t("dreams.myDreamProgress"), text: t("dreams.checkProgress") }).catch(function () {});
-                    }} style={{
-                      flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      background: isLight ? "rgba(139,92,246,0.1)" : "rgba(139,92,246,0.2)",
-                      color: "#8B5CF6", borderRadius: 14, padding: "12px 0",
-                      border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600,
-                      fontFamily: "Inter, sans-serif",
+      <GlassModal open={shareModal} onClose={() => { setShareModal(false); if (shareImage) URL.revokeObjectURL(shareImage); setShareImage(null); }} variant="center" title="Share Your Progress" maxWidth={340}>
+        <div style={{padding:24}}>
+          {shareLoading ? (
+            <div style={{ textAlign: "center", padding: 40 }}>
+              <div className="dp-spin" style={{
+                width: 32, height: 32, border: "3px solid rgba(139,92,246,0.2)",
+                borderTopColor: "#8B5CF6", borderRadius: "50%", margin: "0 auto",
+              }} />
+              <p style={{ marginTop: 12, fontSize: 13, color: "var(--dp-text-muted)" }}>Generating card...</p>
+            </div>
+          ) : shareImage ? (
+            <div>
+              <img src={shareImage} alt="Dream progress card" style={{
+                width: "100%", borderRadius: 12, marginBottom: 16,
+              }} />
+              <div style={{ display: "flex", gap: 8 }}>
+                <GradientButton gradient="primary" onClick={function () {
+                    fetch(shareImage).then(function (res) { return res.blob(); }).then(function (blob) {
+                      saveBlobFile(blob, "dream-progress.png");
+                    });
+                  }} style={{flex:1}}>Download</GradientButton>
+                <button onClick={function () {
+                    nativeShare({ title: t("dreams.myDreamProgress"), text: t("dreams.checkProgress") }).catch(function () {});
+                  }} style={{
+                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    background: "var(--dp-divider)",
+                    color: "#8B5CF6", borderRadius: 14, padding: "12px 0",
+                    border: "none", cursor: "pointer", fontSize: 14, fontWeight: 600, fontFamily: "inherit",
                     }}>Share</button>
-                </div>
               </div>
-            ) : null}
+            </div>
+          ) : null}
+        </div>
+      </GlassModal>
+
+      {/* ── Privacy Confirmation Modal ── */}
+      <GlassModal open={!!privacyConfirm} onClose={function () { setPrivacyConfirm(null); }} variant="center" maxWidth={360}>
+        <div style={{ textAlign: "center", padding: "8px 0" }}>
+          <div style={{
+            width: 52, height: 52, borderRadius: 16, margin: "0 auto 16px",
+            background: privacyConfirm === "public" ? "var(--dp-success-soft)" : "var(--dp-surface)",
+            border: "1px solid " + (privacyConfirm === "public" ? "var(--dp-success)" : "var(--dp-input-border)"),
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            {privacyConfirm === "public"
+              ? <Globe size={24} color="var(--dp-success)" />
+              : <Lock size={24} color="var(--dp-text-muted)" />}
+          </div>
+          <h3 style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)", marginBottom: 8 }}>
+            {privacyConfirm === "public" ? "Make dream public?" : "Make dream private?"}
+          </h3>
+          <p style={{ fontSize: 13, color: "var(--dp-text-secondary)", lineHeight: 1.5, marginBottom: 20 }}>
+            {privacyConfirm === "public"
+              ? "Other users will be able to see this dream on your profile and in the social feed."
+              : "This dream will only be visible to you. It will be hidden from your profile and social feed."}
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={function () { setPrivacyConfirm(null); }} style={{
+              flex: 1, padding: "10px 0", borderRadius: 12, border: "1px solid var(--dp-input-border)",
+              background: "var(--dp-surface)", color: "var(--dp-text-secondary)", fontSize: 14,
+              fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}>Cancel</button>
+            <button onClick={function () {
+              var newVal = privacyConfirm === "public";
+              setIsPublic(newVal);
+              setPrivacyConfirm(null);
+              apiPatch(DREAMS.DETAIL(id), { is_public: newVal }).then(function () {
+                showToast(newVal ? "Dream is now public" : "Dream is now private", "success");
+                queryClient.invalidateQueries({ queryKey: ["dream", id] });
+              }).catch(function (err) {
+                setIsPublic(!newVal);
+                showToast(err.message || "Failed to update privacy", "error");
+              });
+            }} style={{
+              flex: 1, padding: "10px 0", borderRadius: 12, border: "none",
+              background: privacyConfirm === "public" ? "var(--dp-success)" : "var(--dp-accent)",
+              color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
+            }}>{privacyConfirm === "public" ? "Make Public" : "Make Private"}</button>
           </div>
         </div>
-      )}
+      </GlassModal>
+
+      <AchievementShareModal
+        open={!!achievementShare}
+        onClose={function () { setAchievementShare(null); }}
+        achievementType={achievementShare ? achievementShare.type : "achievement"}
+        achievementTitle={achievementShare ? achievementShare.title : ""}
+        dreamId={id}
+        goalId={achievementShare ? achievementShare.goalId : undefined}
+        milestoneId={achievementShare ? achievementShare.milestoneId : undefined}
+      />
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');

@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, FileText } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
 
 const SECTIONS = [
   {
@@ -59,15 +62,13 @@ export default function TermsOfServiceScreen() {
   });
 
   return (
-    <PageLayout showNav={false}>
-      <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, ...stagger(0) }}>
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Terms of Service</span>
-        </div>
+    <PageLayout showNav={false} header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />}
+        title="Terms of Service"
+      />
+    }>
+      <div style={{ paddingBottom: 40 }}>
 
         {/* Last Updated */}
         <div style={{
@@ -82,16 +83,10 @@ export default function TermsOfServiceScreen() {
 
         {/* Sections */}
         {SECTIONS.map((s, i) => (
-          <div key={i} style={{
-            ...stagger(2 + i),
-            marginBottom: 12, padding: 16, borderRadius: 16,
-            background: "var(--dp-glass-bg)",
-            border: "1px solid var(--dp-glass-border)",
-            backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-          }}>
+          <GlassCard key={i} padding={16} mb={12} style={{ ...stagger(2 + i) }}>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)", marginBottom: 8 }}>{s.title}</div>
             <div style={{ fontSize: 13, color: "var(--dp-text-tertiary)", lineHeight: 1.7 }}>{s.text}</div>
-          </div>
+          </GlassCard>
         ))}
       </div>
     </PageLayout>

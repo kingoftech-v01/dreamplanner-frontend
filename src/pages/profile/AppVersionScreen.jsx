@@ -1,12 +1,19 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft, Sparkles, FileText, Shield, CheckCircle,
   ChevronRight, Heart, Download, RefreshCw,
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { adaptColor, BRAND } from "../../styles/colors";
 import { Capacitor } from "@capacitor/core";
+import { apiGet } from "../../services/api";
+import { USERS } from "../../services/endpoints";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
 
 var isNativePlatform = Capacitor.isNativePlatform();
 
@@ -128,10 +135,10 @@ export default function AppVersionScreen() {
         // Timeout: if no update found within 5s, we're up to date
         setTimeout(function () {
           reg.removeEventListener("updatefound", onUpdateFound);
-          if (updateStatus === "checking") {
-            setCheckingUpdate(false);
-            setUpdateStatus("up-to-date");
-          }
+          setCheckingUpdate(function (current) {
+            if (current) setUpdateStatus("up-to-date");
+            return false;
+          });
         }, 5000);
       }).catch(function () {
         setCheckingUpdate(false);
@@ -156,7 +163,7 @@ export default function AppVersionScreen() {
         <>
           <div style={{
             width: 16, height: 16, border: "2px solid rgba(196,181,253,0.2)",
-            borderTopColor: "#C4B5FD", borderRadius: "50%",
+            borderTopColor: "var(--dp-accent)", borderRadius: "50%",
             animation: "dpSpin 0.8s linear infinite",
           }} />
           Checking for updates...
@@ -176,7 +183,7 @@ export default function AppVersionScreen() {
         <>
           <div style={{
             width: 16, height: 16, border: "2px solid rgba(93,229,168,0.2)",
-            borderTopColor: "#5DE5A8", borderRadius: "50%",
+            borderTopColor: "var(--dp-success)", borderRadius: "50%",
             animation: "dpSpin 0.8s linear infinite",
           }} />
           Installing update...
@@ -200,13 +207,13 @@ export default function AppVersionScreen() {
   };
 
   var updateBtnColor = function () {
-    if (updateStatus === "available") return isLight ? "#DC6900" : "#F59E0B";
-    if (updateStatus === "up-to-date") return isLight ? "#059669" : "#5DE5A8";
-    return isLight ? "#6D28D9" : "#C4B5FD";
+    if (updateStatus === "available") return adaptColor(BRAND.orange, isLight);
+    if (updateStatus === "up-to-date") return "var(--dp-success)";
+    return "var(--dp-accent)";
   };
 
   var updateBtnBg = function () {
-    if (updateStatus === "available") return isLight ? "rgba(245,158,11,0.08)" : "rgba(245,158,11,0.08)";
+    if (updateStatus === "available") return "rgba(245,158,11,0.08)";
     if (updateStatus === "up-to-date") return "rgba(93,229,168,0.08)";
     return "rgba(139,92,246,0.1)";
   };
@@ -217,23 +224,42 @@ export default function AppVersionScreen() {
     return "1px solid rgba(139,92,246,0.2)";
   };
 
+  var dashboardQuery = useQuery({
+    queryKey: ["dashboard"],
+    queryFn: function () { return apiGet(USERS.DASHBOARD); },
+    staleTime: 60000,
+  });
+
+  var lastSyncLabel = (function () {
+    if (!dashboardQuery.dataUpdatedAt || dashboardQuery.dataUpdatedAt === 0) return "Not synced";
+    var diff = Math.floor((Date.now() - dashboardQuery.dataUpdatedAt) / 1000);
+    if (diff < 10) return "Just now";
+    if (diff < 60) return diff + "s ago";
+    if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+    return Math.floor(diff / 3600) + "h ago";
+  })();
+
+  var apiVersionLabel = (function () {
+    if (!dashboardQuery.data) return "v" + platformInfo.version;
+    var meta = dashboardQuery.data.meta || dashboardQuery.data;
+    return meta.apiVersion || meta.api_version || "v" + platformInfo.version;
+  })();
+
   var infoItems = [
     { label: "Platform", value: platformInfo.platform },
     { label: "Environment", value: "Production" },
-    { label: "API Version", value: "v2.1" },
-    { label: "Last Sync", value: "Just now" },
+    { label: "API Version", value: apiVersionLabel },
+    { label: "Last Sync", value: lastSyncLabel },
   ];
 
   return (
-    <PageLayout showNav={false}>
-      <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32, ...stagger(0) }}>
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>About</span>
-        </div>
+    <PageLayout showNav={false} header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title="About"
+      />
+    }>
+      <div style={{ paddingBottom: 40 }}>
 
         {/* App Icon & Name */}
         <div style={{ textAlign: "center", marginBottom: 32, ...stagger(1) }}>
@@ -243,7 +269,7 @@ export default function AppVersionScreen() {
             border: "2px solid rgba(139,92,246,0.3)", display: "flex", alignItems: "center",
             justifyContent: "center", boxShadow: "0 0 50px rgba(139,92,246,0.2)",
           }}>
-            <Sparkles size={36} color={isLight ? "#6D28D9" : "#C4B5FD"} />
+            <Sparkles size={36} color="var(--dp-accent)" />
           </div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 4px", letterSpacing: "-0.5px" }}>
             DreamPlanner
@@ -283,15 +309,12 @@ export default function AppVersionScreen() {
           </div>
           {infoItems.map(function (item, i) {
             return (
-              <div key={i} style={{
+              <GlassCard key={i} padding="12px 16px" radius={14} mb={4} style={{
                 display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "12px 16px", borderRadius: 14, marginBottom: 4,
-                background: "var(--dp-glass-bg)",
-                border: "1px solid var(--dp-glass-border)",
               }}>
                 <span style={{ fontSize: 13, color: "var(--dp-text-secondary)" }}>{item.label}</span>
                 <span style={{ fontSize: 13, fontWeight: 500, color: "var(--dp-text-primary)" }}>{item.value}</span>
-              </div>
+              </GlassCard>
             );
           })}
         </div>
@@ -307,20 +330,14 @@ export default function AppVersionScreen() {
           ].map(function (item, i) {
             var I = item.icon;
             return (
-              <div key={i} onClick={function () { navigate(item.route); }} style={{
+              <GlassCard key={i} hover onClick={function () { navigate(item.route); }} padding="12px 16px" radius={14} mb={4} style={{
                 display: "flex", alignItems: "center", gap: 12,
-                padding: "12px 16px", borderRadius: 14, marginBottom: 4,
-                background: "var(--dp-glass-bg)",
-                border: "1px solid var(--dp-glass-border)",
-                cursor: "pointer", transition: "background 0.2s",
-              }}
-                onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-                onMouseLeave={function (e) { e.currentTarget.style.background = "var(--dp-glass-bg)"; }}
-              >
+                cursor: "pointer",
+              }}>
                 <I size={16} color="var(--dp-text-tertiary)" />
                 <span style={{ flex: 1, fontSize: 13, color: "var(--dp-text-primary)", fontWeight: 500 }}>{item.label}</span>
                 <ChevronRight size={16} color="var(--dp-text-muted)" />
-              </div>
+              </GlassCard>
             );
           })}
         </div>
@@ -329,7 +346,7 @@ export default function AppVersionScreen() {
         <div style={{ textAlign: "center", marginTop: 32, ...stagger(5) }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 4, marginBottom: 6 }}>
             <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>Made with</span>
-            <Heart size={12} color={isLight ? "#DC2626" : "#F69A9A"} fill={isLight ? "#DC2626" : "#F69A9A"} />
+            <Heart size={12} color="var(--dp-danger)" fill="var(--dp-danger)" />
             <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>for dreamers</span>
           </div>
           <p style={{ fontSize: 11, color: "var(--dp-text-muted)", margin: 0 }}>

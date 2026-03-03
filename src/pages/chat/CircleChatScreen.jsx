@@ -10,6 +10,10 @@ import { useToast } from "../../context/ToastContext";
 import { clipboardWrite } from "../../services/native";
 import { sanitizeText } from "../../utils/sanitize";
 import ErrorState from "../../components/shared/ErrorState";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import Avatar from "../../components/shared/Avatar";
+import { GRADIENTS } from "../../styles/colors";
 import {
   ArrowLeft, Users, Send, ChevronDown, MoreVertical,
   Copy, Check, Search, X, Phone, Video,
@@ -289,35 +293,39 @@ export default function CircleChatScreen(){
   }
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* ═══ APP BAR ═══ */}
-      <header style={{position:"relative",zIndex:100,flexShrink:0,background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <button className="dp-ib" onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2}/></button>
-            <div style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(139,92,246,0.15)",border:"1px solid rgba(139,92,246,0.25)",fontSize:16,fontWeight:700,color:isLight?"#7C3AED":"#C4B5FD"}}>
-              <Users size={18} strokeWidth={2}/>
+      <GlassAppBar
+        left={
+          <>
+            <IconButton icon={ArrowLeft} onClick={()=>navigate("/circle/"+id)} label="Go back" />
+            <div style={{width:38,height:38,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(139,92,246,0.15)",border:"1px solid rgba(139,92,246,0.25)",flexShrink:0}}>
+              <Users size={18} strokeWidth={2} color="var(--dp-accent)"/>
             </div>
-            <div>
-              <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{circleName}</div>
-              <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{memberCount} member{memberCount!==1?"s":""}</div>
-            </div>
+          </>
+        }
+        title={
+          <div>
+            <div style={{fontSize:15,fontWeight:600,color:"var(--dp-text)"}}>{circleName}</div>
+            <div style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{memberCount} member{memberCount!==1?"s":""}</div>
           </div>
+        }
+        right={
           <div style={{display:"flex",gap:6}}>
-            <button className="dp-ib" aria-label="Voice call" onClick={function(){
+            <IconButton icon={Phone} label="Voice call" onClick={function(){
               apiPost(CIRCLES.CALL.START(id)).then(function(data){
                 navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(circleName));
               }).catch(function(err){showToast(err.message||"Failed to start call","error");});
-            }}><Phone size={17} strokeWidth={2}/></button>
-            <button className="dp-ib" aria-label="Video call" onClick={function(){
-              apiPost(CIRCLES.CALL.START(id),{callType:"video"}).then(function(data){
+            }} />
+            <IconButton icon={Video} label="Video call" onClick={function(){
+              apiPost(CIRCLES.CALL.START(id),{call_type:"video"}).then(function(data){
                 navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(circleName));
               }).catch(function(err){showToast(err.message||"Failed to start call","error");});
-            }}><Video size={17} strokeWidth={2}/></button>
+            }} />
           </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* ═══ MESSAGES ═══ */}
       <div ref={scrollRef} onScroll={handleScroll} style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"12px 16px 80px",display:"flex",flexDirection:"column",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
@@ -325,17 +333,17 @@ export default function CircleChatScreen(){
           {messages.length===0?(
             <div className={`dp-a ${mounted?"dp-s":""}`} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center"}}>
               <div style={{width:80,height:80,borderRadius:24,margin:"0 auto 24px",background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <MessageCircle size={36} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={1.5}/>
+                <MessageCircle size={36} color="var(--dp-accent)" strokeWidth={1.5}/>
               </div>
-              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>Start chatting in {circleName}!</div>
-              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>Send a message to get the conversation going.</div>
+              <div style={{fontSize:18,fontWeight:600,color:"var(--dp-text)",marginBottom:8}}>Start chatting in {circleName}!</div>
+              <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.5,maxWidth:300}}>Send a message to get the conversation going.</div>
             </div>
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
               {hasMore && (
                 <div style={{textAlign:"center",padding:"8px 0 12px"}}>
-                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?"Loading...":"Load older messages"}</button>
+                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?"Loading...":"Load older messages"}</button>
                 </div>
               )}
               {messages.map((msg,i)=>{
@@ -344,7 +352,7 @@ export default function CircleChatScreen(){
                 <div key={msg.id}>
                   {showDate(messages,i)&&(
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"16px 0 12px"}}>
-                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{dateLabel(msg.time)}</div>
+                      <div style={{padding:"4px 14px",borderRadius:12,background:"var(--dp-surface)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid var(--dp-glass-border)",fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>{dateLabel(msg.time)}</div>
                     </div>
                   )}
                   <CircleBubble msg={msg} showSender={showSender} copiedId={copiedId} onCopy={()=>handleCopy(msg.id,msg.content)} meInitial={userInitial}/>
@@ -353,9 +361,9 @@ export default function CircleChatScreen(){
               {/* Typing indicator */}
               {typingText&&(
                 <div className="dp-mai" style={{display:"flex",gap:8,marginBottom:20,alignItems:"flex-end"}}>
-                  <div style={{padding:"10px 14px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(139,92,246,0.06)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:"1px solid rgba(139,92,246,0.1)"}}>
+                  <div style={{padding:"10px 14px",borderRadius:"18px 18px 18px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:"1px solid rgba(139,92,246,0.1)"}}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontStyle:"italic"}}>{typingText}</span>
+                      <span style={{fontSize:12,color:"var(--dp-text-primary)",fontStyle:"italic"}}>{typingText}</span>
                       <span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/>
                     </div>
                   </div>
@@ -367,31 +375,31 @@ export default function CircleChatScreen(){
         </div>
       </div>
 
-      {showScroll&&<button aria-label="Scroll to bottom" onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})} style={{position:"fixed",bottom:162,left:"50%",transform:"translateX(-50%)",zIndex:50,width:36,height:36,borderRadius:"50%",border:isLight?"1px solid rgba(139,92,246,0.18)":"1px solid rgba(255,255,255,0.1)",background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",color:isLight?"#1a1535":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.3)"}}><ChevronDown size={18} strokeWidth={2}/></button>}
+      {showScroll&&<button aria-label="Scroll to bottom" onClick={()=>endRef.current?.scrollIntoView({behavior:"smooth"})} style={{position:"fixed",bottom:162,left:"50%",transform:"translateX(-50%)",zIndex:50,width:36,height:36,borderRadius:"50%",border:"1px solid var(--dp-glass-border)",background:"var(--dp-card-solid)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",color:"var(--dp-text)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 16px var(--dp-shadow)"}}><ChevronDown size={18} strokeWidth={2}/></button>}
 
       {/* ═══ INPUT ═══ */}
-      <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
+      <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:"var(--dp-header-bg)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:"1px solid var(--dp-header-border)"}}>
         <div style={{maxWidth:560,margin:"0 auto",display:"flex",alignItems:"flex-end",gap:8}}>
           <div style={{position:"relative"}}>
-            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?(isLight?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.1)"):undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
+            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-accent-soft)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
             {emojiOpen&&(
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:isLight?"rgba(255,255,255,0.97)":"rgba(20,16,35,0.97)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:"var(--dp-modal-bg)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:"1px solid var(--dp-glass-border)",boxShadow:"0 8px 32px var(--dp-shadow)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
                 {['😀','😂','🥹','😍','🤩','😎','🥳','🤔','😅','😢','😤','🔥','💪','👏','❤️','💜','⭐','✨','🎯','🏆','🚀','💡','📝','🌟','👍','👎','🙏','🎉','💯','🌈','🍀','☕','🧠','💭','🎵','✅','🤝','💫','🌙','☀️','🦋','🌻'].map(emoji=>(
                   <button key={emoji} onClick={()=>insertEmoji(emoji)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:6,borderRadius:8,transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background=isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.08)";e.currentTarget.style.transform="scale(1.2)";}}
+                    onMouseEnter={e=>{e.currentTarget.style.background="var(--dp-glass-hover)";e.currentTarget.style.transform="scale(1.2)";}}
                     onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.transform="scale(1)";}}
                   >{emoji}</button>
                 ))}
               </div>
             )}
           </div>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:"var(--dp-surface)",border:"1px solid var(--dp-glass-border)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInput}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
               placeholder="Type a message..." rows={1}
-              style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
+              style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"var(--dp-text)",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
           </div>
-          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:42,height:42,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"linear-gradient(135deg,#8B5CF6,#7C3AED)":isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(139,92,246,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
+          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:42,height:42,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?GRADIENTS.primary:"var(--dp-surface)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(139,92,246,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
             <Send size={18} strokeWidth={2} style={{transform:"translateX(1px)"}}/>
           </button>
         </div>
@@ -409,15 +417,12 @@ export default function CircleChatScreen(){
         @keyframes dpMU{from{opacity:0;transform:translateX(12px);}to{opacity:1;transform:translateX(0);}}
         .dp-mb{animation:dpMB 0.35s cubic-bezier(0.16,1,0.3,1) forwards;}
         @keyframes dpMB{from{opacity:0;transform:translateX(-12px);}to{opacity:1;transform:translateX(0);}}
-        .dp-dot{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,0.5);animation:dpBn 1.4s ease-in-out infinite;display:inline-block;}
+        .dp-dot{width:5px;height:5px;border-radius:50%;background:var(--dp-text-tertiary);animation:dpBn 1.4s ease-in-out infinite;display:inline-block;}
         .dp-d1{animation-delay:0s;}.dp-d2{animation-delay:0.2s;}.dp-d3{animation-delay:0.4s;}
         @keyframes dpBn{0%,80%,100%{transform:translateY(0);opacity:0.4;}40%{transform:translateY(-4px);opacity:1;}}
         @keyframes dpFadeScale{from{opacity:0;transform:scale(0.9);}to{opacity:1;transform:scale(1);}}
         .dp-spin{animation:dpSpin 1s linear infinite;}
         @keyframes dpSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-        [data-theme="light"] .dp-dot{background:rgba(26,21,53,0.4) !important;}
-        [data-theme="light"] input::placeholder,
-        [data-theme="light"] textarea::placeholder{color:rgba(26,21,53,0.4) !important;}
       `}</style>
     </div>
   );
@@ -433,13 +438,13 @@ function CircleBubble({msg,showSender,copiedId,onCopy,meInitial}){
       <div className="dp-mu" style={{display:"flex",justifyContent:"flex-end",marginBottom:showSender?12:4,gap:8,alignItems:"flex-end"}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",maxWidth:"75%"}}>
           <div style={{position:"relative",padding:"10px 14px",borderRadius:"16px 16px 6px 16px",background:isLight?"rgba(200,120,200,0.1)":"rgba(200,120,200,0.07)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(220,140,220,0.12)",boxShadow:"0 2px 12px rgba(200,120,200,0.08),inset 0 1px 0 rgba(255,200,230,0.05)"}}>
-            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+            <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:4}}>
-              <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)"}}>{formatTime(msg.time)}</span>
+              <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{formatTime(msg.time)}</span>
             </div>
           </div>
         </div>
-        <div style={{width:28,height:28,borderRadius:9,flexShrink:0,background:"linear-gradient(135deg,rgba(200,120,200,0.2),rgba(160,80,200,0.2))",border:"1px solid rgba(200,140,220,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{meInitial}</div>
+        <Avatar name={meInitial} size={28} color="rgba(200,120,200,0.8)" style={{borderRadius:9}} />
       </div>
     );
   }
@@ -447,7 +452,7 @@ function CircleBubble({msg,showSender,copiedId,onCopy,meInitial}){
   return(
     <div className="dp-mb" style={{display:"flex",gap:8,marginBottom:showSender?12:4,alignItems:"flex-end"}}>
       {showSender?(
-        <div style={{width:28,height:28,borderRadius:9,flexShrink:0,background:msg.senderColor+"20",border:"1px solid "+msg.senderColor+"30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:msg.senderColor}}>{msg.senderInitial}</div>
+        <Avatar name={msg.senderInitial} size={28} color={msg.senderColor} style={{borderRadius:9}} />
       ):(
         <div style={{width:28,flexShrink:0}}/>
       )}
@@ -455,12 +460,12 @@ function CircleBubble({msg,showSender,copiedId,onCopy,meInitial}){
         {showSender&&(
           <div style={{fontSize:12,fontWeight:600,color:msg.senderColor,marginBottom:3,paddingLeft:2}}>{msg.senderName}</div>
         )}
-        <div style={{position:"relative",padding:"10px 14px",borderRadius:"16px 16px 16px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid "+msg.senderColor+"18",boxShadow:"0 2px 12px "+msg.senderColor+"08,inset 0 1px 0 rgba(255,255,255,0.04)"}}>
-          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+        <div style={{position:"relative",padding:"10px 14px",borderRadius:"16px 16px 16px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid "+msg.senderColor+"18",boxShadow:"0 2px 12px "+msg.senderColor+"08,inset 0 1px 0 rgba(255,255,255,0.04)"}}>
+          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
           <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
-            <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)"}}>{formatTime(msg.time)}</span>
-            {isCopied?<Check size={11} color={isLight?"#059669":"#5DE5A8"} strokeWidth={2.5}/>:
-            <button onClick={e=>{e.stopPropagation();onCopy();}} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex"}}><Copy size={11} color={isLight?"rgba(26,21,53,0.35)":"rgba(255,255,255,0.3)"} strokeWidth={2}/></button>}
+            <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{formatTime(msg.time)}</span>
+            {isCopied?<Check size={11} color="var(--dp-success)" strokeWidth={2.5}/>:
+            <button onClick={e=>{e.stopPropagation();onCopy();}} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex"}}><Copy size={11} color="var(--dp-text-muted)" strokeWidth={2}/></button>}
           </div>
         </div>
       </div>

@@ -9,17 +9,13 @@ import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { sanitizeSearch } from "../../utils/sanitize";
+import { CONTACT_COLORS } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import Avatar from "../../components/shared/Avatar";
 
-const AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
-
-const glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
+const AVATAR_COLORS = CONTACT_COLORS;
 
 export default function UserSearchScreen() {
   const navigate = useNavigate();
@@ -61,8 +57,10 @@ export default function UserSearchScreen() {
     return Object.assign({}, u, {
       name: u.name || u.displayName || u.username || "User",
       initial: u.initial || (u.name || u.displayName || u.username || "U")[0].toUpperCase(),
-      level: u.level || 1,
+      level: u.currentLevel || u.level || 1,
       mutualFriends: u.mutualFriends || 0,
+      isFriend: u.isFriend || false,
+      isPendingRequest: u.isPendingRequest || false,
     });
   };
 
@@ -85,7 +83,7 @@ export default function UserSearchScreen() {
 
   var handleAddFriend = function (userId) {
     setSentRequests(function (prev) { return new Set([...prev, userId]); });
-    apiPost(SOCIAL.FRIENDS.REQUEST, { targetUserId: userId }).then(function () {
+    apiPost(SOCIAL.FRIENDS.REQUEST, { target_user_id: userId }).then(function () {
       showToast("Friend request sent!", "success");
     }).catch(function (err) {
       showToast(err.message || "Failed to send request", "error");
@@ -108,15 +106,16 @@ export default function UserSearchScreen() {
   const isSearching = query.length > 0;
 
   const renderUserCard = (user, index, delay) => {
-    const isSent = sentRequests.has(user.id);
+    const isSent = sentRequests.has(user.id) || user.isPendingRequest;
+    const isFriend = user.isFriend;
     const avatarColor = getAvatarColor(user.name);
 
     return (
-      <div
+      <GlassCard
         key={user.id}
+        padding="14px 16px"
+        radius={16}
         style={{
-          ...glassStyle, borderRadius: 16,
-          padding: "14px 16px",
           display: "flex", alignItems: "center", gap: 12,
           opacity: mounted ? 1 : 0,
           transform: mounted ? "translateY(0)" : "translateY(15px)",
@@ -124,30 +123,19 @@ export default function UserSearchScreen() {
         }}
       >
         {/* Avatar */}
-        <div style={{
-          width: 46, height: 46, borderRadius: 15, flexShrink: 0,
-          background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}88)`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 18, fontWeight: 700, color: "#fff",
-          fontFamily: "Inter, sans-serif",
-          boxShadow: `0 4px 12px ${avatarColor}30`,
-        }}>
-          {user.initial}
-        </div>
+        <Avatar name={user.name} size={46} color={avatarColor} />
 
         {/* Info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
             <span style={{
               fontSize: 14, fontWeight: 600, color: "var(--dp-text)",
-              fontFamily: "Inter, sans-serif",
               whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             }}>
               {user.name}
             </span>
             <span style={{
               fontSize: 10, fontWeight: 700, color: "#8B5CF6",
-              fontFamily: "Inter, sans-serif",
               padding: "2px 6px", borderRadius: 6,
               background: "rgba(139,92,246,0.15)",
               border: "1px solid rgba(139,92,246,0.2)",
@@ -159,8 +147,7 @@ export default function UserSearchScreen() {
           <div style={{
             display: "flex", alignItems: "center", gap: 4,
             fontSize: 12, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             <Users size={11} />
             {user.mutualFriends} mutual friend{user.mutualFriends !== 1 ? "s" : ""}
           </div>
@@ -168,27 +155,35 @@ export default function UserSearchScreen() {
 
         {/* Action button */}
         <button
-          onClick={() => !isSent && handleAddFriend(user.id)}
+          onClick={() => !isSent && !isFriend && handleAddFriend(user.id)}
           style={{
             display: "flex", alignItems: "center", gap: 5,
             padding: "8px 14px", borderRadius: 10,
-            background: isSent
+            background: isFriend
+              ? "rgba(20,184,166,0.15)"
+              : isSent
               ? "rgba(20,184,166,0.15)"
               : "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(109,40,217,0.15))",
-            border: isSent
+            border: isFriend
+              ? "1px solid rgba(20,184,166,0.3)"
+              : isSent
               ? "1px solid rgba(20,184,166,0.3)"
               : "1px solid rgba(139,92,246,0.25)",
-            color: isSent ? "#14B8A6" : (isLight ? "#6D28D9" : "#C4B5FD"),
-            fontSize: 12, fontWeight: 600, fontFamily: "Inter, sans-serif",
-            cursor: isSent ? "default" : "pointer",
+            color: isFriend ? "#14B8A6" : isSent ? "#14B8A6" : "var(--dp-accent-text)",
+            fontSize: 12, fontWeight: 600, cursor: (isSent || isFriend) ? "default" : "pointer",
             transition: "all 0.3s ease",
-            flexShrink: 0,
+            flexShrink: 0, fontFamily: "inherit",
           }}
         >
-          {isSent ? (
+          {isFriend ? (
             <>
               <Check size={13} />
-              Sent
+              Friends
+            </>
+          ) : isSent ? (
+            <>
+              <Check size={13} />
+              Pending
             </>
           ) : (
             <>
@@ -197,33 +192,25 @@ export default function UserSearchScreen() {
             </>
           )}
         </button>
-      </div>
+      </GlassCard>
     );
   };
 
   return (
-    <PageLayout>
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16,
-        paddingTop: 16, paddingBottom: 16,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <button className="dp-ib" onClick={() => navigate(-1)}>
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <h1 style={{
-          fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-          fontFamily: "Inter, sans-serif", margin: 0,
-        }}>
-          Find People
-        </h1>
-      </div>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        title="Find People"
+      />
+    }>
 
       {/* Search Input */}
       <div style={{
-        ...glassStyle, borderRadius: 16,
+        background: "var(--dp-glass-bg)",
+        backdropFilter: "blur(40px)",
+        WebkitBackdropFilter: "blur(40px)",
+        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+        borderRadius: 16,
         padding: "4px 16px",
         display: "flex", alignItems: "center", gap: 12,
         marginBottom: 24,
@@ -241,8 +228,8 @@ export default function UserSearchScreen() {
           onChange={(e) => setQuery(e.target.value)}
           style={{
             flex: 1, background: "none", border: "none", outline: "none",
-            color: "var(--dp-text)", fontSize: 15, fontFamily: "Inter, sans-serif",
-            padding: "12px 0",
+            color: "var(--dp-text)", fontSize: 15, padding: "12px 0",
+            fontFamily: "inherit",
           }}
         />
         {query.length > 0 && (
@@ -252,7 +239,7 @@ export default function UserSearchScreen() {
               width: 28, height: 28, borderRadius: 8,
               background: "var(--dp-surface-hover)", border: "none",
               display: "flex", alignItems: "center", justifyContent: "center",
-              cursor: "pointer",
+              cursor: "pointer", fontFamily: "inherit",
             }}
           >
             <X size={14} color="var(--dp-text-tertiary)" />
@@ -265,7 +252,7 @@ export default function UserSearchScreen() {
         <div style={{ marginBottom: 28 }}>
           <div style={{
             fontSize: 13, fontWeight: 600, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif", marginBottom: 12,
+            marginBottom: 12,
             textTransform: "uppercase", letterSpacing: "0.5px",
           }}>
             Search Results
@@ -275,7 +262,7 @@ export default function UserSearchScreen() {
           </div>
           <div ref={searchInf.sentinelRef} />
           {searchInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
           )}
         </div>
       )}
@@ -286,17 +273,16 @@ export default function UserSearchScreen() {
           textAlign: "center", padding: "50px 20px",
           opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.2s",
         }}>
-          <Search size={40} color={isLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.15)"} style={{ marginBottom: 14 }} />
+          <Search size={40} color="var(--dp-text-muted)" style={{ marginBottom: 14 }} />
           <div style={{
             fontSize: 15, fontWeight: 600, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif", marginBottom: 6,
+            marginBottom: 6,
           }}>
             No results found
           </div>
           <div style={{
             fontSize: 13, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             Try a different name or spelling
           </div>
         </div>
@@ -311,7 +297,7 @@ export default function UserSearchScreen() {
         }}>
           <div style={{
             fontSize: 13, fontWeight: 600, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif", marginBottom: 12,
+            marginBottom: 12,
             textTransform: "uppercase", letterSpacing: "0.5px",
           }}>
             Recent Searches
@@ -331,8 +317,7 @@ export default function UserSearchScreen() {
               >
                 <span style={{
                   fontSize: 13, color: "var(--dp-text-secondary)",
-                  fontFamily: "Inter, sans-serif",
-                }}>
+                  }}>
                   {search.name || search.query || "Search"}
                 </span>
                 <button
@@ -356,11 +341,10 @@ export default function UserSearchScreen() {
           textAlign: "center", padding: "40px 20px", marginBottom: 28,
           opacity: mounted ? 1 : 0, transition: "opacity 0.5s ease 0.2s",
         }}>
-          <Search size={40} color={isLight ? "rgba(0,0,0,0.15)" : "rgba(255,255,255,0.15)"} style={{ marginBottom: 14 }} />
+          <Search size={40} color="var(--dp-text-muted)" style={{ marginBottom: 14 }} />
           <div style={{
             fontSize: 14, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             Search for friends by name
           </div>
         </div>
@@ -375,7 +359,7 @@ export default function UserSearchScreen() {
         }}>
           <div style={{
             fontSize: 13, fontWeight: 600, color: "var(--dp-text-muted)",
-            fontFamily: "Inter, sans-serif", marginBottom: 12,
+            marginBottom: 12,
             textTransform: "uppercase", letterSpacing: "0.5px",
           }}>
             People You Might Know
@@ -385,7 +369,7 @@ export default function UserSearchScreen() {
           </div>
           <div ref={suggestionsInf.sentinelRef} />
           {suggestionsInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+            <div style={{ textAlign: "center", padding: "12px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
           )}
         </div>
       )}

@@ -6,20 +6,18 @@ import PageLayout from "../../components/shared/PageLayout";
 import { apiDelete } from "../../services/api";
 import { SOCIAL } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassAppBar from "../../components/shared/GlassAppBar";
 
-var glass = {
-  background: "var(--dp-glass-bg)", backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)", border: "1px solid var(--dp-input-border)",
-  borderRadius: 20, boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
-var font = { fontFamily: "Inter, sans-serif" };
+var font = { };
 var skeletonAnim = "dpSkeletonPulse 1.2s ease-in-out infinite";
 
 function SkeletonRow(props) {
   var skel = { background: "var(--dp-surface-hover)", animation: skeletonAnim };
   return (
-    <div style={{
-      ...glass, borderRadius: 16, padding: "14px 16px",
+    <GlassCard radius={16} padding="14px 16px" style={{
       display: "flex", alignItems: "center", gap: 14,
       opacity: props.mounted ? 1 : 0,
       transform: props.mounted ? "translateY(0)" : "translateY(10px)",
@@ -30,7 +28,7 @@ function SkeletonRow(props) {
         <div style={{ width: "55%", height: 14, borderRadius: 6, ...skel }} />
         <div style={{ width: "35%", height: 10, borderRadius: 5, ...skel, animationDelay: "0.15s" }} />
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -69,22 +67,13 @@ export default function BlockedUsersScreen() {
   };
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title="Blocked Users"
+      />
+    }>
       <style>{"@keyframes dpSkeletonPulse{0%,100%{opacity:1}50%{opacity:.4}}"}</style>
-
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16, paddingTop: 16, paddingBottom: 16,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4,0,0.2,1)",
-      }}>
-        <button className="dp-ib" onClick={function () { navigate(-1); }}>
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--dp-text)", ...font, margin: 0 }}>
-          Blocked Users
-        </h1>
-      </div>
 
       {/* Loading */}
       {blockedInf.isLoading && (
@@ -95,8 +84,8 @@ export default function BlockedUsersScreen() {
 
       {/* Empty state */}
       {!blockedInf.isLoading && users.length === 0 && (
-        <div style={{
-          ...glass, padding: "48px 24px", display: "flex", flexDirection: "column",
+        <GlassCard padding="48px 24px" style={{
+          display: "flex", flexDirection: "column",
           alignItems: "center", textAlign: "center", ...stagger(1),
         }}>
           <div style={{
@@ -112,7 +101,7 @@ export default function BlockedUsersScreen() {
           <div style={{ fontSize: 13, color: "var(--dp-text-secondary)", ...font, lineHeight: 1.5 }}>
             Users you block will appear here. You can unblock them at any time.
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* List */}
@@ -123,18 +112,15 @@ export default function BlockedUsersScreen() {
             var confirming = confirmId === user.id;
             var busy = unblockMutation.isPending && confirming;
             return (
-              <div key={user.id} style={{
-                ...glass, borderRadius: 16, padding: "14px 16px",
+              <GlassCard key={user.id} padding="14px 16px" style={{
                 display: "flex", alignItems: "center", gap: 14, ...stagger(index),
               }}>
-                <div style={{
-                  width: 44, height: 44, borderRadius: 22, flexShrink: 0,
-                  background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 18, fontWeight: 700, color: "#fff", ...font,
-                }}>
-                  {initial}
-                </div>
+                <Avatar
+                  name={user.displayName || user.username || "?"}
+                  size={44}
+                  color="#8B5CF6"
+                  shape="circle"
+                />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
                     fontSize: 15, fontWeight: 600, color: "var(--dp-text)", ...font,
@@ -156,7 +142,7 @@ export default function BlockedUsersScreen() {
                     padding: "8px 14px", borderRadius: 12, flexShrink: 0,
                     background: confirming ? "rgba(239,68,68,0.15)" : "rgba(239,68,68,0.08)",
                     border: "1px solid " + (confirming ? "rgba(239,68,68,0.4)" : "rgba(239,68,68,0.2)"),
-                    color: "#EF4444", fontSize: 13, fontWeight: 600, ...font,
+                    color: "var(--dp-danger-solid)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", ...font,
                     cursor: busy ? "not-allowed" : "pointer",
                     opacity: busy ? 0.6 : 1, transition: "all 0.2s ease",
                   }}
@@ -164,7 +150,7 @@ export default function BlockedUsersScreen() {
                   <UserX size={15} />
                   {confirming ? "Confirm" : "Unblock"}
                 </button>
-              </div>
+              </GlassCard>
             );
           })}
         </div>

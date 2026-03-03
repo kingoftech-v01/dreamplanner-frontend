@@ -47,13 +47,19 @@ if (Capacitor.isNativePlatform()) {
       if (path.includes("auth/google/callback")) {
         var params = new URLSearchParams(hash.replace("#", "") || search.replace("?", ""));
         var accessToken = params.get("access_token");
-        if (accessToken) {
+        var returnedState = params.get("state");
+        var expectedState = sessionStorage.getItem("oauth_state");
+        sessionStorage.removeItem("oauth_state");
+        if (accessToken && returnedState && returnedState === expectedState) {
           window.dispatchEvent(new CustomEvent("dp-oauth-callback", { detail: { provider: "google", token: accessToken } }));
         }
       } else if (path.includes("auth/apple/callback")) {
         var appleParams = new URLSearchParams(search.replace("?", ""));
         var idToken = appleParams.get("id_token");
-        if (idToken) {
+        var appleReturnedState = appleParams.get("state");
+        var appleExpectedState = sessionStorage.getItem("oauth_state");
+        sessionStorage.removeItem("oauth_state");
+        if (idToken && appleReturnedState && appleReturnedState === appleExpectedState) {
           window.dispatchEvent(new CustomEvent("dp-oauth-callback", { detail: { provider: "apple", token: idToken } }));
         }
       } else if (path.includes("stripe/return")) {
@@ -61,11 +67,13 @@ if (Capacitor.isNativePlatform()) {
       } else if (path.includes("calendar/callback")) {
         var calParams = new URLSearchParams(search.replace("?", ""));
         var code = calParams.get("code");
-        if (code) window.location.hash = "#/calendar-connect?code=" + code;
+        // Validate code is alphanumeric to prevent injection
+        if (code && /^[a-zA-Z0-9\-_/.]+$/.test(code)) window.location.hash = "#/calendar-connect?code=" + encodeURIComponent(code);
       } else if (path.includes("notification")) {
         var notifParams = new URLSearchParams(search.replace("?", ""));
         var route = notifParams.get("route");
-        if (route) window.location.hash = "#" + route;
+        // Only allow routes starting with / and containing safe chars (no protocol/external URLs)
+        if (route && /^\/[a-zA-Z0-9\-_/]+$/.test(route)) window.location.hash = "#" + route;
       }
     } catch (e) {
       console.warn("Deep link parse error");
@@ -134,7 +142,7 @@ if (Capacitor.isNativePlatform()) {
         window.location.hash = "#" + route;
         return;
       }
-      if (a.data && a.data.route) window.location.hash = "#" + a.data.route;
+      if (a.data && a.data.route && /^\/[a-zA-Z0-9\-_/]+$/.test(a.data.route)) window.location.hash = "#" + a.data.route;
     },
   });
 
@@ -147,14 +155,21 @@ if (Capacitor.isNativePlatform()) {
     registerTaskCallActions();
     registerBuddyCallActions();
 
-    // After notification permission is granted, request mic+camera
+    // After notification permission is granted, request mic+camera+gallery
     import('@capacitor/core').then(function (cap) {
       var MediaPermissions = cap.registerPlugin('MediaPermissions');
       MediaPermissions.request().then(function (result) {
-        console.log("[Permissions] Mic + camera granted:", result.granted);
+        if (import.meta.env.DEV) console.log("[Permissions] Mic + camera granted:", result.granted);
       }).catch(function (err) {
         console.warn("[Permissions] MediaPermissions plugin error:", err);
       });
+
+      // Request gallery/photos permission (READ_MEDIA_IMAGES on Android 13+)
+      import('@capacitor/camera').then(function (mod) {
+        mod.Camera.requestPermissions({ permissions: ['photos'] }).then(function (status) {
+          if (import.meta.env.DEV) console.log("[Permissions] Gallery:", status.photos);
+        }).catch(function () {});
+      }).catch(function () {});
     });
   });
 }

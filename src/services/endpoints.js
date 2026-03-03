@@ -7,6 +7,7 @@ export var AUTH = {
   LOGIN:           "/api/auth/login/",
   LOGOUT:          "/api/auth/logout/",
   REGISTER:        "/api/auth/registration/",
+  TOKEN_REFRESH:   "/api/auth/token/refresh/",
   PASSWORD_CHANGE: "/api/auth/password/change/",
   PASSWORD_RESET:  "/api/auth/password/reset/",
   PASSWORD_RESET_CONFIRM: "/api/auth/password/reset/confirm/",
@@ -68,6 +69,7 @@ export var DREAMS = {
   COLLABORATOR_DELETE: function (id, userId) { return "/api/dreams/dreams/" + id + "/collaborators/" + userId + "/"; },
   SHARED_WITH_ME:     "/api/dreams/dreams/shared-with-me/",
   ALL_TAGS:           "/api/dreams/dreams/tags/",
+  LIKE: function (id) { return "/api/dreams/dreams/" + id + "/like/"; },
   EXPORT_PDF: function (id) { return "/api/dreams/dreams/" + id + "/export-pdf/"; },
   GOALS: {
     LIST:     "/api/dreams/goals/",
@@ -303,7 +305,25 @@ export var SOCIAL = {
     COMMENTS: function (id) { return "/api/social/posts/" + id + "/comments/"; },
     ENCOURAGE: function (id) { return "/api/social/posts/" + id + "/encourage/"; },
     SHARE: function (id) { return "/api/social/posts/" + id + "/share/"; },
+    SAVE: function (id) { return "/api/social/posts/" + id + "/save/"; },
+    SAVED: "/api/social/posts/saved/",
     USER: function (userId) { return "/api/social/posts/user/" + userId + "/"; },
+  },
+  EVENTS: {
+    LIST:         "/api/social/events/",
+    DETAIL: function (id) { return "/api/social/events/" + id + "/"; },
+    FEED:         "/api/social/events/feed/",
+    REGISTER: function (id) { return "/api/social/events/" + id + "/register/"; },
+    UNREGISTER: function (id) { return "/api/social/events/" + id + "/unregister/"; },
+    PARTICIPANTS: function (id) { return "/api/social/events/" + id + "/participants/"; },
+  },
+  STORIES: {
+    LIST:     "/api/social/stories/",
+    FEED:     "/api/social/stories/feed/",
+    MINE:     "/api/social/stories/my_stories/",
+    VIEW: function (id) { return "/api/social/stories/" + id + "/view/"; },
+    VIEWERS: function (id) { return "/api/social/stories/" + id + "/viewers/"; },
+    DELETE: function (id) { return "/api/social/stories/" + id + "/"; },
   },
 };
 

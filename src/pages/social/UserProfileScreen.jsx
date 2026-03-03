@@ -9,28 +9,19 @@ import {
   Brain, Wallet, TrendingUp, Loader, MoreVertical, Flag,
   ShieldOff, UserMinus, UserCheck
 } from "lucide-react";
-import PageLayout from "../../components/shared/PageLayout";
+import BottomNav from "../../components/shared/BottomNav";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
-
-var CATEGORIES = {
-  career: { label: "Career" },
-  hobbies: { label: "Hobbies" },
-  health: { label: "Health" },
-  finance: { label: "Finance" },
-  personal: { label: "Personal" },
-  relationships: { label: "Relationships" },
-};
+import { CATEGORIES, catSolid, adaptColor, GRADIENTS } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import Avatar from "../../components/shared/Avatar";
+import GlassModal from "../../components/shared/GlassModal";
+import GlassInput from "../../components/shared/GlassInput";
+import GradientButton from "../../components/shared/GradientButton";
+import ExpandableText from "../../components/shared/ExpandableText";
 
 const CAT_ICONS = { career: Briefcase, hobbies: Palette, health: Heart, finance: Wallet, personal: Brain, relationships: Users };
-const CAT_COLORS = { career: "#8B5CF6", hobbies: "#EC4899", health: "#10B981", finance: "#FCD34D", personal: "#6366F1", relationships: "#14B8A6" };
-
-const LIGHT_COLOR_MAP = {
-  "#C4B5FD": "#6D28D9",
-  "#5DE5A8": "#059669",
-  "#FCD34D": "#B45309",
-  "#F69A9A": "#DC2626",
-};
 
 export default function UserProfileScreen() {
   const navigate = useNavigate();
@@ -85,7 +76,7 @@ export default function UserProfileScreen() {
 
   var handleSendRequest = function () {
     setRequestSent(true);
-    apiPost(SOCIAL.FRIENDS.REQUEST, { targetUserId: id }).then(function () {
+    apiPost(SOCIAL.FRIENDS.REQUEST, { target_user_id: id }).then(function () {
       showToast("Friend request sent!", "success");
       queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
     }).catch(function (err) {
@@ -100,7 +91,7 @@ export default function UserProfileScreen() {
       apiDelete(SOCIAL.UNFOLLOW(id)).catch(function () { setIsFollowing(true); });
     } else {
       setIsFollowing(true);
-      apiPost(SOCIAL.FOLLOW, { targetUserId: id }).catch(function () { setIsFollowing(false); });
+      apiPost(SOCIAL.FOLLOW, { target_user_id: id }).catch(function () { setIsFollowing(false); });
     }
   };
 
@@ -112,7 +103,7 @@ export default function UserProfileScreen() {
         showToast("User unblocked", "info");
       }).catch(function (err) { showToast(err.message || "Failed to unblock", "error"); });
     } else {
-      apiPost(SOCIAL.BLOCK, { targetUserId: id }).then(function () {
+      apiPost(SOCIAL.BLOCK, { target_user_id: id }).then(function () {
         setIsBlocked(true);
         showToast("User blocked", "info");
       }).catch(function (err) { showToast(err.message || "Failed to block", "error"); });
@@ -126,7 +117,7 @@ export default function UserProfileScreen() {
 
   var submitReport = function () {
     if (!reportReason.trim()) return;
-    apiPost(SOCIAL.REPORT, { targetUserId: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
+    apiPost(SOCIAL.REPORT, { target_user_id: id, reason: reportReason.trim(), category: "inappropriate" }).then(function () {
       showToast("Report submitted", "success");
       setShowReportModal(false);
       setReportReason("");
@@ -149,72 +140,68 @@ export default function UserProfileScreen() {
 
   if (profileQuery.isLoading) {
     return (
-      <PageLayout>
-        <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-            <button className="dp-ib" onClick={() => navigate(-1)}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
-            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Profile</span>
-          </div>
-          <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <Loader size={28} color="var(--dp-text-muted)" style={{ animation: "spin 1s linear infinite" }} />
-            <div style={{ fontSize: 14, color: "var(--dp-text-muted)", marginTop: 12 }}>Loading profile...</div>
-          </div>
+      <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+        <GlassAppBar
+          style={{ position: "fixed", top: 0, left: 0, right: 0 }}
+          left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+          title="Profile"
+        />
+        <div style={{ textAlign: "center", padding: "120px 20px 40px" }}>
+          <Loader size={28} color="var(--dp-text-muted)" style={{ animation: "spin 1s linear infinite" }} />
+          <div style={{ fontSize: 14, color: "var(--dp-text-muted)", marginTop: 12 }}>Loading profile...</div>
         </div>
-      </PageLayout>
+        <BottomNav />
+      </div>
     );
   }
 
   if (!user) {
     return (
-      <PageLayout>
-        <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
-            <button className="dp-ib" onClick={() => navigate(-1)}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
-            <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Profile</span>
+      <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+        <GlassAppBar
+          style={{ position: "fixed", top: 0, left: 0, right: 0 }}
+          left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+          title="Profile"
+        />
+        <div style={{ textAlign: "center", padding: "120px 20px 40px" }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: "50%", margin: "0 auto 16px",
+            background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Users size={32} color="var(--dp-text-muted)" />
           </div>
-          <div style={{ textAlign: "center", padding: "60px 20px" }}>
-            <div style={{
-              width: 80, height: 80, borderRadius: "50%", margin: "0 auto 16px",
-              background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-            }}>
-              <Users size={32} color="var(--dp-text-muted)" />
-            </div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 8px" }}>User Not Found</h2>
-            <p style={{ fontSize: 14, color: "var(--dp-text-muted)", margin: 0 }}>This profile doesn't exist or may have been removed.</p>
-          </div>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 8px" }}>User Not Found</h2>
+          <p style={{ fontSize: 14, color: "var(--dp-text-muted)", margin: 0 }}>This profile doesn't exist or may have been removed.</p>
         </div>
-      </PageLayout>
+        <BottomNav />
+      </div>
     );
   }
 
   return (
-    <PageLayout>
-      <div style={{ paddingTop: 20, paddingBottom: 40, fontFamily: "'Inter', sans-serif" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, ...stagger(0) }}>
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>Profile</span>
-        </div>
+    <div style={{ position: "fixed", inset: 0, overflow: "hidden" }}>
+      {/* ═══ FIXED APP BAR ═══ */}
+      <GlassAppBar
+        style={{ position: "fixed", top: 0, left: 0, right: 0 }}
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        title="Profile"
+      />
+
+      {/* ═══ SCROLLABLE CONTENT ═══ */}
+      <main style={{ position: "absolute", inset: 0, overflowY: "auto", overflowX: "hidden", zIndex: 10, paddingTop: 80, paddingBottom: 120 }}>
+        <div style={{ width: "100%", padding: "0 16px" }}>
 
         {/* Avatar + Name */}
         <div style={{ textAlign: "center", marginBottom: 28, ...stagger(1) }}>
-          <div style={{
-            width: 88, height: 88, borderRadius: "50%", margin: "0 auto 16px",
-            background: "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(236,72,153,0.2))",
-            border: "3px solid rgba(139,92,246,0.4)", display: "flex", alignItems: "center",
-            justifyContent: "center", fontSize: 34, fontWeight: 700, color: "#fff",
-            boxShadow: "0 0 30px rgba(139,92,246,0.2)",
-          }}>
-            {user.initial}
-          </div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 4px", letterSpacing: "-0.5px" }}>{user.name}</h1>
+          <Avatar
+            name={user.name}
+            size={88}
+            color="var(--dp-accent)"
+            shape="circle"
+            style={{ margin: "0 auto 16px", boxShadow: "0 0 30px rgba(139,92,246,0.2)" }}
+          />
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 4px", letterSpacing: "-0.5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%", marginLeft: "auto", marginRight: "auto" }}>{user.name}</h1>
           <p style={{ fontSize: 13, color: "var(--dp-text-tertiary)", margin: 0 }}>Joined {user.joinedDate}</p>
           {user.mutualFriends > 0 && (
             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginTop: 8 }}>
@@ -226,30 +213,22 @@ export default function UserProfileScreen() {
 
         {/* Action Buttons */}
         <div style={{ display: "flex", gap: 10, marginBottom: 12, ...stagger(2) }}>
-          <button
+          <GradientButton
+            gradient={(isFriend || requestSent) ? "teal" : "primary"}
+            icon={isFriend ? UserCheck : requestSent ? Check : UserPlus}
             onClick={function () { if (!requestSent && !isFriend) handleSendRequest(); }}
             disabled={requestSent || isFriend}
-            style={{
-              flex: 1, height: 46, borderRadius: 14, border: "none", cursor: (requestSent || isFriend) ? "default" : "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              fontSize: 14, fontWeight: 600, transition: "all 0.3s",
-              background: (isFriend || requestSent) ? "rgba(16,185,129,0.15)" : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-              color: (isFriend || requestSent) ? (isLight ? "#059669" : "#5DE5A8") : "#fff",
-              border: (isFriend || requestSent) ? "1px solid rgba(93,229,168,0.3)" : "none",
-            }}
+            style={{ flex: 1, height: 46 }}
           >
-            {isFriend ? <UserCheck size={18} /> : requestSent ? <Check size={18} /> : <UserPlus size={18} />}
             {isFriend ? "Friends" : requestSent ? "Request Sent" : "Add Friend"}
-          </button>
-          <button onClick={() => navigate("/buddy-chat/" + id)} style={{
+          </GradientButton>
+          <button className="dp-gh" onClick={() => navigate("/buddy-chat/" + id)} style={{
             flex: 1, height: 46, borderRadius: 14, background: "var(--dp-glass-bg)",
             border: "1px solid var(--dp-input-border)", cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
             fontSize: 14, fontWeight: 600, color: "var(--dp-text-primary)", transition: "all 0.2s",
-          }}
-            onMouseEnter={e => e.currentTarget.style.background = "var(--dp-surface-hover)"}
-            onMouseLeave={e => e.currentTarget.style.background = "var(--dp-glass-bg)"}
-          >
+            fontFamily: "inherit",
+          }}>
             <MessageCircle size={18} /> Message
           </button>
         </div>
@@ -259,10 +238,10 @@ export default function UserProfileScreen() {
           <button onClick={handleFollow} style={{
             flex: 1, height: 40, borderRadius: 12, cursor: "pointer",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-            fontSize: 13, fontWeight: 600, transition: "all 0.3s",
+            fontSize: 13, fontWeight: 600, transition: "all 0.3s", fontFamily: "inherit",
             background: isFollowing ? "rgba(139,92,246,0.12)" : "var(--dp-glass-bg)",
             border: isFollowing ? "1px solid rgba(139,92,246,0.3)" : "1px solid var(--dp-input-border)",
-            color: isFollowing ? (isLight ? "#6D28D9" : "#C4B5FD") : "var(--dp-text-primary)",
+            color: isFollowing ? "var(--dp-accent-text)" : "var(--dp-text-primary)",
           }}>
             {isFollowing ? <UserCheck size={16} /> : <UserPlus size={16} />}
             {isFollowing ? "Following" : "Follow"}
@@ -272,87 +251,74 @@ export default function UserProfileScreen() {
               width: 40, height: 40, borderRadius: 12, background: "var(--dp-glass-bg)",
               border: "1px solid var(--dp-input-border)", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center",
-              color: "var(--dp-text-secondary)", transition: "all 0.2s",
+              color: "var(--dp-text-secondary)", transition: "all 0.2s", fontFamily: "inherit",
             }}>
               <MoreVertical size={18} />
             </button>
             {showMenu && (
-              <div style={{
-                position: "absolute", right: 0, top: 46, zIndex: 50, minWidth: 180,
-                background: "var(--dp-card-bg)", border: "1px solid var(--dp-glass-border)",
-                borderRadius: 14, padding: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.2)",
-              }}>
-                <button onClick={handleRemoveFriend} style={{
-                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
-                  background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
-                  fontSize: 13, fontWeight: 500, color: "var(--dp-text-primary)", transition: "background 0.15s",
-                }}
-                  onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-                  onMouseLeave={function (e) { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <UserMinus size={16} /> Remove Friend
-                </button>
-                <button onClick={handleBlock} style={{
-                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
-                  background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
-                  fontSize: 13, fontWeight: 500, color: isBlocked ? "#10B981" : "#EF4444", transition: "background 0.15s",
-                }}
-                  onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-                  onMouseLeave={function (e) { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <ShieldOff size={16} /> {isBlocked ? "Unblock User" : "Block User"}
-                </button>
-                <button onClick={handleReport} style={{
-                  width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
-                  background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
-                  fontSize: 13, fontWeight: 500, color: "#F59E0B", transition: "background 0.15s",
-                }}
-                  onMouseEnter={function (e) { e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-                  onMouseLeave={function (e) { e.currentTarget.style.background = "transparent"; }}
-                >
-                  <Flag size={16} /> Report User
-                </button>
-              </div>
+              <>
+                {/* Overlay to close menu on outside click */}
+                <div onClick={function () { setShowMenu(false); }} style={{ position: "fixed", inset: 0, zIndex: 199 }} />
+                <div style={{
+                  position: "absolute", right: 0, top: 46, zIndex: 200, minWidth: 180,
+                  background: "#1A1535", border: "1px solid rgba(139,92,246,0.2)",
+                  borderRadius: 14, padding: 6, boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                }}>
+                  <button className="dp-gh" onClick={handleRemoveFriend} style={{
+                    width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
+                    background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                    fontSize: 13, fontWeight: 500, color: "#E2E0EA", transition: "background 0.15s", fontFamily: "inherit",
+                  }}>
+                    <UserMinus size={16} /> Remove Friend
+                  </button>
+                  <button className="dp-gh" onClick={handleBlock} style={{
+                    width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
+                    background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                    fontSize: 13, fontWeight: 500, color: isBlocked ? "#10B981" : "#EF4444", transition: "background 0.15s", fontFamily: "inherit",
+                  }}>
+                    <ShieldOff size={16} /> {isBlocked ? "Unblock User" : "Block User"}
+                  </button>
+                  <button className="dp-gh" onClick={handleReport} style={{
+                    width: "100%", padding: "10px 14px", borderRadius: 10, border: "none",
+                    background: "transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10,
+                    fontSize: 13, fontWeight: 500, color: "#F59E0B", transition: "background 0.15s", fontFamily: "inherit",
+                  }}>
+                    <Flag size={16} /> Report User
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </div>
 
         {/* Report Modal */}
-        {showReportModal && (
-          <div style={{
-            position: "fixed", inset: 0, zIndex: 100, background: "rgba(0,0,0,0.5)",
-            display: "flex", alignItems: "center", justifyContent: "center", padding: 20,
-          }} onClick={function () { setShowReportModal(false); }}>
-            <div onClick={function (e) { e.stopPropagation(); }} style={{
-              width: "100%", maxWidth: 380, background: "var(--dp-card-bg)",
-              border: "1px solid var(--dp-glass-border)", borderRadius: 20, padding: 24,
-            }}>
-              <h3 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 16px" }}>Report User</h3>
-              <textarea
-                value={reportReason}
-                onChange={function (e) { setReportReason(e.target.value); }}
-                placeholder="Describe the issue..."
-                rows={4}
-                style={{
-                  width: "100%", borderRadius: 12, padding: "12px 14px", fontSize: 14,
-                  background: "var(--dp-input-bg)", border: "1px solid var(--dp-input-border)",
-                  color: "var(--dp-text)", resize: "none", fontFamily: "inherit",
-                }}
-              />
-              <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
-                <button onClick={function () { setShowReportModal(false); setReportReason(""); }} style={{
-                  flex: 1, height: 42, borderRadius: 12, background: "var(--dp-glass-bg)",
-                  border: "1px solid var(--dp-input-border)", cursor: "pointer",
-                  fontSize: 14, fontWeight: 600, color: "var(--dp-text-primary)",
-                }}>Cancel</button>
-                <button onClick={submitReport} style={{
-                  flex: 1, height: 42, borderRadius: 12, border: "none", cursor: "pointer",
-                  background: "#EF4444", fontSize: 14, fontWeight: 600, color: "#fff",
-                }}>Submit Report</button>
-              </div>
+        <GlassModal
+          open={showReportModal}
+          onClose={function () { setShowReportModal(false); setReportReason(""); }}
+          variant="center"
+          title="Report User"
+          maxWidth={380}
+        >
+          <div style={{ padding: 20 }}>
+            <GlassInput
+              value={reportReason}
+              onChange={function (e) { setReportReason(e.target.value); }}
+              placeholder="Describe the issue..."
+              multiline
+              style={{ marginBottom: 16 }}
+            />
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={function () { setShowReportModal(false); setReportReason(""); }} style={{
+                flex: 1, height: 42, borderRadius: 12, background: "var(--dp-glass-bg)",
+                border: "1px solid var(--dp-input-border)", cursor: "pointer",
+                fontSize: 14, fontWeight: 600, color: "var(--dp-text-primary)", fontFamily: "inherit",
+              }}>Cancel</button>
+              <GradientButton gradient="danger" onClick={submitReport} style={{ flex: 1, height: 42 }}>
+                Submit Report
+              </GradientButton>
             </div>
           </div>
-        )}
+        </GlassModal>
 
         {/* Bio */}
         {user.bio && (
@@ -361,16 +327,16 @@ export default function UserProfileScreen() {
             background: "var(--dp-glass-bg)", border: "1px solid var(--dp-glass-border)",
             marginBottom: 20,
           }}>
-            <p style={{ fontSize: 14, color: "var(--dp-text-secondary)", lineHeight: 1.6, margin: 0 }}>{user.bio}</p>
+            <ExpandableText text={user.bio} maxLines={3} fontSize={14} color="var(--dp-text-secondary)" />
           </div>
         )}
 
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 24, ...stagger(4) }}>
           {[
-            { icon: Star, label: "Level", value: user.level, color: isLight ? "#B45309" : "#FCD34D" },
-            { icon: Zap, label: "XP", value: user.xp.toLocaleString(), color: isLight ? "#6D28D9" : "#C4B5FD" },
-            { icon: Flame, label: "Streak", value: `${user.streak}d`, color: isLight ? "#DC2626" : "#F69A9A" },
+            { icon: Star, label: "Level", value: user.level, color: "var(--dp-warning)" },
+            { icon: Zap, label: "XP", value: user.xp.toLocaleString(), color: "var(--dp-accent-text)" },
+            { icon: Flame, label: "Streak", value: `${user.streak}d`, color: "var(--dp-danger)" },
           ].map((stat, i) => (
             <div key={i} style={{
               padding: "14px 10px", borderRadius: 16, textAlign: "center",
@@ -383,23 +349,40 @@ export default function UserProfileScreen() {
           ))}
         </div>
 
-        {/* Dreams */}
+        {/* Public Dreams */}
         {user.dreams && user.dreams.length > 0 && (
           <div style={{ marginBottom: 24, ...stagger(5) }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <Target size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} />
+              <Target size={16} color="var(--dp-accent-text)" />
               <span style={{ fontSize: 15, fontWeight: 600, color: "var(--dp-text)" }}>Dreams</span>
             </div>
-            {user.dreams.map((dream, i) => (
-              <div key={i} style={{
-                padding: "12px 14px", borderRadius: 14, marginBottom: 8,
-                background: "var(--dp-glass-bg)", border: "1px solid var(--dp-glass-border)",
-                display: "flex", alignItems: "center", gap: 10,
-              }}>
-                <Target size={14} color="var(--dp-text-muted)" />
-                <span style={{ fontSize: 13, color: "var(--dp-text-primary)" }}>{dream}</span>
-              </div>
-            ))}
+            {user.dreams.map(function (dream, i) {
+              var d = typeof dream === "string" ? { title: dream } : dream;
+              return (
+                <div key={d.id || i} onClick={function () { if (d.id) navigate("/dream/" + d.id); }} style={{
+                  padding: "12px 14px", borderRadius: 14, marginBottom: 8,
+                  background: "var(--dp-glass-bg)", border: "1px solid var(--dp-glass-border)",
+                  cursor: d.id ? "pointer" : "default", transition: "background 0.2s",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <Target size={14} color="var(--dp-accent)" />
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{d.title}</span>
+                    {d.category && <span style={{ fontSize: 11, color: "var(--dp-text-muted)", flexShrink: 0 }}>{d.category}</span>}
+                  </div>
+                  {d.progress != null && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                        <span style={{ fontSize: 11, color: "var(--dp-text-tertiary)" }}>Progress</span>
+                        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--dp-accent)" }}>{Math.round(d.progress)}%</span>
+                      </div>
+                      <div style={{ height: 4, borderRadius: 2, background: "var(--dp-glass-border)", overflow: "hidden" }}>
+                        <div style={{ height: "100%", borderRadius: 2, background: "var(--dp-accent)", width: Math.round(d.progress) + "%", transition: "width 0.5s ease" }} />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -413,8 +396,8 @@ export default function UserProfileScreen() {
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {user.categories.map((cat, i) => {
                 const CatIcon = CAT_ICONS[cat] || Star;
-                const color = CAT_COLORS[cat] || "#8B5CF6";
-                const textColor = isLight && LIGHT_COLOR_MAP[color] ? LIGHT_COLOR_MAP[color] : color;
+                const color = catSolid(cat);
+                const textColor = adaptColor(color, isLight);
                 const label = CATEGORIES[cat]?.label || cat;
                 return (
                   <div key={i} style={{
@@ -429,7 +412,11 @@ export default function UserProfileScreen() {
             </div>
           </div>
         )}
-      </div>
-    </PageLayout>
+
+        </div>
+      </main>
+
+      <BottomNav />
+    </div>
   );
 }

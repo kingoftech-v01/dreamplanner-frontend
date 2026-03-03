@@ -11,8 +11,13 @@ import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { DreamCardSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
 import GlobalSearch from "../../components/shared/GlobalSearch";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
 import { useTaskCall } from "../../context/TaskCallContext";
 import { useToast } from "../../context/ToastContext";
+import { CATEGORIES, catColor, catSolid, adaptColor, GRADIENTS, BRAND } from "../../styles/colors";
 import {
   Home, CalendarDays, Users, User, Bell, Plus, Sparkles,
   Bot, MessageCircle, Trophy, ShoppingBag, Briefcase,
@@ -39,33 +44,23 @@ import {
 
 
 // ─── CATEGORY CONFIG ─────────────────────────────────────────────
-const CATS = {
-  career:   { Icon: Briefcase, color:"#8B5CF6", label:"Career" },
-  hobbies:  { Icon: Palette,   color:"#EC4899", label:"Hobbies" },
-  health:   { Icon: Heart,     color:"#10B981", label:"Health" },
-  finance:  { Icon: Wallet,    color:"#FCD34D", label:"Finance" },
-  personal: { Icon: Brain,     color:"#6366F1", label:"Growth" },
-  relationships: { Icon: Users, color:"#14B8A6", label:"Social" },
-};
-
-// ─── CATEGORY COLORS (for sparklines) ───────────────────────────
-const CATEGORY_COLORS = {
-  career: "#8B5CF6",
-  hobbies: "#EC4899",
-  health: "#10B981",
-  finance: "#FCD34D",
-  personal: "#6366F1",
-  relationships: "#14B8A6",
+var CAT_ICONS = {
+  career: Briefcase,
+  hobbies: Palette,
+  health: Heart,
+  finance: Wallet,
+  personal: Brain,
+  relationships: Users,
 };
 
 var DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
 
 
 const ACTIONS = [
-  { Icon: Bot,            label:"AI Coach",       color:"#8B5CF6", path:"/chat" },
-  { Icon: Target,         label:"Vision Board",   color:"#14B8A6", path:"/vision-board" },
-  { Icon: Sparkles,       label:"Dream Feed",     color:"#FCD34D", path:"/social/feed" },
-  { Icon: ShoppingBag,    label:"Store",          color:"#10B981", path:"/store" },
+  { Icon: Bot,            label:"AI Coach",       color:BRAND.purple, path:"/chat" },
+  { Icon: Target,         label:"Vision Board",   color:BRAND.teal, path:"/vision-board" },
+  { Icon: Users,          label:"Circles",         color:BRAND.yellow, path:"/circles" },
+  { Icon: ShoppingBag,    label:"Store",          color:BRAND.greenSolid, path:"/store" },
 ];
 
 // ═══════════════════════════════════════════════════════════════════
@@ -122,23 +117,25 @@ export default function DreamPlannerHome() {
   var notifCount = (notifQuery.data && notifQuery.data.count) || notifQuery.data || 0;
   if (typeof notifCount === "object") notifCount = notifCount.unreadCount || 0;
 
-  // ── User data with fallbacks ──
+  // ── User data from dashboard.stats (real API) with auth user fallbacks ──
+  var dStats = (dashboard && dashboard.stats) || {};
   var u = {
     displayName: (user && user.displayName) || (user && user.email) || "Dreamer",
     email: (user && user.email) || "",
-    level: (dashboard.level) || (user && user.level) || 1,
-    xp: (dashboard.xp) || (user && user.xp) || 0,
-    xpToNext: (dashboard.xpToNext) || (user && user.xpToNext) || 1000,
-    streakDays: (dashboard.streakDays) || (user && user.streakDays) || 0,
-    rank: (dashboard.rank && typeof dashboard.rank === "object" ? dashboard.rank.leagueName : dashboard.rank) || (user && user.rank && typeof user.rank === "object" ? user.rank.leagueName : (user && user.rank)) || "Starter",
+    level: dStats.level || (user && user.level) || 1,
+    xp: dStats.xp || (user && user.xp) || 0,
+    xpToNext: dStats.xp_to_next_level || 100 - ((dStats.xp || (user && user.xp) || 0) % 100),
+    streakDays: dStats.streak_days || (user && user.streakDays) || 0,
   };
-  var levelPct = u.xpToNext > 0 ? Math.round((u.xp / u.xpToNext) * 100) : 0;
+  var levelPct = u.xpToNext > 0 ? Math.round((u.xp % 100) / 100 * 100) : 0;
 
   var streak = u.streakDays;
-  var bestStreak = (dashboard.bestStreak) || (user && user.bestStreak) || 0;
 
-  // ── Activity heatmap from dashboard ──
-  var activityData = (dashboard.activityHeatmap) || Array.from({ length: 28 }, function () { return 0; });
+  // ── Activity heatmap from dashboard (real API) ──
+  var rawHeatmap = (dashboard && dashboard.heatmap) || [];
+  var activityData = rawHeatmap.length > 0
+    ? rawHeatmap.map(function (d) { var t = d.tasks_completed || 0; return t >= 5 ? 4 : t >= 3 ? 3 : t >= 2 ? 2 : t >= 1 ? 1 : 0; })
+    : Array.from({ length: 28 }, function () { return 0; });
 
   var loading = dreamsInf.isLoading;
 
@@ -146,14 +143,14 @@ export default function DreamPlannerHome() {
       <div style={{ width: "100%", padding: "20px 16px" }}>
         <SkeletonCard height={100} style={{ marginBottom: 16 }} />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[1,2,3].map(i => <DreamCardSkeleton key={i} isLight={isLight} />)}
+          {[1,2,3].map(i => <DreamCardSkeleton key={i} />)}
         </div>
       </div>
   );
 
   if (dreamsInf.isError || dashboardQuery.isError) {
     return (
-      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+      <div style={{ position: "fixed", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <ErrorState
           message={(dreamsInf.error && dreamsInf.error.message) || (dashboardQuery.error && dashboardQuery.error.message) || "Failed to load home screen"}
           onRetry={function () { dreamsInf.refetch(); dashboardQuery.refetch(); }}
@@ -164,73 +161,38 @@ export default function DreamPlannerHome() {
   }
 
   return (
-    <div style={{ position:"fixed", inset:0, overflow:"hidden", fontFamily:"'Inter', -apple-system, BlinkMacSystemFont, sans-serif" }}>
+    <div style={{ position:"fixed", inset:0, overflow:"hidden" }}>
 
       {/* ═══ APP BAR ═══ */}
-      <header style={{
-        position:"fixed",top:0,left:0,right:0,zIndex:100,height:64,
-        display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px",
-        background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",
-        borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)",
-      }}>
-        <div onClick={()=>navigate("/")} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
-          <Sparkles size={20} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5} />
-          <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>DreamPlanner</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-        <button aria-label="Search" onClick={()=>setSearchOpen(true)} style={{
-          position:"relative",width:40,height:40,borderRadius:12,
-          border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",
-          color:isLight?"#1a1535":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-          backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",transition:"all 0.2s",
-        }}
-          onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.1)"}
-          onMouseLeave={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}
-        >
-          <Search size={18} strokeWidth={2} />
-        </button>
-        <button aria-label="Notifications" onClick={()=>navigate("/notifications")} style={{
-          position:"relative",width:40,height:40,borderRadius:12,
-          border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",
-          color:isLight?"#1a1535":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
-          backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",transition:"all 0.2s",
-        }}
-          onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.1)"}
-          onMouseLeave={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}
-        >
-          <Bell size={18} strokeWidth={2} />
-          {notifCount > 0 && (
-            <span style={{
-              position:"absolute",top:-4,right:-4,width:18,height:18,borderRadius:"50%",
-              background:"#EF4444",color:"#fff",fontSize:12,fontWeight:700,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              boxShadow:"0 2px 8px rgba(239,68,68,0.5)",border:isLight?"2px solid #f0ecff":"2px solid #0c081a",
-            }}>{notifCount}</span>
-          )}
-        </button>
-        </div>
-      </header>
+      <GlassAppBar
+        style={{position:"fixed",top:0,left:0,right:0}}
+        left={
+          <div onClick={()=>navigate("/")} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+            <Sparkles size={20} color="var(--dp-accent)" strokeWidth={2.5} />
+            <span style={{fontSize:17,fontWeight:700,color:"var(--dp-text)",letterSpacing:"-0.3px"}}>DreamPlanner</span>
+          </div>
+        }
+        right={
+          <>
+            <IconButton icon={Search} label="Search" onClick={()=>setSearchOpen(true)} />
+            <IconButton icon={Bell} label="Notifications" badge={notifCount} onClick={()=>navigate("/notifications")} />
+          </>
+        }
+      />
 
       {/* ═══ CONTENT ═══ */}
-      <main style={{position:"absolute",inset:0,overflowY:"auto",overflowX:"hidden",zIndex:10,paddingTop:80,paddingBottom:140,opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
+      <main id="main-content" style={{position:"absolute",inset:0,overflowY:"auto",overflowX:"hidden",zIndex:10,paddingTop:80,paddingBottom:140,opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{width:"100%",padding:"0 16px"}}>
 
           {/* ── Welcome Card ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>
-            <div className="dp-g" style={{padding:20,marginBottom:20}}>
+            <GlassCard padding={20} mb={20}>
               {/* User row */}
               <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
-                <div style={{
-                  width:52,height:52,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
-                  background:"linear-gradient(135deg,rgba(139,92,246,0.35),rgba(109,40,217,0.35))",
-                  border:"2px solid rgba(139,92,246,0.4)",fontSize:22,fontWeight:700,color:isLight?"#1a1535":"#fff",
-                  boxShadow:"0 0 20px rgba(139,92,246,0.15)",
-                }}>
-                  {u.displayName[0]}
-                </div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.75)",marginBottom:2}}>Welcome back!</div>
-                  <div style={{fontSize:19,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>{u.displayName}</div>
+                <Avatar name={u.displayName} size={52} shape="circle" />
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,color:"var(--dp-text-secondary)",marginBottom:2}}>Welcome back!</div>
+                  <div style={{fontSize:19,fontWeight:700,color:"var(--dp-text)",letterSpacing:"-0.3px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{u.displayName}</div>
                 </div>
                 {/* Rank badge */}
                 <div style={{
@@ -239,21 +201,21 @@ export default function DreamPlannerHome() {
                   border:"1px solid rgba(139,92,246,0.2)",
                   display:"flex",alignItems:"center",gap:5,
                 }}>
-                  <Target size={13} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5} />
-                  <span style={{fontSize:12,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD"}}>{u.rank}</span>
+                  <Target size={13} color="var(--dp-accent)" strokeWidth={2.5} />
+                  <span style={{fontSize:12,fontWeight:600,color:"var(--dp-accent)"}}>Level {u.level}</span>
                 </div>
               </div>
 
               {/* Level progress */}
               <div style={{marginBottom:18,padding:"0 4px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                  <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.72)"}}>Level {u.level}</span>
-                  <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{u.xp.toLocaleString()} / {u.xpToNext.toLocaleString()} XP</span>
+                  <span style={{fontSize:12,color:"var(--dp-text-secondary)"}}>Level {u.level}</span>
+                  <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{u.xp % 100} / 100 XP</span>
                 </div>
-                <div style={{height:4,borderRadius:2,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",overflow:"hidden"}}>
+                <div style={{height:4,borderRadius:2,background:"var(--dp-glass-border)",overflow:"hidden"}}>
                   <div className="dp-level-bar" style={{
                     height:"100%",borderRadius:2,width:`${levelPct}%`,
-                    background:"linear-gradient(90deg,#8B5CF6,#C4B5FD)",
+                    background:GRADIENTS.xp,
                     boxShadow:"0 0 10px rgba(139,92,246,0.3)",
                   }}/>
                 </div>
@@ -261,49 +223,49 @@ export default function DreamPlannerHome() {
 
               {/* Stats row */}
               <div style={{display:"flex",justifyContent:"space-around",alignItems:"center"}}>
-                <StatBlock Icon={Star} value={u.level} label="Level" color={isLight ? "#B45309" : "#FCD34D"} />
+                <StatBlock Icon={Star} value={u.level} label="Level" color="var(--dp-warning)" />
                 <Divider />
-                <StatBlock Icon={Zap} value={u.xp.toLocaleString()} label="XP" color="#8B5CF6" />
+                <StatBlock Icon={Zap} value={u.xp.toLocaleString()} label="XP" color={BRAND.purple} />
                 <Divider />
-                <StatBlock Icon={Flame} value={u.streakDays} label="Streak" color={isLight ? "#DC2626" : "#F69A9A"} />
+                <StatBlock Icon={Flame} value={u.streakDays} label="Streak" color="var(--dp-danger)" />
               </div>
 
               {/* Streak Tracker */}
               <div style={{
                 marginTop: 16, paddingTop: 14,
-                borderTop: `1px solid ${isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.06)"}`,
+                borderTop: "1px solid var(--dp-divider)",
                 display: "flex", alignItems: "center", justifyContent: "space-between",
               }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ fontSize: 18, animation: "dpPulse 2s ease-in-out infinite" }}>🔥</span>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)" }}>{streak}</span>
-                  <span style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>day streak</span>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}>{streak}</span>
+                  <span style={{ fontSize: 11, color: "var(--dp-text-muted)" }}>day streak</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                  <span style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>Best:</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: isLight ? "#7C3AED" : "#C4B5FD" }}>{bestStreak} days</span>
+                  <span style={{ fontSize: 11, color: "var(--dp-text-muted)" }}>Active dreams:</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-accent)" }}>{dStats.active_dreams || 0}</span>
                 </div>
               </div>
-            </div>
+            </GlassCard>
           </div>
 
           {/* ── Quick Actions ── */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:28}}>
+          <div className="dp-stagger" style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:28}}>
             {ACTIONS.map((a,i)=>(
               <div key={i} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${150+i*80}ms`}}>
-                <button onClick={()=>navigate(a.path)} className="dp-g dp-gh" style={{
+                <GlassCard hover onClick={()=>navigate(a.path)} padding={0} style={{
                   width:"100%",padding:"20px 12px",display:"flex",flexDirection:"column",
-                  alignItems:"center",gap:10,cursor:"pointer",border:"none",textAlign:"center",
+                  alignItems:"center",gap:10,textAlign:"center",
                 }}>
                   <div style={{
                     width:46,height:46,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",
                     background:`${a.color}15`,border:`1px solid ${a.color}20`,
                     transition:"all 0.3s",
                   }}>
-                    <a.Icon size={22} color={a.color === "#FCD34D" ? (isLight ? "#B45309" : "#FCD34D") : a.color} strokeWidth={2} />
+                    <a.Icon size={22} color={a.color === BRAND.yellow ? adaptColor(BRAND.yellow, isLight) : a.color} strokeWidth={2} />
                   </div>
-                  <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>{a.label}</span>
-                </button>
+                  <span style={{fontSize:13,fontWeight:600,color:"var(--dp-text-primary)"}}>{a.label}</span>
+                </GlassCard>
               </div>
             ))}
           </div>
@@ -312,21 +274,19 @@ export default function DreamPlannerHome() {
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"500ms"}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:19,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>Your Dreams</span>
+                <h2 style={{fontSize:19,fontWeight:700,color:"var(--dp-text)",letterSpacing:"-0.3px",margin:0}}>Your Dreams</h2>
                 <span style={{
                   padding:"2px 8px",borderRadius:10,fontSize:12,fontWeight:600,
-                  background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.72)",
+                  background:"var(--dp-surface)",color:"var(--dp-text-secondary)",
                 }}>{dreams.length}</span>
               </div>
               <button onClick={()=>navigate("/dream/create")} className="dp-gh" style={{
                 display:"flex",alignItems:"center",gap:5,padding:"7px 14px",
-                borderRadius:20,border:"1px solid rgba(139,92,246,0.25)",
-                background:"rgba(139,92,246,0.1)",color:isLight?"#7C3AED":"#C4B5FD",
+                borderRadius:20,border:"1px solid var(--dp-accent-border)",
+                background:"var(--dp-accent-soft)",color:"var(--dp-accent)",
                 fontSize:13,fontWeight:600,cursor:"pointer",transition:"all 0.25s",
-              }}
-                onMouseEnter={e=>{e.currentTarget.style.background="rgba(139,92,246,0.22)";e.currentTarget.style.borderColor="rgba(139,92,246,0.4)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="rgba(139,92,246,0.1)";e.currentTarget.style.borderColor="rgba(139,92,246,0.25)";}}
-              >
+                fontFamily:"inherit",
+              }}>
                 <Plus size={15} strokeWidth={2.5} /> New Dream
               </button>
             </div>
@@ -335,69 +295,103 @@ export default function DreamPlannerHome() {
           {/* ── Dream Quick Links ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"550ms"}}>
             <div style={{display:"flex",gap:8,marginBottom:16}}>
-              <button onClick={()=>navigate("/dream/templates")} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
-                <Sparkles size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-                <span style={{fontSize:12,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Templates</span>
-              </button>
-              <button onClick={()=>navigate("/dreams/shared")} className="dp-g dp-gh" style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",border:"none"}}>
-                <Share2 size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-                <span style={{fontSize:12,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>Shared Dreams</span>
-              </button>
+              <GlassCard hover onClick={()=>navigate("/dream/templates")} style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+                <Sparkles size={16} color="var(--dp-accent)" strokeWidth={2}/>
+                <span style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>Templates</span>
+              </GlassCard>
+              <GlassCard hover onClick={()=>navigate("/dreams/shared")} style={{flex:1,padding:"10px 12px",display:"flex",alignItems:"center",gap:8}}>
+                <Share2 size={16} color="var(--dp-accent)" strokeWidth={2}/>
+                <span style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>Shared Dreams</span>
+              </GlassCard>
             </div>
           </div>
 
           {/* ── Dream Cards ── */}
+          {dreams.length === 0 && (
+            <GlassCard padding={32} mb={20} style={{textAlign:"center"}}>
+              <div style={{fontSize:48,marginBottom:16}}>✨</div>
+              <h2 style={{fontSize:20,fontWeight:700,color:"var(--dp-text)",marginBottom:8}}>Start Your Journey</h2>
+              <p style={{fontSize:14,color:"var(--dp-text-secondary)",lineHeight:1.6,marginBottom:24,maxWidth:280,margin:"0 auto 24px"}}>
+                Create your first dream and begin turning your aspirations into reality.
+              </p>
+              <button onClick={function(){navigate("/dream/create");}} style={{
+                display:"inline-flex",alignItems:"center",gap:8,padding:"12px 24px",
+                borderRadius:14,border:"none",cursor:"pointer",
+                background:"linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                color:"#fff",fontSize:15,fontWeight:600,
+                boxShadow:"0 4px 20px rgba(139,92,246,0.4)",
+                fontFamily:"inherit",
+              }}>
+                <Plus size={18} strokeWidth={2.5} /> Create Your First Dream
+              </button>
+            </GlassCard>
+          )}
           {dreams.map(function (dream, i) {
-            var cat = CATS[dream.category] || {Icon:Sparkles,color:"#8B5CF6",label:"Other"};
-            var CatIcon = cat.Icon;
+            var catDef = CATEGORIES[dream.category];
+            var CatIcon = CAT_ICONS[dream.category] || Sparkles;
+            var solidColor = catSolid(dream.category);
             var isHovered = hoveredDream === dream.id;
             var daysLeft = dream.daysLeft || (dream.targetDate ? Math.max(0, Math.ceil((new Date(dream.targetDate) - new Date()) / 86400000)) : null);
             return(
-              <div key={dream.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${600+i*100}ms`}}>
-                <div
-                  className="dp-g dp-gh"
-                  style={{padding:16,marginBottom:16,cursor:"pointer",position:"relative",overflow:"hidden"}}
+              <div key={dream.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${600+i*100}ms`}} onMouseEnter={()=>setHoveredDream(dream.id)} onMouseLeave={()=>setHoveredDream(null)}>
+                <GlassCard
+                  hover
+                  padding={16}
+                  mb={16}
                   onClick={()=>navigate(`/dream/${dream.id}`)}
-                  onMouseEnter={()=>setHoveredDream(dream.id)}
-                  onMouseLeave={()=>setHoveredDream(null)}
+                  style={{position:"relative",overflow:"hidden"}}
                 >
                   {/* Top row */}
                   <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
                     <div style={{
                       width:40,height:40,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",
-                      background:`${cat.color}12`,border:`1px solid ${cat.color}18`,
+                      background:`${solidColor}12`,border:`1px solid ${solidColor}18`,
                     }}>
-                      <CatIcon size={20} color={cat.color === "#FCD34D" ? (isLight ? "#B45309" : "#FCD34D") : cat.color} strokeWidth={2} />
+                      <CatIcon size={20} color={catColor(dream.category, isLight)} strokeWidth={2} />
                     </div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dream.title}</div>
+                      <div style={{fontSize:15,fontWeight:600,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dream.title}</div>
                     </div>
                     {/* Status dot */}
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <div className="dp-pulse" style={{width:7,height:7,borderRadius:"50%",background:"#10B981",boxShadow:"0 0 6px rgba(16,185,129,0.5)"}}/>
-                      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",fontWeight:500}}>Active</span>
-                    </div>
+                    {(function () {
+                      var s = dream.status || "active";
+                      var dotColor = s === "completed" ? "#14B8A6"
+                        : s === "paused" ? "#EAB308"
+                        : s === "archived" ? "#6B7280"
+                        : BRAND.greenSolid;
+                      var dotShadow = s === "completed" ? "0 0 6px rgba(20,184,166,0.5)"
+                        : s === "paused" ? "0 0 6px rgba(234,179,8,0.5)"
+                        : s === "archived" ? "none"
+                        : "0 0 6px rgba(16,185,129,0.5)";
+                      var dotLabel = s.charAt(0).toUpperCase() + s.slice(1);
+                      return (
+                        <div style={{display:"flex",alignItems:"center",gap:6}}>
+                          <div className={s === "active" ? "dp-pulse" : undefined} style={{width:7,height:7,borderRadius:"50%",background:dotColor,boxShadow:dotShadow}}/>
+                          <span style={{fontSize:12,color:"var(--dp-text-tertiary)",fontWeight:500}}>{dotLabel}</span>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Description */}
-                  <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.72)",marginBottom:14,lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dream.description}</div>
+                  <div style={{fontSize:13,color:"var(--dp-text-secondary)",marginBottom:14,lineHeight:1.5,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{dream.description}</div>
 
                   {/* Progress */}
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                    <div style={{flex:1,height:5,borderRadius:3,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",overflow:"hidden"}}>
+                    <div style={{flex:1,height:5,borderRadius:3,background:"var(--dp-glass-border)",overflow:"hidden"}}>
                       <div style={{
                         height:"100%",borderRadius:3,width:`${dream.progressPercentage || 0}%`,
-                        background:(dream.progressPercentage || 0)>=80?`linear-gradient(90deg,#10B981,#34D399)`:`linear-gradient(90deg,${cat.color},${cat.color}bb)`,
+                        background:(dream.progressPercentage || 0)>=80?GRADIENTS.highProgress:`linear-gradient(90deg,${solidColor},${solidColor}bb)`,
                         transition:"width 1.2s cubic-bezier(0.16,1,0.3,1)",
-                        boxShadow:`0 0 8px ${(dream.progressPercentage || 0)>=80?"rgba(16,185,129,0.3)":`${cat.color}30`}`,
+                        boxShadow:`0 0 8px ${(dream.progressPercentage || 0)>=80?"rgba(16,185,129,0.3)":`${solidColor}30`}`,
                       }}/>
                     </div>
-                    <span style={{fontSize:13,fontWeight:700,color:(dream.progressPercentage || 0)>=80?(isLight?"#059669":"#5DE5A8"):isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",minWidth:36,textAlign:"right"}}>{dream.progressPercentage || 0}%</span>
+                    <span style={{fontSize:13,fontWeight:700,color:(dream.progressPercentage || 0)>=80?"var(--dp-success)":"var(--dp-text-primary)",minWidth:36,textAlign:"right"}}>{dream.progressPercentage || 0}%</span>
                   </div>
 
                   {/* Meta row */}
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:14,fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:14,fontSize:12,color:"var(--dp-text-tertiary)"}}>
                       <span style={{display:"flex",alignItems:"center",gap:4}}>
                         <Target size={12} strokeWidth={2.5} /> {dream.completedGoalsCount || 0}/{dream.goalsCount || 0} goals
                       </span>
@@ -409,7 +403,15 @@ export default function DreamPlannerHome() {
                       {/* Sparkline */}
                       {(function () {
                         var prog = Number(dream.progressPercentage) || 0;
-                        var data = dream.progressHistory || [0, Math.round(prog * 0.5), prog];
+                        var sparklineRaw = dream.sparklineData || dream.progressHistory;
+                        var data;
+                        if (sparklineRaw && sparklineRaw.length >= 2) {
+                          data = sparklineRaw.map(function (p) {
+                            return Number(p.progress || p.progressPercentage || p) || 0;
+                          });
+                        } else {
+                          data = [0, Math.round(prog * 0.5), prog];
+                        }
                         data = data.map(function (v) { var n = Number(v); return isNaN(n) ? 0 : n; });
                         if (data.length < 2) data = [0, prog];
                         var max = Math.max.apply(null, data);
@@ -417,7 +419,7 @@ export default function DreamPlannerHome() {
                         var range = max - min || 1;
                         var w = 60, h = 20;
                         var points = data.map(function (v, idx) { return (idx / (data.length - 1)) * w + "," + (h - ((v - min) / range) * h); }).join(" ");
-                        var sparkColor = CATEGORY_COLORS[dream.category] || "#8B5CF6";
+                        var sparkColor = catSolid(dream.category);
                         return (
                           <svg width={w} height={h} style={{ flexShrink: 0 }}>
                             <defs>
@@ -431,83 +433,91 @@ export default function DreamPlannerHome() {
                           </svg>
                         );
                       })()}
-                      <ChevronRight size={16} color={isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"} />
+                      <ChevronRight size={16} color="var(--dp-text-tertiary)" />
                     </div>
                   </div>
 
-                  {/* Hover action bar */}
+                  {/* Action bar — always visible on mobile, hover on desktop */}
                   <div style={{
                     position:"absolute",top:12,right:12,display:"flex",gap:6,
-                    opacity:isHovered?1:0,transform:isHovered?"translateX(0)":"translateX(8px)",
-                    transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",pointerEvents:isHovered?"auto":"none",
+                    opacity:isHovered?1:0.7,
+                    transform:isHovered?"translateX(0)":"translateX(0)",
+                    transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",pointerEvents:"auto",
                   }}>
                     {[
                       {I:Bot,t:"Coach",action:()=>navigate("/chat?dream="+dream.id)},
                       {I:Pencil,t:"Edit",action:()=>navigate("/dream/"+dream.id+"/edit")},
                       {I:Share2,t:"Share",action:()=>{clipboardWrite("Check out my dream on DreamPlanner: "+dream.title);showToast("Copied!","success");}},
                     ].map(({I,t,action},j)=>(
-                      <button key={j} title={t} aria-label={t} style={{
-                        width:32,height:32,borderRadius:10,border:isLight?"1px solid rgba(139,92,246,0.18)":"1px solid rgba(255,255,255,0.1)",
-                        background:isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.08)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
-                        color:isLight?"#7C3AED":"rgba(255,255,255,0.75)",display:"flex",alignItems:"center",justifyContent:"center",
-                        cursor:"pointer",transition:"all 0.2s",
+                      <button key={j} title={t} aria-label={t} className="dp-gh" style={{
+                        width:44,height:44,borderRadius:12,border:"1px solid var(--dp-glass-border)",
+                        background:"var(--dp-glass-hover)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
+                        color:"var(--dp-accent)",display:"flex",alignItems:"center",justifyContent:"center",
+                        cursor:"pointer",transition:"all 0.2s",fontFamily:"inherit",
                       }}
-                        onMouseEnter={e=>{e.currentTarget.style.background="rgba(139,92,246,0.2)";e.currentTarget.style.color=isLight?"#7C3AED":"#C4B5FD";e.currentTarget.style.borderColor="rgba(139,92,246,0.3)";}}
-                        onMouseLeave={e=>{e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.08)";e.currentTarget.style.color=isLight?"#7C3AED":"rgba(255,255,255,0.6)";e.currentTarget.style.borderColor=isLight?"rgba(139,92,246,0.18)":"rgba(255,255,255,0.1)";}}
                         onClick={e=>{e.stopPropagation();action();}}
                       >
                         <I size={14} strokeWidth={2} />
                       </button>
                     ))}
                   </div>
-                </div>
+                </GlassCard>
               </div>
             );
           })}
 
           {/* ── Infinite scroll sentinel + loading ── */}
           <div ref={dreamsInf.sentinelRef} style={{height:1}} />
-          {dreamsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more dreams…</div>}
+          {dreamsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:"var(--dp-text-muted)",fontSize:13}}>Loading more dreams…</div>}
 
           {/* ═══ ACTIVITY HEATMAP ═══ */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"1000ms"}}>
-            <div style={{
-              background: isLight ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.04)",
-              backdropFilter: "blur(40px)",
-              border: `1px solid ${isLight ? "rgba(139,92,246,0.1)" : "rgba(255,255,255,0.06)"}`,
-              borderRadius: 20, padding: 16, marginBottom: 16,
-            }}>
+            <GlassCard padding={16} mb={16}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <span style={{ fontSize: 15, fontWeight: 600, color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)" }}>Your Activity</span>
-                <span style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>Last 4 weeks</span>
+                <h2 style={{ fontSize: 15, fontWeight: 600, color: "var(--dp-text)", margin: 0 }}>Your Activity</h2>
+                <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>Last 4 weeks</span>
               </div>
               <div style={{ display: "flex", gap: 3, marginBottom: 6 }}>
                 {DAY_LABELS.map((d, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: isLight ? "rgba(26,21,53,0.4)" : "rgba(255,255,255,0.3)" }}>{d}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: "var(--dp-text-muted)" }}>{d}</div>
                 ))}
               </div>
               {[0, 1, 2, 3].map(week => (
                 <div key={week} style={{ display: "flex", gap: 3, marginBottom: 3 }}>
                   {[0, 1, 2, 3, 4, 5, 6].map(day => {
                     var level = activityData[week * 7 + day] || 0;
-                    const colors = isLight
+                    var heatColors = isLight
                       ? ["rgba(139,92,246,0.06)", "rgba(139,92,246,0.15)", "rgba(139,92,246,0.3)", "rgba(139,92,246,0.5)", "rgba(139,92,246,0.75)"]
                       : ["rgba(139,92,246,0.08)", "rgba(139,92,246,0.2)", "rgba(139,92,246,0.35)", "rgba(139,92,246,0.55)", "rgba(139,92,246,0.8)"];
                     return (
                       <div key={day} style={{
                         flex: 1, aspectRatio: "1", borderRadius: 4,
-                        background: colors[level],
+                        background: heatColors[level],
                         transition: "background 0.2s",
                       }} />
                     );
                   })}
                 </div>
               ))}
-            </div>
+            </GlassCard>
           </div>
 
         </div>
       </main>
+
+      {/* ── Floating Add Dream Button ── */}
+      <button onClick={function () { navigate("/dream/create"); }} className="dp-gh" style={{
+        position:"fixed", bottom:90, right:20, zIndex:90,
+        width:56, height:56, borderRadius:18,
+        background:"linear-gradient(135deg, #8B5CF6, #7C3AED)",
+        border:"none", cursor:"pointer",
+        display:"flex", alignItems:"center", justifyContent:"center",
+        boxShadow:"0 4px 20px rgba(139,92,246,0.4), 0 0 40px rgba(139,92,246,0.15)",
+        transition:"transform 0.2s, box-shadow 0.2s",
+        fontFamily:"inherit",
+      }}>
+        <Plus size={26} color="#fff" strokeWidth={2.5} />
+      </button>
 
       <BottomNav />
 
@@ -538,19 +548,17 @@ export default function DreamPlannerHome() {
 
 // ─── SUB-COMPONENTS ──────────────────────────────────────────────
 function StatBlock({Icon,value,label,color}){
-  var{resolved}=useTheme();var isLight=resolved==="light";
   return(
     <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
       <div style={{filter:`drop-shadow(0 0 6px ${color}40)`}}>
         <Icon size={22} color={color} strokeWidth={2.5} />
       </div>
-      <span style={{fontSize:18,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{value}</span>
-      <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{label}</span>
+      <span style={{fontSize:18,fontWeight:700,color:"var(--dp-text)"}}>{value}</span>
+      <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{label}</span>
     </div>
   );
 }
 
 function Divider(){
-  var{resolved}=useTheme();var isLight=resolved==="light";
-  return <div style={{width:1,height:40,background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}}/>;
+  return <div style={{width:1,height:40,background:"var(--dp-divider)"}}/>;
 }

@@ -5,14 +5,23 @@
   padding: 0;
 }
 
-/* ═══ Theme CSS Variables ═══ */
+/* ═══ Theme CSS Variables ═══
+ * Single source of truth for ALL theme-dependent colors.
+ * Components use var(--dp-*) instead of hardcoded values.
+ * Base: cosmos dark. Overrides: light, saturn, default night/day.
+ * ═══════════════════════════════════════════════════════════════ */
 :root,
 [data-theme="dark"] {
+  /* Text */
   --dp-text: #ffffff;
   --dp-text-primary: rgba(255,255,255,0.85);
   --dp-text-secondary: rgba(255,255,255,0.7);
   --dp-text-tertiary: rgba(255,255,255,0.5);
   --dp-text-muted: rgba(255,255,255,0.3);
+  --dp-text-heading: #ffffff;
+  --dp-text-icon: rgba(255,255,255,0.7);
+
+  /* Glass / Surface */
   --dp-glass-bg: rgba(255,255,255,0.04);
   --dp-glass-border: rgba(255,255,255,0.06);
   --dp-glass-hover: rgba(255,255,255,0.08);
@@ -20,25 +29,68 @@
   --dp-surface-hover: rgba(255,255,255,0.1);
   --dp-input-bg: rgba(255,255,255,0.04);
   --dp-input-border: rgba(255,255,255,0.08);
+
+  /* Layout */
+  --dp-header-bg: rgba(255,255,255,0.03);
+  --dp-header-border: rgba(255,255,255,0.05);
+  --dp-divider: rgba(255,255,255,0.05);
   --dp-overlay: rgba(0,0,0,0.6);
+  --dp-overlay-blur: rgba(0,0,0,0.5);
   --dp-shadow: rgba(0,0,0,0.3);
   --dp-body-bg: #03010a;
   --dp-body-color: #fff;
+  --dp-modal-bg: rgba(12,8,26,0.97);
+  --dp-card-solid: rgba(20,16,35,0.95);
+
+  /* Navigation */
   --dp-nav-bg: linear-gradient(to top, rgba(3,1,10,0.95) 0%, rgba(3,1,10,0.8) 60%, transparent 100%);
   --dp-nav-inactive: rgba(255,255,255,0.4);
   --dp-nav-label: rgba(255,255,255,0.35);
   --dp-scrollbar: rgba(255,255,255,0.15);
   --dp-scrollbar-hover: rgba(255,255,255,0.25);
+
+  /* Pills / Tabs / Filters */
+  --dp-pill-bg: rgba(255,255,255,0.04);
+  --dp-pill-active: rgba(139,92,246,0.18);
+  --dp-pill-text: rgba(255,255,255,0.85);
+  --dp-pill-text-active: #C4B5FD;
+  --dp-pill-border-active: rgba(139,92,246,0.25);
+
+  /* Accent / Brand */
   --dp-accent: #C4B5FD;
-  --dp-modal-bg: rgba(12,8,26,0.97);
+  --dp-accent-text: #C4B5FD;
+  --dp-accent-soft: rgba(139,92,246,0.18);
+  --dp-accent-border: rgba(139,92,246,0.25);
+
+  /* Semantic Status */
+  --dp-success: #5DE5A8;
+  --dp-success-soft: rgba(93,229,168,0.1);
+  --dp-danger: #F69A9A;
+  --dp-danger-solid: #EF4444;
+  --dp-danger-soft: rgba(239,68,68,0.1);
+  --dp-warning: #FCD34D;
+  --dp-warning-soft: rgba(252,211,77,0.1);
+  --dp-teal: #5EEAD4;
+  --dp-teal-soft: rgba(20,184,166,0.08);
+  --dp-teal-border: rgba(20,184,166,0.12);
+  --dp-online: #22C55E;
+
+  /* Skeleton loading */
+  --dp-skeleton-from: rgba(255,255,255,0.04);
+  --dp-skeleton-to: rgba(255,255,255,0.08);
 }
 
 [data-theme="light"] {
+  /* Text */
   --dp-text: #1a1535;
   --dp-text-primary: rgba(26,21,53,0.85);
   --dp-text-secondary: rgba(26,21,53,0.72);
   --dp-text-tertiary: rgba(26,21,53,0.6);
   --dp-text-muted: rgba(26,21,53,0.45);
+  --dp-text-heading: #1a1535;
+  --dp-text-icon: rgba(26,21,53,0.7);
+
+  /* Glass / Surface */
   --dp-glass-bg: rgba(255,255,255,0.72);
   --dp-glass-border: rgba(139,92,246,0.18);
   --dp-glass-hover: rgba(255,255,255,0.82);
@@ -46,17 +98,70 @@
   --dp-surface-hover: rgba(139,92,246,0.1);
   --dp-input-bg: rgba(255,255,255,0.78);
   --dp-input-border: rgba(139,92,246,0.22);
+
+  /* Layout */
+  --dp-header-bg: rgba(255,255,255,0.85);
+  --dp-header-border: rgba(139,92,246,0.1);
+  --dp-divider: rgba(139,92,246,0.08);
   --dp-overlay: rgba(255,255,255,0.7);
+  --dp-overlay-blur: rgba(0,0,0,0.5);
   --dp-shadow: rgba(139,92,246,0.08);
   --dp-body-bg: #f0ecff;
   --dp-body-color: #1a1535;
+  --dp-modal-bg: rgba(255,255,255,0.97);
+  --dp-card-solid: rgba(255,255,255,0.97);
+
+  /* Navigation */
   --dp-nav-bg: linear-gradient(to top, rgba(240,236,255,0.95) 0%, rgba(240,236,255,0.8) 60%, transparent 100%);
   --dp-nav-inactive: rgba(26,21,53,0.5);
   --dp-nav-label: rgba(26,21,53,0.5);
   --dp-scrollbar: rgba(139,92,246,0.15);
   --dp-scrollbar-hover: rgba(139,92,246,0.25);
+
+  /* Pills / Tabs / Filters */
+  --dp-pill-bg: rgba(139,92,246,0.05);
+  --dp-pill-active: rgba(139,92,246,0.12);
+  --dp-pill-text: rgba(26,21,53,0.72);
+  --dp-pill-text-active: #7C3AED;
+  --dp-pill-border-active: rgba(139,92,246,0.25);
+
+  /* Accent / Brand */
   --dp-accent: #7C3AED;
-  --dp-modal-bg: rgba(255,255,255,0.97);
+  --dp-accent-text: #6D28D9;
+  --dp-accent-soft: rgba(139,92,246,0.12);
+  --dp-accent-border: rgba(139,92,246,0.15);
+
+  /* Semantic Status */
+  --dp-success: #059669;
+  --dp-success-soft: rgba(5,150,105,0.1);
+  --dp-danger: #DC2626;
+  --dp-danger-solid: #EF4444;
+  --dp-danger-soft: rgba(239,68,68,0.1);
+  --dp-warning: #B45309;
+  --dp-warning-soft: rgba(180,83,9,0.1);
+  --dp-teal: #0D9488;
+  --dp-teal-soft: rgba(20,184,166,0.08);
+  --dp-teal-border: rgba(20,184,166,0.15);
+  --dp-online: #16A34A;
+
+  /* Skeleton loading */
+  --dp-skeleton-from: rgba(26,21,53,0.06);
+  --dp-skeleton-to: rgba(26,21,53,0.12);
+}
+
+/* Saturn-specific overrides (ready for customization) */
+[data-visualTheme="saturn"] {
+  /* Currently same as cosmos — add saturn-specific overrides here */
+}
+
+/* Default (Twilight) Night-specific overrides */
+[data-visualTheme="default"][data-theme="dark"] {
+  /* Currently same as cosmos — add twilight-night-specific overrides here */
+}
+
+/* Default (Twilight) Day-specific overrides */
+[data-visualTheme="default"][data-theme="light"] {
+  /* Currently same as base light — add twilight-day-specific overrides here */
 }
 
 html, body {
@@ -232,4 +337,178 @@ input::placeholder, textarea::placeholder { color: rgba(255,255,255,0.45) !impor
   opacity: 1;
   transform: translateY(0);
   transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+/* ═══ Focus Visible — Keyboard Accessibility ═══ */
+:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 2px;
+}
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--dp-accent);
+  outline-offset: 2px;
+}
+/* Remove default focus ring for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ═══ Reduced Motion — Accessibility ═══ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .dp-pulse, .dp-shimmer, .dp-spin {
+    animation: none !important;
+  }
+}
+
+/* ═══ Typography Scale ═══ */
+:root {
+  --dp-font-xs: 11px;
+  --dp-font-sm: 13px;
+  --dp-font-base: 14px;
+  --dp-font-md: 15px;
+  --dp-font-lg: 17px;
+  --dp-font-xl: 20px;
+  --dp-font-2xl: 24px;
+  --dp-font-3xl: 28px;
+  --dp-line-tight: 1.2;
+  --dp-line-normal: 1.5;
+  --dp-line-relaxed: 1.6;
+  --dp-weight-normal: 400;
+  --dp-weight-medium: 500;
+  --dp-weight-semibold: 600;
+  --dp-weight-bold: 700;
+}
+
+/* ═══ Border Radius Tokens ═══ */
+:root {
+  --dp-radius-xs: 6px;
+  --dp-radius-sm: 8px;
+  --dp-radius-md: 12px;
+  --dp-radius-lg: 16px;
+  --dp-radius-xl: 20px;
+  --dp-radius-2xl: 28px;
+  --dp-radius-full: 9999px;
+}
+
+/* ═══ Touch Target Minimum ═══ */
+.dp-touch {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ═══ RTL Support ═══ */
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+[dir="rtl"] .dp-ib { margin-left: 0; margin-right: auto; }
+
+/* ═══ Stagger Animation ═══ */
+.dp-stagger > * {
+  opacity: 0;
+  transform: translateY(12px);
+  animation: dpStaggerIn 0.4s cubic-bezier(0.16,1,0.3,1) forwards;
+}
+.dp-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.dp-stagger > *:nth-child(2) { animation-delay: 60ms; }
+.dp-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.dp-stagger > *:nth-child(4) { animation-delay: 180ms; }
+.dp-stagger > *:nth-child(5) { animation-delay: 240ms; }
+.dp-stagger > *:nth-child(6) { animation-delay: 300ms; }
+.dp-stagger > *:nth-child(7) { animation-delay: 360ms; }
+.dp-stagger > *:nth-child(8) { animation-delay: 420ms; }
+.dp-stagger > *:nth-child(9) { animation-delay: 480ms; }
+.dp-stagger > *:nth-child(10) { animation-delay: 540ms; }
+.dp-stagger > *:nth-child(n+11) { animation-delay: 600ms; }
+
+@keyframes dpStaggerIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-stagger > * {
+    opacity: 1;
+    transform: none;
+    animation: none;
+  }
+}
+
+/* ═══ Responsive Layout ═══ */
+@media (min-width: 768px) {
+  .dp-content-area {
+    max-width: 680px;
+    margin: 0 auto;
+  }
+}
+@media (min-width: 1024px) {
+  .dp-content-area {
+    max-width: 800px;
+  }
+  .dp-desktop-sidebar-layout {
+    display: flex;
+    min-height: 100vh;
+  }
+  .dp-desktop-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    background: var(--dp-glass-bg);
+    backdrop-filter: blur(40px);
+    -webkit-backdrop-filter: blur(40px);
+    border-right: 1px solid var(--dp-glass-border);
+    display: flex;
+    flex-direction: column;
+    padding: 20px 12px;
+  }
+  .dp-desktop-main {
+    margin-left: 240px;
+    flex: 1;
+    width: auto;
+  }
+  .dp-hide-desktop {
+    display: none !important;
+  }
+}
+@media (max-width: 1023px) {
+  .dp-hide-mobile {
+    display: none !important;
+  }
+}
+
+/* ═══ Skip to Content Link (Accessibility) ═══ */
+.dp-skip-link {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  z-index: 99999;
+  padding: 12px 24px;
+  background: var(--dp-accent);
+  color: #fff;
+  border-radius: var(--dp-radius-md);
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+  transition: top 0.2s;
+}
+.dp-skip-link:focus {
+  top: 16px;
 }

@@ -6,6 +6,8 @@ import {
 } from "lucide-react";
 import { useTaskCall } from "../../context/TaskCallContext";
 import { hapticVibrate, hapticStop } from "../../services/native";
+import GlassInput from "./GlassInput";
+import GradientButton from "./GradientButton";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Task Call Overlay
@@ -124,7 +126,6 @@ export default function TaskCallOverlay() {
       background: "rgba(0,0,0,0.6)",
       backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif",
       animation: "tcOverlayIn 0.3s ease-out",
     }}>
 
@@ -230,10 +231,25 @@ export default function TaskCallOverlay() {
                   return <button key={opt.value} onClick={function () { setSelectedSnooze(opt.value); }} style={{ padding: "14px 0", borderRadius: 14, fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", transition: "all 0.15s", border: sel ? "1px solid rgba(245,158,11,0.25)" : "1px solid rgba(255,255,255,0.06)", background: sel ? "rgba(245,158,11,0.08)" : "rgba(255,255,255,0.03)", color: sel ? "#F59E0B" : "rgba(255,255,255,0.65)", boxShadow: sel ? "inset 0 1px 0 rgba(245,158,11,0.1)" : "inset 0 1px 0 rgba(255,255,255,0.03)" }}>{opt.label}</button>;
                 })}
               </div>
-              <input value={snoozeReason} onChange={function (e) { setSnoozeReason(e.target.value); }} placeholder="Reason (optional)..." style={{ width: "100%", padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)", color: "#fff", fontSize: 13, fontFamily: "inherit", outline: "none", marginBottom: 16, boxSizing: "border-box", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)" }} />
-              <button onClick={confirmSnooze} disabled={!selectedSnooze} style={{ width: "100%", padding: "14px 0", borderRadius: 14, border: "none", background: selectedSnooze ? "linear-gradient(135deg,#F59E0B,#D97706)" : "rgba(255,255,255,0.04)", color: selectedSnooze ? "#fff" : "rgba(255,255,255,0.3)", fontSize: 15, fontWeight: 600, cursor: selectedSnooze ? "pointer" : "not-allowed", fontFamily: "inherit", boxShadow: selectedSnooze ? "0 4px 16px rgba(245,158,11,0.25), inset 0 1px 0 rgba(255,255,255,0.15)" : "none", transition: "all 0.2s" }}>
+              <GlassInput
+                value={snoozeReason}
+                onChange={function (e) { setSnoozeReason(e.target.value); }}
+                placeholder="Reason (optional)..."
+                style={{ marginBottom: 16, borderRadius: 12, border: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.03)" }}
+                inputStyle={{ color: "#fff", fontSize: 13, padding: "12px 14px" }}
+              />
+              <GradientButton
+                onClick={confirmSnooze}
+                disabled={!selectedSnooze}
+                fullWidth
+                size="lg"
+                style={{
+                  background: selectedSnooze ? "linear-gradient(135deg,#F59E0B,#D97706)" : undefined,
+                  boxShadow: selectedSnooze ? "0 4px 16px rgba(245,158,11,0.25), inset 0 1px 0 rgba(255,255,255,0.15)" : undefined,
+                }}
+              >
                 {selectedSnooze ? "Snooze for " + (selectedSnooze === 1440 ? "Tomorrow" : selectedSnooze < 60 ? selectedSnooze + " min" : (selectedSnooze / 60) + " hour") : "Select a time"}
-              </button>
+              </GradientButton>
             </div>
           </div>
         )}
@@ -251,9 +267,15 @@ export default function TaskCallOverlay() {
                   <button onClick={function () { setTimerRunning(!timerRunning); }} style={{ width: 44, height: 44, borderRadius: 14, border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.04)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", transition: "all 0.15s", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.04)" }}>
                     {timerRunning ? <Pause size={18} strokeWidth={2} /> : <Play size={18} strokeWidth={2} />}
                   </button>
-                  <button onClick={completeTask} style={{ height: 44, padding: "0 20px", borderRadius: 14, border: "none", background: "linear-gradient(135deg,#22C55E,#16A34A)", color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", gap: 8, boxShadow: "0 4px 16px rgba(34,197,94,0.25), inset 0 1px 0 rgba(255,255,255,0.15)" }}>
-                    <CheckCircle2 size={16} strokeWidth={2} />Complete
-                  </button>
+                  <GradientButton
+                    onClick={completeTask}
+                    gradient="success"
+                    icon={CheckCircle2}
+                    size="md"
+                    style={{ height: 44, borderRadius: 14 }}
+                  >
+                    Complete
+                  </GradientButton>
                 </div>
               </div>
               {/* Details */}

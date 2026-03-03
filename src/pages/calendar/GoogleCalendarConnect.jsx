@@ -9,12 +9,16 @@ import { useT } from "../../context/I18nContext";
 import { apiGet, apiPost } from "../../services/api";
 import { CALENDAR } from "../../services/endpoints";
 import { openBrowser, isNative } from "../../services/native";
+import { BRAND, adaptColor } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GlassCard from "../../components/shared/GlassCard";
 
 function Toggle({ on, onToggle, color }) {
   return (
     <button onClick={onToggle} style={{
-      width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-      background: on ? (color || "#8B5CF6") : "rgba(255,255,255,0.1)",
+      width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", fontFamily: "inherit",
+      background: on ? (color || BRAND.purple) : "rgba(255,255,255,0.1)",
       position: "relative", transition: "background 0.25s",
     }}>
       <div style={{
@@ -91,7 +95,7 @@ export default function GoogleCalendarConnect() {
       // On native, pass the native redirect_uri so the backend uses the correct one for token exchange
       var payload = { code: code };
       if (isNative) {
-        payload.redirectUri = (import.meta.env.VITE_API_BASE || "") + CALENDAR.GOOGLE.NATIVE_CALLBACK;
+        payload.redirect_uri = (import.meta.env.VITE_API_BASE || "") + CALENDAR.GOOGLE.NATIVE_CALLBACK;
       }
       callbackMut.mutate(payload);
     }
@@ -136,7 +140,7 @@ export default function GoogleCalendarConnect() {
     }
     apiGet(authUrl)
       .then(function (data) {
-        if (data.authUrl && /^https:\/\/accounts\.google\.com\b/.test(data.authUrl)) {
+        if (data.authUrl && (function(u){ try { var p = new URL(u); return p.protocol === "https:" && (p.hostname === "accounts.google.com" || p.hostname.endsWith(".accounts.google.com")); } catch(e){ return false; } })(data.authUrl)) {
           if (isNative) {
             openBrowser(data.authUrl);
           } else {
@@ -171,40 +175,29 @@ export default function GoogleCalendarConnect() {
     });
   };
 
-  var tile = {
-    borderRadius: 18,
-    background: isLight ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.03)",
-    border: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.06)",
-    backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  };
-
   return (
-    <PageLayout showNav={false}>
+    <PageLayout showNav={false} header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />}
+        title={t("calendar.googleCalendar")}
+      />
+    }>
       <style>{`
         @keyframes gcSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         @keyframes gcPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
       `}</style>
 
-      <div style={{ paddingTop: 16, paddingBottom: 40, fontFamily: "Inter, sans-serif", minHeight: "100vh" }}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)" }}>{t("calendar.googleCalendar")}</span>
-        </div>
+      <div style={{ paddingBottom: 40, minHeight: "100vh" }}>
 
         {/* Calendar Icon */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{
             width: 80, height: 80, borderRadius: 24, margin: "0 auto 16px",
-            background: isLight
-              ? "linear-gradient(135deg, rgba(66,133,244,0.12), rgba(52,168,83,0.08))"
-              : "linear-gradient(135deg, rgba(66,133,244,0.2), rgba(52,168,83,0.1))",
-            border: isLight ? "1px solid rgba(66,133,244,0.2)" : "1px solid rgba(66,133,244,0.15)",
+            background: "var(--dp-accent-soft)",
+            border: "1px solid var(--dp-glass-border)",
             display: "flex", alignItems: "center", justifyContent: "center",
           }}>
-            <Calendar size={36} color={isLight ? "#4285F4" : "#8AB4F8"} strokeWidth={1.5} />
+            <Calendar size={36} color={adaptColor(BRAND.blueLight, isLight)} strokeWidth={1.5} />
           </div>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: "var(--dp-text)", margin: "0 0 6px" }}>
             {connected ? t("calendar.calendarConnected") : t("calendar.syncCalendar")}
@@ -220,17 +213,17 @@ export default function GoogleCalendarConnect() {
           /* NOT CONNECTED STATE */
           <>
             {/* Features list */}
-            <div style={{ ...tile, padding: 18, marginBottom: 16 }}>
+            <GlassCard padding={18} mb={16}>
               {[
-                { text: t("calendar.syncDeadlines"), color: "#8B5CF6" },
-                { text: t("calendar.seeTasks"), color: "#10B981" },
-                { text: t("calendar.getReminders"), color: "#F59E0B" },
+                { text: t("calendar.syncDeadlines"), color: BRAND.purple },
+                { text: t("calendar.seeTasks"), color: BRAND.greenSolid },
+                { text: t("calendar.getReminders"), color: BRAND.orange },
               ].map(function (f, i) {
                 return (
                   <div key={i} style={{
                     display: "flex", alignItems: "center", gap: 12,
                     padding: "10px 0",
-                    borderBottom: i < 2 ? (isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)") : "none",
+                    borderBottom: i < 2 ? ("1px solid var(--dp-glass-border)") : "none",
                   }}>
                     <div style={{
                       width: 28, height: 28, borderRadius: 8,
@@ -242,7 +235,7 @@ export default function GoogleCalendarConnect() {
                   </div>
                 );
               })}
-            </div>
+            </GlassCard>
 
             {/* Connect Button */}
             <button
@@ -251,7 +244,7 @@ export default function GoogleCalendarConnect() {
               style={{
                 width: "100%", padding: "15px 0", borderRadius: 16, border: "none",
                 background: connecting
-                  ? (isLight ? "rgba(66,133,244,0.1)" : "rgba(66,133,244,0.15)")
+                  ? "var(--dp-accent-soft)"
                   : "linear-gradient(135deg, #4285F4, #3367D6)",
                 color: connecting ? "var(--dp-text-muted)" : "#fff",
                 fontSize: 15, fontWeight: 600, cursor: connecting ? "default" : "pointer",
@@ -277,7 +270,7 @@ export default function GoogleCalendarConnect() {
           /* CONNECTED STATE */
           <>
             {/* Account info */}
-            <div style={{ ...tile, padding: 16, marginBottom: 12, display: "flex", alignItems: "center", gap: 14 }}>
+            <GlassCard padding={16} mb={12} style={{ display: "flex", alignItems: "center", gap: 14 }}>
               <div style={{
                 width: 42, height: 42, borderRadius: 14,
                 background: "linear-gradient(135deg, #4285F4, #3367D6)",
@@ -286,17 +279,17 @@ export default function GoogleCalendarConnect() {
               }}>{(statusQuery.data?.email || "G")[0].toUpperCase()}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)" }}>{statusQuery.data?.email || t("calendar.googleAccount")}</div>
-                <div style={{ fontSize: 12, color: isLight ? "#059669" : "#5DE5A8", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ fontSize: 12, color: adaptColor(BRAND.green, isLight), fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>
                   <Check size={12} strokeWidth={3} /> {t("calendar.connected")}
                 </div>
               </div>
-            </div>
+            </GlassCard>
 
             {/* Calendars */}
-            <div style={{ ...tile, overflow: "hidden", marginBottom: 12 }}>
+            <GlassCard mb={12} style={{ overflow: "hidden" }}>
               <div style={{
                 padding: "14px 18px",
-                borderBottom: isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)",
+                borderBottom: "1px solid var(--dp-glass-border)",
               }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text-secondary)" }}>{t("calendar.syncCalendars")}</span>
               </div>
@@ -304,7 +297,7 @@ export default function GoogleCalendarConnect() {
                 return (
                   <div key={cal.id} style={{
                     display: "flex", alignItems: "center", gap: 12, padding: "13px 18px",
-                    borderBottom: i < calendars.length - 1 ? (isLight ? "1px solid rgba(0,0,0,0.04)" : "1px solid rgba(255,255,255,0.04)") : "none",
+                    borderBottom: i < calendars.length - 1 ? ("1px solid var(--dp-glass-border)") : "none",
                   }}>
                     <div style={{
                       width: 10, height: 10, borderRadius: "50%",
@@ -315,7 +308,7 @@ export default function GoogleCalendarConnect() {
                   </div>
                 );
               })}
-            </div>
+            </GlassCard>
 
             {/* Sync button + last synced */}
             <button
@@ -323,8 +316,8 @@ export default function GoogleCalendarConnect() {
               disabled={syncing}
               style={{
                 width: "100%", padding: "13px 0", borderRadius: 16, border: "none",
-                background: isLight ? "rgba(139,92,246,0.1)" : "rgba(139,92,246,0.12)",
-                color: isLight ? "#6D28D9" : "#C4B5FD",
+                background: "var(--dp-accent-soft)",
+                color: "var(--dp-accent)",
                 fontSize: 14, fontWeight: 600, cursor: syncing ? "default" : "pointer",
                 fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 marginBottom: 8, transition: "all 0.2s",
@@ -344,20 +337,19 @@ export default function GoogleCalendarConnect() {
 
             {/* Disconnect */}
             <button
+              className="dp-gh"
               onClick={handleDisconnect}
               disabled={disconnecting}
               style={{
                 width: "100%", padding: "13px 0", borderRadius: 16,
-                border: isLight ? "1px solid rgba(246,154,154,0.2)" : "1px solid rgba(246,154,154,0.15)",
+                border: "1px solid var(--dp-glass-border)",
                 background: "rgba(246,154,154,0.06)",
-                color: isLight ? "#DC2626" : "#F69A9A",
+                color: adaptColor(BRAND.red, isLight),
                 fontSize: 13, fontWeight: 600, cursor: disconnecting ? "default" : "pointer", fontFamily: "inherit",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 opacity: disconnecting ? 0.6 : 1,
                 transition: "all 0.2s",
               }}
-              onMouseEnter={function (e) { if (!disconnecting) e.currentTarget.style.background = "rgba(246,154,154,0.12)"; }}
-              onMouseLeave={function (e) { e.currentTarget.style.background = "rgba(246,154,154,0.06)"; }}
             >
               {disconnecting ? (
                 <>

@@ -1,125 +1,428 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "../../services/api";
-import { SOCIAL, LEAGUES } from "../../services/endpoints";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiGet, apiPost, apiUpload } from "../../services/api";
+import { SOCIAL, DREAMS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
+import useAgoraPresence from "../../hooks/useAgoraPresence";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useT } from "../../context/I18nContext";
+import { CONTACT_COLORS, BRAND, GRADIENTS, adaptColor } from "../../styles/colors";
+import { sanitizeText } from "../../utils/sanitize";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { FeedItemSkeleton, SkeletonCard } from "../../components/shared/Skeleton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassInput from "../../components/shared/GlassInput";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassModal from "../../components/shared/GlassModal";
+import ExpandableText from "../../components/shared/ExpandableText";
 import {
-  ArrowLeft, Users, UserPlus, Search, Trophy, Flame, Star,
-  Zap, Heart, MessageCircle, ChevronRight, CheckCircle,
-  Sparkles, ArrowUpCircle, Target, Crown, Medal, X, UserCheck,
-  CircleDot, Calendar, Handshake
+  ArrowLeft, UserPlus, Search, Heart, MessageCircle, Share2,
+  Bookmark, Plus, Sparkles, ArrowUpCircle, CheckCircle, Flame,
+  X, Send, Image, Video, Music, MapPin, Link2, Users as UsersIcon,
+  Calendar, Trophy, Zap, MoreVertical, Handshake,
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
- * DreamPlanner — Social Hub Screen v1
+ * DreamPlanner — Social Hub (Instagram-style)
  *
- * Combines from Flutter:
- * - Social feed (dream_created, task_completed, level_up, streak)
- * - Leaderboard (top 3 podium + full list)
- * - Friends list with online status
- * - Friend requests with pending count
- * - Find buddy CTA
- *
- * UX Improvements:
- * - All in one scrollable hub (no separate screens)
- * - Horizontal online friends row
- * - Leaderboard podium (gold/silver/bronze)
- * - Activity feed with interaction (like, comment)
- * - Friend request banner with accept/decline
- * - Quick stats card (rank, friends, streak)
- * - Search overlay
- * - All 9:1+ contrast
+ * Layout:
+ * - Stories bar with gradient ring avatars (online friends)
+ * - Mixed feed: user posts (SOCIAL.POSTS.FEED) + activity events (SOCIAL.FEED.FRIENDS)
+ * - Instagram action bar: Like, Comment, Share, Save
+ * - Create post FAB with media upload + event creation
  * ═══════════════════════════════════════════════════════════════════ */
 
-var LB_COLORS = ["#EC4899","#F59E0B","#8B5CF6","#14B8A6","#14B8A6","#3B82F6","#10B981","#6366F1"];
-var FRIEND_COLORS = ["#14B8A6","#EC4899","#F59E0B","#8B5CF6","#3B82F6","#10B981","#6366F1"];
+var AVATAR_COLORS = CONTACT_COLORS;
 
-const FEED_CONFIG = {
-  level_up:    { Icon:ArrowUpCircle, color:"#C4B5FD", text:(d,t)=>`${t("social.reachedLevel")} ${(d&&d.level)||"?"}` },
-  task_completed:{ Icon:CheckCircle, color:"#5DE5A8", text:(d,t)=>(d&&d.task)||t("social.completedTask") },
-  dream_created: { Icon:Sparkles,    color:"#FCD34D", text:(d,t)=>`${t("social.createdDream")} "${(d&&d.dream)||"a dream"}"` },
-  streak:      { Icon:Flame,         color:"#F69A9A", text:(d,t)=>`${(d&&d.days)||0} ${t("social.dayStreak")}! 🔥` },
+var FEED_CONFIG = {
+  level_up:       { Icon: ArrowUpCircle, color: BRAND.purpleLight, label: "levelUp" },
+  task_completed: { Icon: CheckCircle,   color: BRAND.green,       label: "taskDone" },
+  dream_created:  { Icon: Sparkles,      color: BRAND.yellow,      label: "dreamCreated" },
+  dream_completed:{ Icon: Trophy,        color: BRAND.purpleLight, label: "dreamCompleted" },
+  streak:         { Icon: Flame,         color: BRAND.red,         label: "streak" },
+  milestone_reached:{ Icon: Zap,         color: BRAND.teal,        label: "milestone" },
+  badge_earned:   { Icon: Trophy,        color: BRAND.yellow,      label: "badge" },
 };
 
+function timeAgo(d) {
+  var s = Math.floor((Date.now() - new Date(d).getTime()) / 1000);
+  if (s < 60) return "now";
+  if (s < 3600) return Math.floor(s / 60) + "m";
+  if (s < 86400) return Math.floor(s / 3600) + "h";
+  return Math.floor(s / 86400) + "d";
+}
 
-function timeAgo(d){const s=Math.floor((Date.now()-d.getTime())/1000);if(s<60)return"now";if(s<3600)return`${Math.floor(s/60)}m`;if(s<86400)return`${Math.floor(s/3600)}h`;return`${Math.floor(s/86400)}d`;}
+function avatarColor(name) {
+  var h = 0;
+  for (var i = 0; i < (name || "").length; i++) h = (name.charCodeAt(i) + ((h << 5) - h)) | 0;
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 
 // ═══════════════════════════════════════════════════════════════════
-export default function SocialHubScreen(){
-  const navigate=useNavigate();
-  const { t } = useT();
-  const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
+export default function SocialHubScreen() {
+  var navigate = useNavigate();
+  var { t } = useT();
+  var { resolved, uiOpacity } = useTheme();
+  var isLight = resolved === "light";
   var { user } = useAuth();
   var { showToast } = useToast();
-  var queryClient = useQueryClient();
-  const[mounted,setMounted]=useState(false);
-  const[lbTab,setLbTab]=useState("weekly");
-  const[showSearch,setShowSearch]=useState(false);
-  const[searchQ,setSearchQ]=useState("");
-  const[searchResults,setSearchResults]=useState([]);
-  const[searchLoading,setSearchLoading]=useState(false);
-  const[expandedComments,setExpandedComments]=useState(null);
-  const[commentInput,setCommentInput]=useState("");
+  var qc = useQueryClient();
+  var [mounted, setMounted] = useState(false);
+  var [showSearch, setShowSearch] = useState(false);
+  var [searchQ, setSearchQ] = useState("");
+  var [searchResults, setSearchResults] = useState([]);
+  var [searchLoading, setSearchLoading] = useState(false);
+  var [expandedComments, setExpandedComments] = useState(null);
+  var [commentInputs, setCommentInputs] = useState({});
+  var [savedPosts, setSavedPosts] = useState({});
+  var [showCreate, setShowCreate] = useState(false);
+  var [createContent, setCreateContent] = useState("");
+  var [createDreamId, setCreateDreamId] = useState("");
+  var [createVisibility, setCreateVisibility] = useState("public");
+  var [createPostType, setCreatePostType] = useState("regular");
+  var [createMediaFile, setCreateMediaFile] = useState(null);
+  var [createMediaType, setCreateMediaType] = useState("none");
+  var [createMediaPreview, setCreateMediaPreview] = useState("");
+  var [showEventFields, setShowEventFields] = useState(false);
+  var [eventTitle, setEventTitle] = useState("");
+  var [eventType, setEventType] = useState("virtual");
+  var [eventLocation, setEventLocation] = useState("");
+  var [eventLink, setEventLink] = useState("");
+  var [eventStart, setEventStart] = useState("");
+  var [eventEnd, setEventEnd] = useState("");
+  var [eventMaxPart, setEventMaxPart] = useState("");
+
+  var mediaInputRef = useRef(null);
+  var storyInputRef = useRef(null);
+
+  // Story state
+  var [showStoryCreate, setShowStoryCreate] = useState(false);
+  var [storyFile, setStoryFile] = useState(null);
+  var [storyPreview, setStoryPreview] = useState("");
+  var [storyCaption, setStoryCaption] = useState("");
+  var [storyMediaType, setStoryMediaType] = useState("image");
+  // Story viewer state
+  var [storyViewer, setStoryViewer] = useState(null); // { groupIndex, storyIndex }
+  var [storyProgress, setStoryProgress] = useState(0);
+  var storyTimerRef = useRef(null);
 
   var ME = {
     displayName: user?.displayName || user?.username || "You",
     initial: (user?.displayName || user?.username || "U")[0].toUpperCase(),
-    rank: user?.rank || 0, xp: user?.xp || 0, level: user?.level || 1,
-    friends: user?.friendsCount || 0, streak: user?.streakDays || 0,
   };
 
-  var feedInf = useInfiniteList({ queryKey: ["feed"], url: SOCIAL.FEED.FRIENDS, limit: 20 });
-  var feedData = feedInf.items.map(function (item) {
-    return Object.assign({}, item, {
-      time: new Date(item.time || item.createdAt || Date.now()),
-      user: Object.assign({}, item.user, { color: item.user?.color || FRIEND_COLORS[0] }),
-      comments: (item.comments || []).map(function (c) {
-        return Object.assign({}, c, { time: new Date(c.time || c.createdAt || Date.now()) });
-      }),
-    });
-  });
-  var [feed, setFeed] = useState([]);
-  useEffect(function () { if (feedData.length > 0) setFeed(feedData); }, [feedInf.items]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Data sources ──────────────────────────────────────────────
+  var postsFeed = useInfiniteList({ queryKey: ["social-posts-feed"], url: SOCIAL.POSTS.FEED, limit: 15 });
+  var activityFeed = useInfiniteList({ queryKey: ["feed"], url: SOCIAL.FEED.FRIENDS, limit: 15 });
 
   var requestsQuery = useQuery({ queryKey: ["friend-requests"], queryFn: function () { return apiGet(SOCIAL.FRIENDS.PENDING); } });
   var requests = (requestsQuery.data && requestsQuery.data.results) || requestsQuery.data || [];
   if (!Array.isArray(requests)) requests = [];
-  requests = requests.map(function (r) {
-    var s = r.sender || {};
-    var senderName = s.displayName || s.username || r.name || r.displayName || "User";
-    return Object.assign({}, r, { name: senderName, initial: senderName[0].toUpperCase(), level: s.level || r.level || 1 });
-  });
 
-  var onlineQuery = useQuery({ queryKey: ["friends-online"], queryFn: function () { return apiGet(SOCIAL.FRIENDS.ONLINE); } });
-  var rawOnline = (onlineQuery.data && onlineQuery.data.results) || onlineQuery.data || [];
-  if (!Array.isArray(rawOnline)) rawOnline = [];
-  var ONLINE_FRIENDS = rawOnline.map(function (f, i) {
+  // Fetch all friends, then use Agora presence to determine who's online
+  var friendsListQ = useQuery({ queryKey: ["friends-list"], queryFn: function () { return apiGet(SOCIAL.FRIENDS.LIST); } });
+  var allFriendsRaw = (friendsListQ.data && friendsListQ.data.results) || friendsListQ.data || [];
+  if (!Array.isArray(allFriendsRaw)) allFriendsRaw = [];
+  var friendIdsForPresence = useMemo(function () {
+    return allFriendsRaw.map(function (f) { return String(f.id); });
+  }, [allFriendsRaw.length]);
+  var presenceMap = useAgoraPresence(friendIdsForPresence);
+  var ONLINE_FRIENDS = allFriendsRaw.filter(function (f) {
+    return !!presenceMap[String(f.id)];
+  }).map(function (f, i) {
     var fName = f.displayName || f.username || "Friend";
-    return { id: f.id, name: fName, initial: fName[0].toUpperCase(), level: f.currentLevel || f.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], dream: f.currentDream || "", streak: f.currentStreak || 0 };
+    return { id: f.id, name: fName, initial: fName[0].toUpperCase(), color: CONTACT_COLORS[i % CONTACT_COLORS.length] };
   });
 
-  var lbQuery = useQuery({ queryKey: ["leaderboard", lbTab], queryFn: function () { return apiGet(LEAGUES.LEADERBOARD.FRIENDS + "?period=" + lbTab); } });
-  var LEADERBOARD = ((lbQuery.data && lbQuery.data.results) || lbQuery.data || []).map(function (entry, i) {
-    return Object.assign({}, entry, {
-      name: entry.userDisplayName || entry.name || "User",
-      initial: (entry.userDisplayName || entry.name || "U")[0].toUpperCase(),
-      level: entry.userLevel || entry.level || 1,
-      color: LB_COLORS[i % LB_COLORS.length],
-      isMe: entry.isCurrentUser || String(entry.userId || entry.id) === String(user?.id),
-    });
+  // Stories feed (grouped by user)
+  var storiesFeedQ = useQuery({
+    queryKey: ["stories-feed"],
+    queryFn: function () { return apiGet(SOCIAL.STORIES.FEED); },
+  });
+  var storyGroups = storiesFeedQ.data || [];
+  if (!Array.isArray(storyGroups)) storyGroups = [];
+
+  // Story creation mutation
+  var createStoryMut = useMutation({
+    mutationFn: function (formData) { return apiUpload(SOCIAL.STORIES.LIST, formData); },
+    onSuccess: function () {
+      showToast(t("social.storyPublished") || "Story posted!", "success");
+      setShowStoryCreate(false);
+      setStoryFile(null);
+      if (storyPreview && storyPreview.startsWith("blob:")) { URL.revokeObjectURL(storyPreview); }
+      setStoryPreview("");
+      setStoryCaption("");
+      qc.invalidateQueries({ queryKey: ["stories-feed"] });
+    },
+    onError: function (e) { showToast(e.message || "Failed to post story", "error"); },
   });
 
-  var loading = feedInf.isLoading;
+  // Mark story as viewed
+  function markStoryViewed(storyId) {
+    apiPost(SOCIAL.STORIES.VIEW(storyId)).catch(function () {});
+  }
 
-  useEffect(() => {
+  var dreamsQ = useQuery({
+    queryKey: ["my-dreams-for-post"],
+    queryFn: function () { return apiGet(DREAMS.LIST); },
+    enabled: showCreate,
+  });
+  var myDreams = (dreamsQ.data && dreamsQ.data.results) || dreamsQ.data || [];
+  if (!Array.isArray(myDreams)) myDreams = [];
+
+  // ── Merge feeds ───────────────────────────────────────────────
+  var posts = postsFeed.items.map(function (p) { return Object.assign({}, p, { _type: "post", _time: new Date(p.createdAt || p.created_at || Date.now()) }); });
+  var events = activityFeed.items.map(function (e) { return Object.assign({}, e, { _type: "event", _time: new Date(e.time || e.createdAt || e.created_at || Date.now()) }); });
+  var mixedFeed = posts.concat(events).sort(function (a, b) { return b._time - a._time; });
+
+  var loading = postsFeed.isLoading && activityFeed.isLoading;
+  var isError = postsFeed.isError && activityFeed.isError;
+
+  // ── Create post mutation ──────────────────────────────────────
+  var createMut = useMutation({
+    mutationFn: function (formData) { return apiUpload(SOCIAL.POSTS.LIST, formData); },
+    onSuccess: function () {
+      showToast(t("feed.postPublished") || "Post published!", "success");
+      _resetCreateForm();
+      qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
+    },
+    onError: function (e) { showToast(e.message || "Failed to create post", "error"); },
+  });
+
+  function _resetCreateForm() {
+    setShowCreate(false);
+    setCreateContent("");
+    setCreateDreamId("");
+    setCreateVisibility("public");
+    setCreatePostType("regular");
+    setCreateMediaFile(null);
+    setCreateMediaType("none");
+    if (createMediaPreview && createMediaPreview.startsWith("blob:")) { URL.revokeObjectURL(createMediaPreview); }
+    setCreateMediaPreview("");
+    setShowEventFields(false);
+    setEventTitle("");
+    setEventType("virtual");
+    setEventLocation("");
+    setEventLink("");
+    setEventStart("");
+    setEventEnd("");
+    setEventMaxPart("");
+  }
+
+  // ── Handlers ──────────────────────────────────────────────────
+  function handleLikePost(id) {
+    apiPost(SOCIAL.POSTS.LIKE(id)).then(function () {
+      qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
+    }).catch(function () {});
+  }
+  function handleLikeEvent(id) {
+    apiPost(SOCIAL.FEED.LIKE(id)).catch(function () {});
+  }
+  function handleSavePost(id) {
+    apiPost(SOCIAL.POSTS.SAVE(id)).then(function (res) {
+      setSavedPosts(function (p) { var n = Object.assign({}, p); n[id] = res.saved; return n; });
+    }).catch(function () {});
+  }
+  function handleShare(item) {
+    var text = item.content || item.data?.dream || item.data?.task || "";
+    var shareUrl = item._type === "post" && item.id ? (window.location.origin + "/post/" + item.id) : window.location.href;
+    if (navigator.share) {
+      navigator.share({ title: "DreamPlanner", text: text, url: shareUrl }).catch(function () {});
+    } else {
+      navigator.clipboard.writeText(shareUrl).then(function () { showToast("Copied!", "success"); });
+    }
+  }
+  function handleComment(itemId, type) {
+    var text = (commentInputs[itemId] || "").trim();
+    if (!text) return;
+    var url = type === "post" ? SOCIAL.POSTS.COMMENT(itemId) : SOCIAL.FEED.COMMENT(itemId);
+    apiPost(url, { content: text }).then(function () {
+      setCommentInputs(function (p) { var n = Object.assign({}, p); n[itemId] = ""; return n; });
+      if (type === "post") qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
+    }).catch(function () {});
+  }
+  function handleRegisterEvent(eventId) {
+    apiPost(SOCIAL.EVENTS.REGISTER(eventId)).then(function () {
+      showToast("Registered!", "success");
+      qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
+    }).catch(function (e) { showToast(e.message || "Failed", "error"); });
+  }
+  // ── Story handlers ───────────────────────────────────────────
+  function openStoryViewer(groupIdx) {
+    setStoryViewer({ groupIndex: groupIdx, storyIndex: 0 });
+    setStoryProgress(0);
+    var s = storyGroups[groupIdx] && storyGroups[groupIdx].stories && storyGroups[groupIdx].stories[0];
+    if (s && !s.hasViewed) markStoryViewed(s.id);
+  }
+  function closeStoryViewer() {
+    setStoryViewer(null);
+    setStoryProgress(0);
+    if (storyTimerRef.current) clearInterval(storyTimerRef.current);
+  }
+  function advanceStory(dir) {
+    if (!storyViewer) return;
+    var g = storyGroups[storyViewer.groupIndex];
+    if (!g) { closeStoryViewer(); return; }
+    var nextIdx = storyViewer.storyIndex + dir;
+    if (nextIdx >= 0 && nextIdx < g.stories.length) {
+      setStoryViewer({ groupIndex: storyViewer.groupIndex, storyIndex: nextIdx });
+      setStoryProgress(0);
+      var s = g.stories[nextIdx];
+      if (s && !s.hasViewed) markStoryViewed(s.id);
+    } else if (dir > 0) {
+      // Next user's stories
+      var nextGroup = storyViewer.groupIndex + 1;
+      if (nextGroup < storyGroups.length) {
+        setStoryViewer({ groupIndex: nextGroup, storyIndex: 0 });
+        setStoryProgress(0);
+        var s2 = storyGroups[nextGroup] && storyGroups[nextGroup].stories && storyGroups[nextGroup].stories[0];
+        if (s2 && !s2.hasViewed) markStoryViewed(s2.id);
+      } else {
+        closeStoryViewer();
+      }
+    } else {
+      // Previous user
+      var prevGroup = storyViewer.groupIndex - 1;
+      if (prevGroup >= 0) {
+        var pStories = storyGroups[prevGroup].stories;
+        setStoryViewer({ groupIndex: prevGroup, storyIndex: pStories.length - 1 });
+        setStoryProgress(0);
+      }
+    }
+  }
+  function handleStoryFilePick(type) {
+    setStoryMediaType(type);
+    if (storyInputRef.current) {
+      storyInputRef.current.accept = type === "image" ? "image/*" : "video/*";
+      storyInputRef.current.click();
+    }
+  }
+  function handleStoryFileSelected(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    // Validate file type
+    var allowedImage = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    var allowedVideo = ["video/mp4", "video/webm", "video/quicktime"];
+    var allowed = storyMediaType === "image" ? allowedImage : allowedVideo;
+    if (!allowed.includes(file.type)) {
+      showToast("Unsupported file type", "error");
+      return;
+    }
+    // Validate file size (50MB max)
+    if (file.size > 50 * 1024 * 1024) {
+      showToast("File too large. Max 50MB.", "error");
+      return;
+    }
+    // Revoke previous story preview object URL if any
+    if (storyPreview && storyPreview.startsWith("blob:")) {
+      URL.revokeObjectURL(storyPreview);
+    }
+    setStoryFile(file);
+    setStoryPreview(URL.createObjectURL(file));
+    setShowStoryCreate(true);
+  }
+  function handleCreateStory() {
+    if (!storyFile) return;
+    var fd = new FormData();
+    if (storyMediaType === "image") fd.append("image_file", storyFile);
+    else fd.append("video_file", storyFile);
+    if (storyCaption.trim()) fd.append("caption", storyCaption.trim());
+    createStoryMut.mutate(fd);
+  }
+
+  // Story auto-advance timer
+  useEffect(function () {
+    if (!storyViewer) return;
+    var g = storyGroups[storyViewer.groupIndex];
+    if (!g) return;
+    var s = g.stories[storyViewer.storyIndex];
+    if (!s || s.mediaType === "video") return; // videos control their own duration
+    var dur = 5000; // 5s for images
+    var interval = 50;
+    var elapsed = 0;
+    storyTimerRef.current = setInterval(function () {
+      elapsed += interval;
+      setStoryProgress(elapsed / dur);
+      if (elapsed >= dur) {
+        clearInterval(storyTimerRef.current);
+        advanceStory(1);
+      }
+    }, interval);
+    return function () { if (storyTimerRef.current) clearInterval(storyTimerRef.current); };
+  }, [storyViewer && storyViewer.groupIndex, storyViewer && storyViewer.storyIndex]);
+
+  function handleMediaPick(type) {
+    setCreateMediaType(type);
+    var accept = type === "image" ? "image/*" : type === "video" ? "video/*" : "audio/*";
+    if (mediaInputRef.current) {
+      mediaInputRef.current.accept = accept;
+      mediaInputRef.current.click();
+    }
+  }
+  function handleMediaSelected(e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    // Validate file type
+    var allowedTypes = {
+      image: ["image/jpeg", "image/png", "image/webp", "image/gif"],
+      video: ["video/mp4", "video/webm", "video/quicktime"],
+      audio: ["audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "audio/mp4"],
+    };
+    var allowed = allowedTypes[createMediaType] || allowedTypes.image;
+    if (!allowed.includes(file.type)) {
+      showToast("Unsupported file type", "error");
+      return;
+    }
+    // Validate file size (50MB max)
+    if (file.size > 50 * 1024 * 1024) {
+      showToast("File too large. Max 50MB.", "error");
+      return;
+    }
+    // Revoke previous object URL if any
+    if (createMediaPreview && createMediaPreview.startsWith("blob:")) {
+      URL.revokeObjectURL(createMediaPreview);
+    }
+    setCreateMediaFile(file);
+    if (createMediaType === "image") {
+      setCreateMediaPreview(URL.createObjectURL(file));
+    } else {
+      setCreateMediaPreview(file.name);
+    }
+  }
+  function handleCreatePost() {
+    var c = sanitizeText ? sanitizeText(createContent, 5000) : createContent.trim();
+    if (!c) return;
+    var fd = new FormData();
+    fd.append("content", c);
+    fd.append("visibility", createVisibility);
+    fd.append("post_type", showEventFields ? "event" : createPostType);
+    if (createDreamId) fd.append("dream_id", createDreamId);
+    if (createMediaFile) {
+      var fieldName = createMediaType === "image" ? "image_file" : createMediaType === "video" ? "video_file" : "audio_file";
+      fd.append(fieldName, createMediaFile);
+    }
+    if (showEventFields) {
+      fd.append("event_title", eventTitle);
+      fd.append("event_type", eventType);
+      fd.append("event_location", eventLocation);
+      fd.append("event_meeting_link", eventLink);
+      if (eventStart) fd.append("event_start_time", new Date(eventStart).toISOString());
+      if (eventEnd) fd.append("event_end_time", new Date(eventEnd).toISOString());
+      if (eventMaxPart) fd.append("event_max_participants", eventMaxPart);
+    }
+    createMut.mutate(fd);
+  }
+
+  // ── Search ────────────────────────────────────────────────────
+  useEffect(function () {
     if (!searchQ || searchQ.length < 2) { setSearchResults([]); return; }
     setSearchLoading(true);
     var cancelled = false;
@@ -128,410 +431,700 @@ export default function SocialHubScreen(){
         if (cancelled) return;
         var results = (data && data.results) || data || [];
         setSearchResults(results.map(function (u, i) {
-          var displayName = u.username || u.displayName || u.display_name || "User";
-          return { id: u.id, name: displayName, title: u.title || "", initial: (displayName[0] || "U").toUpperCase(), level: u.currentLevel || u.level || 1, color: FRIEND_COLORS[i % FRIEND_COLORS.length], isFriend: u.isFriend || false, isFollowing: u.isFollowing || false, friendshipStatus: u.isFriend ? "accepted" : null };
+          var dn = u.username || u.displayName || u.display_name || "User";
+          return { id: u.id, name: dn, title: u.title || "", initial: (dn[0] || "U").toUpperCase(), level: u.currentLevel || u.level || 1, color: CONTACT_COLORS[i % CONTACT_COLORS.length], isFriend: u.isFriend || false, friendshipStatus: u.isFriend ? "accepted" : null };
         }));
         setSearchLoading(false);
       }).catch(function () { if (!cancelled) { setSearchResults([]); setSearchLoading(false); } });
     }, 300);
     return function () { cancelled = true; clearTimeout(timer); };
-  }, [searchQ]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
+  }, [searchQ]);
 
-  const toggleFeedLike=function(id){
-    setFeed(p=>p.map(f=>f.id===id?{...f,liked:!f.liked,likes:f.liked?f.likes-1:f.likes+1}:f));
-    apiPost(SOCIAL.FEED.LIKE(id)).catch(function () {});
-  };
-  const toggleComments=(id)=>{setExpandedComments(prev=>prev===id?null:id);setCommentInput("");};
-  const addComment=function(feedId){
-    const text=commentInput.trim();if(!text)return;
-    setFeed(p=>p.map(f=>f.id===feedId?{...f,comments:[...f.comments,{id:Date.now()+"c",user:{name:ME.displayName,initial:ME.initial,color:"#8B5CF6"},text:text,time:new Date()}]}:f));
-    setCommentInput("");
-    apiPost(SOCIAL.FEED.COMMENT(feedId), { text: text }).catch(function () {});
-  };
-  const acceptReq=function(id){
-    apiPost(SOCIAL.FRIENDS.ACCEPT(id)).then(function () {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-      showToast(t("social.requestAccepted"), "success");
-    }).catch(function (err) { showToast(err.message || "Failed", "error"); });
-  };
-  const declineReq=function(id){
-    apiPost(SOCIAL.FRIENDS.REJECT(id)).then(function () {
-      queryClient.invalidateQueries({ queryKey: ["friend-requests"] });
-    }).catch(function (err) { showToast(err.message || "Failed", "error"); });
-  };
+  useEffect(function () { setTimeout(function () { setMounted(true); }, 100); }, []);
 
-
-  const RANK_STYLES=[
-    {bg:"linear-gradient(135deg,#FCD34D,#F59E0B)",border:"rgba(252,211,77,0.4)",shadow:"rgba(252,211,77,0.25)",icon:Crown,size:52},
-    {bg:"linear-gradient(135deg,#D1D5DB,#9CA3AF)",border:"rgba(209,213,219,0.4)",shadow:"rgba(209,213,219,0.2)",icon:Medal,size:44},
-    {bg:"linear-gradient(135deg,#D4A574,#B8860B)",border:"rgba(212,165,116,0.4)",shadow:"rgba(212,165,116,0.2)",icon:Medal,size:44},
-  ];
-
+  // ── Loading / Error ───────────────────────────────────────────
   if (loading) return (
-      <div style={{ width: "100%", padding: "60px 16px 0" }}>
-        <SkeletonCard height={80} style={{ marginBottom: 16 }} />
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[1,2,3].map(i => <FeedItemSkeleton key={i} isLight={isLight} />)}
-        </div>
+    <div style={{ width: "100%", padding: "60px 16px 0" }}>
+      <SkeletonCard height={80} style={{ marginBottom: 16 }} />
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        {[1, 2, 3].map(function (i) { return <FeedItemSkeleton key={i} />; })}
       </div>
+    </div>
   );
 
-  if (feedInf.isError) {
-    return (
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
-        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <ErrorState
-            message={(feedInf.error && feedInf.error.message) || "Failed to load social feed"}
-            onRetry={function () { feedInf.refetch(); }}
-          />
-        </div>
-        <BottomNav />
+  if (isError) return (
+    <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <ErrorState
+          message="Failed to load social feed"
+          onRetry={function () { postsFeed.refetch(); activityFeed.refetch(); }}
+        />
       </div>
-    );
-  }
+      <BottomNav />
+    </div>
+  );
 
-  return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+  // ═══════════════════════════════════════════════════════════════
+  return (
+    <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
 
       {/* ═══ APP BAR ═══ */}
-      <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button className="dp-ib" onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2}/></button>
-          <Users size={20} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-          <span style={{fontSize:17,fontWeight:700,color:isLight?"#1a1535":"#fff",letterSpacing:"-0.3px"}}>{t("social.title")}</span>
-        </div>
-        <div style={{display:"flex",gap:6}}>
-          <div style={{position:"relative"}}>
-            <button className="dp-ib" onClick={()=>setShowSearch(!showSearch)} aria-label={showSearch?"Close search":"Search"}>
-              {showSearch?<X size={18} strokeWidth={2}/>:<Search size={18} strokeWidth={2}/>}
-            </button>
+      <GlassAppBar
+        style={{ justifyContent: "space-between" }}
+        left={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Go back" />
+            <span style={{ fontSize: 20, fontWeight: 800, color: "var(--dp-text)", letterSpacing: "-0.5px" }}>DreamPlanner</span>
           </div>
-          <button className="dp-ib" onClick={()=>navigate("/friend-requests")} style={{position:"relative"}} aria-label="Friend requests">
-            <UserPlus size={18} strokeWidth={2}/>
-            {requests.length>0&&<div style={{position:"absolute",top:4,right:4,width:8,height:8,borderRadius:"50%",background:"#F69A9A",border:"2px solid #0c081a"}}/>}
-          </button>
-        </div>
-      </header>
+        }
+        right={
+          <div style={{ display: "flex", gap: 6 }}>
+            <IconButton icon={showSearch ? X : Search} onClick={function () { setShowSearch(!showSearch); }} label={showSearch ? "Close search" : "Search"} />
+            <IconButton icon={UserPlus} onClick={function () { navigate("/friend-requests"); }} label="Friend requests" badge={requests.length} />
+          </div>
+        }
+      />
 
       {/* ═══ CONTENT ═══ */}
-      <main style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"16px 16px 100px",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
-        <div style={{width:"100%"}}>
+      <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "8px 0 100px", opacity: uiOpacity, transition: "opacity 0.3s ease" }}>
 
-          {/* ── Quick Stats ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>
-            <div className="dp-g" style={{padding:16,marginBottom:16}}>
-              <div style={{display:"flex",justifyContent:"space-around"}}>
-                {[
-                  {Icon:Trophy,value:`#${ME.rank}`,label:t("social.rank"),color:"#FCD34D"},
-                  {Icon:Users,value:ME.friends,label:t("social.friends"),color:"#C4B5FD"},
-                  {Icon:Flame,value:ME.streak,label:t("social.streak"),color:"#F69A9A"},
-                  {Icon:Zap,value:ME.xp.toLocaleString(),label:t("social.xp"),color:"#8B5CF6"},
-                ].map(({Icon:I,value,label,color},i)=>{
-                  const iconColor=color==="#FCD34D"?(isLight?"#B45309":"#FCD34D"):color==="#C4B5FD"?(isLight?"#6D28D9":"#C4B5FD"):color==="#F69A9A"?(isLight?"#DC2626":"#F69A9A"):color;
-                  return(
-                  <div key={i} style={{textAlign:"center"}}>
-                    <I size={20} color={iconColor} strokeWidth={2} style={{marginBottom:4,filter:`drop-shadow(0 0 6px ${color}40)`}}/>
-                    <div style={{fontSize:16,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{value}</div>
-                    <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{label}</div>
-                  </div>
-                );})}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Quick Access Grid ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"50ms"}}>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:16}}>
-              {[
-                {Icon:CircleDot,label:t("social.circles"),color:"#8B5CF6",path:"/circles"},
-                {Icon:Trophy,label:t("social.leaderboard"),color:"#FCD34D",path:"/leaderboard"},
-                {Icon:Calendar,label:t("social.seasons"),color:"#14B8A6",path:"/seasons"},
-                {Icon:Sparkles,label:t("social.dreamFeed"),color:"#EC4899",path:"/social/feed"},
-                {Icon:Handshake,label:t("social.buddyRequests"),color:"#F59E0B",path:"/buddy-requests"},
-                {Icon:Target,label:t("social.findBuddy"),color:"#10B981",path:"/find-buddy"},
-              ].map(function(item,i){
-                var iconColor = item.color === "#FCD34D" ? (isLight?"#B45309":"#FCD34D") : item.color;
-                return(
-                <button key={i} onClick={function(){navigate(item.path);}} className="dp-g dp-gh" style={{
-                  padding:"14px 8px",display:"flex",flexDirection:"column",alignItems:"center",gap:8,
-                  cursor:"pointer",border:"none",textAlign:"center",
+        {/* ── Stories Bar ── */}
+        <div style={{ padding: "8px 0 12px", borderBottom: "1px solid var(--dp-divider)" }}>
+          <div style={{ display: "flex", gap: 14, overflowX: "auto", padding: "0 16px", scrollbarWidth: "none" }}>
+            {/* You — create story */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 68, cursor: "pointer" }}
+              onClick={function () {
+                // Check if user has stories — tap opens viewer, plus opens create
+                var myGroup = storyGroups.find(function (g) { return g.user && g.user.id === String(user?.id); });
+                if (myGroup && myGroup.stories && myGroup.stories.length > 0) {
+                  openStoryViewer(storyGroups.indexOf(myGroup));
+                } else {
+                  setShowStoryCreate(true);
+                }
+              }}>
+              <div style={{ position: "relative" }}>
+                <div style={{
+                  width: 68, height: 68, borderRadius: "50%",
+                  background: (function () {
+                    var myGroup = storyGroups.find(function (g) { return g.user && g.user.id === String(user?.id); });
+                    if (myGroup && myGroup.stories && myGroup.stories.length > 0) return "linear-gradient(135deg," + BRAND.purple + "," + BRAND.pink + ")";
+                    return "rgba(255,255,255,0.1)";
+                  })(),
+                  display: "flex", alignItems: "center", justifyContent: "center", padding: 3,
                 }}>
-                  <item.Icon size={20} color={iconColor} strokeWidth={2} style={{filter:"drop-shadow(0 0 6px "+item.color+"40)"}}/>
-                  <span style={{fontSize:11,fontWeight:600,color:isLight?"#1a1535":"rgba(255,255,255,0.85)"}}>{item.label}</span>
-                </button>
-              );})}
-            </div>
-          </div>
-
-          {/* ── Friend Requests ── */}
-          {requests.length>0&&(
-            <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"80ms"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <UserPlus size={14} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-                  <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>{t("social.friendRequests")}</span>
-                  <span style={{fontSize:12,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD",background:"rgba(139,92,246,0.12)",padding:"2px 7px",borderRadius:8}}>{requests.length}</span>
-                </div>
-                <span onClick={()=>navigate("/friend-requests")} style={{fontSize:12,color:isLight?"#7C3AED":"#C4B5FD",cursor:"pointer",fontWeight:500}}>See All</span>
-              </div>
-              {requests.map((req,i)=>(
-                <div key={req.id} className="dp-g" style={{padding:14,marginBottom:8,display:"flex",alignItems:"center",gap:12}}>
-                  <div style={{width:42,height:42,borderRadius:14,background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:isLight?"#7C3AED":"#C4B5FD"}}>{req.initial}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{req.name}</div>
-                    <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>Level {req.level} · {req.mutualFriends} mutual</div>
-                  </div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>acceptReq(req.id)} aria-label="Accept friend request" style={{width:34,height:34,borderRadius:10,border:"none",background:"rgba(93,229,168,0.12)",color:isLight?"#059669":"#5DE5A8",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.2s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background="rgba(93,229,168,0.25)"}
-                      onMouseLeave={e=>e.currentTarget.style.background="rgba(93,229,168,0.12)"}>
-                      <UserCheck size={16} strokeWidth={2.5}/>
-                    </button>
-                    <button onClick={()=>declineReq(req.id)} aria-label="Decline friend request" style={{width:34,height:34,borderRadius:10,border:"none",background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",transition:"all 0.2s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.1)"}
-                      onMouseLeave={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)"}>
-                      <X size={16} strokeWidth={2.5}/>
-                    </button>
+                  <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--dp-body-bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: 2 }}>
+                    <Avatar name={ME.displayName} size={56} shape="circle" color="var(--dp-accent)" />
                   </div>
                 </div>
-              ))}
-              <div style={{height:8}}/>
-            </div>
-          )}
-
-          {/* ── Online Friends ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"160ms"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <div style={{width:7,height:7,borderRadius:"50%",background:"#5DE5A8",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
-                <span style={{fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)"}}>{t("social.onlineNow")}</span>
-              </div>
-              <button onClick={()=>navigate("/online-friends")} style={{fontSize:12,color:isLight?"#7C3AED":"#C4B5FD",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:500}}>See All</button>
-            </div>
-            <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:8,marginBottom:8}}>
-              {ONLINE_FRIENDS.map(f=>(
-                <div key={f.id} onClick={()=>navigate("/user/"+f.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,minWidth:64,cursor:"pointer"}}>
-                  <div style={{position:"relative"}}>
-                    <div style={{width:48,height:48,borderRadius:16,background:`${f.color}18`,border:`1px solid ${f.color}25`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,fontWeight:700,color:f.color}}>{f.initial}</div>
-                    <div style={{position:"absolute",bottom:-1,right:-1,width:10,height:10,borderRadius:"50%",background:"#5DE5A8",border:isLight?"2px solid #f0ecff":"2px solid #0c081a"}}/>
-                  </div>
-                  <span style={{fontSize:12,fontWeight:500,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",textAlign:"center",maxWidth:64,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.name}</span>
+                <div onClick={function (e) { e.stopPropagation(); setShowStoryCreate(true); }} style={{ position: "absolute", bottom: -2, right: -2, width: 22, height: 22, borderRadius: "50%", background: GRADIENTS.primary, border: "2px solid var(--dp-body-bg)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <Plus size={12} color={BRAND.white} strokeWidth={3} />
                 </div>
-              ))}
-            </div>
-          </div>
-
-          {/* ── Leaderboard Podium ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"240ms"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <Trophy size={15} color={isLight?"#B45309":"#FCD34D"} strokeWidth={2.5}/>
-                <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("social.leaderboard")}</span>
               </div>
-              <div style={{display:"flex",gap:4}}>
-                {["weekly","monthly","all"].map(tab=>(
-                  <button key={tab} onClick={()=>setLbTab(tab)} style={{padding:"4px 10px",borderRadius:12,border:"none",fontSize:12,fontWeight:lbTab===tab?600:500,background:lbTab===tab?"rgba(139,92,246,0.15)":"transparent",color:lbTab===tab?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"),cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",outline:lbTab===tab?"1px solid rgba(139,92,246,0.2)":"1px solid transparent"}}>
-                    {tab==="all"?t("social.allTime"):tab==="weekly"?t("social.weekly"):t("social.monthly")}
-                  </button>
-                ))}
-              </div>
+              <span style={{ fontSize: 11, fontWeight: 500, color: "var(--dp-text-primary)", textAlign: "center", maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t("social.you") || "You"}</span>
             </div>
 
-            {/* Podium */}
-            {LEADERBOARD.length>=3&&(<div className="dp-g" style={{padding:20,marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"center",alignItems:"flex-end",gap:12,marginBottom:16}}>
-                {[1,0,2].map(idx=>{
-                  const p=LEADERBOARD[idx];const rs=RANK_STYLES[idx];const isFirst=idx===0;
-                  if(!p)return null;
-                  return(
-                    <div key={p.id||idx} onClick={()=>!p.isMe&&navigate("/user/"+p.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",flex:1,cursor:p.isMe?"default":"pointer"}}>
-                      <div style={{width:rs.size,height:rs.size,borderRadius:Math.round(rs.size*0.3),background:rs.bg,border:`2px solid ${rs.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:Math.round(rs.size*0.38),fontWeight:700,color:"#fff",boxShadow:`0 4px 16px ${rs.shadow}`,marginBottom:8}}>{p.initial||"?"}</div>
-                      <div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:2}}>{p.name||"—"}</div>
-                      <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{(p.xp||0).toLocaleString()} XP</div>
-                      <div style={{marginTop:6,padding:"3px 10px",borderRadius:10,background:`${rs.border}20`,fontSize:12,fontWeight:700,color:isFirst?(isLight?"#B45309":"#FCD34D"):idx===1?"#D1D5DB":"#D4A574"}}>
-                        #{idx+1}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Rest of leaderboard */}
-              {LEADERBOARD.slice(3).map((entry,i)=>{if(!entry)return null;
-                const rank=i+4;
-                return(
-                  <div key={entry.id} onClick={()=>!entry.isMe&&navigate("/user/"+entry.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderTop:i===0?(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"):"none",cursor:entry.isMe?"default":"pointer"}}>
-                    <span style={{width:24,textAlign:"center",fontSize:13,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{rank}</span>
-                    <div style={{width:32,height:32,borderRadius:10,background:`${entry.color}15`,border:`1px solid ${entry.color}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:entry.color}}>{entry.initial}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:entry.isMe?700:500,color:entry.isMe?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"#1a1535":"#fff")}}>{entry.name}{entry.isMe?" (You)":""}</div>
-                    </div>
-                    <div style={{textAlign:"right"}}>
-                      <div style={{fontSize:13,fontWeight:600,color:isLight?"#059669":"#5DE5A8"}}>{entry.xp.toLocaleString()}</div>
-                      <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{entry.streak}d streak</div>
+            {/* Story groups (excluding self — already shown) */}
+            {storyGroups.filter(function (g) { return g.user && g.user.id !== String(user?.id); }).map(function (group) {
+              var gIdx = storyGroups.indexOf(group);
+              var hasUnviewed = group.hasUnviewed;
+              return (
+                <div key={group.user.id} onClick={function () { openStoryViewer(gIdx); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 68, cursor: "pointer" }}>
+                  <div style={{
+                    width: 68, height: 68, borderRadius: "50%",
+                    background: hasUnviewed ? "linear-gradient(135deg," + BRAND.purple + "," + BRAND.pink + ")" : "rgba(255,255,255,0.12)",
+                    display: "flex", alignItems: "center", justifyContent: "center", padding: 3,
+                  }}>
+                    <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--dp-body-bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: 2 }}>
+                      <Avatar name={group.user.displayName || group.user.username} src={group.user.avatar} size={56} shape="circle" color={avatarColor(group.user.username)} />
                     </div>
                   </div>
-                );
-              })}
-            </div>)}
-          </div>
-
-          {/* ── Activity Feed ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"320ms"}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12}}>
-              <Sparkles size={15} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2.5}/>
-              <span style={{fontSize:15,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{t("social.activity")}</span>
-            </div>
-          </div>
-
-          {feed.map((item,i)=>{
-            const cfg=FEED_CONFIG[item.type]||FEED_CONFIG.task_completed;
-            const FIcon=cfg.Icon;
-            const isExpanded=expandedComments===item.id;
-            return(
-              <div key={item.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${400+i*80}ms`}}>
-                <div className="dp-g" style={{padding:14,marginBottom:10,transition:"all 0.3s cubic-bezier(0.16,1,0.3,1)"}}>
-                  <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                    {/* User avatar */}
-                    <div onClick={()=>{const u=[...ONLINE_FRIENDS,...LEADERBOARD].find(x=>x.name===item.user.name&&!x.isMe);if(u)navigate("/user/"+u.id);}} style={{width:40,height:40,borderRadius:14,flexShrink:0,background:`${item.user.color}15`,border:`1px solid ${item.user.color}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:700,color:item.user.color,cursor:"pointer"}}>{item.user.initial}</div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4}}>
-                        <span style={{fontSize:14,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{item.user.name}</span>
-                        <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{timeAgo(item.time)}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <FIcon size={14} color={cfg.color==="#C4B5FD"?(isLight?"#6D28D9":"#C4B5FD"):cfg.color==="#5DE5A8"?(isLight?"#059669":"#5DE5A8"):cfg.color==="#FCD34D"?(isLight?"#B45309":"#FCD34D"):cfg.color==="#F69A9A"?(isLight?"#DC2626":"#F69A9A"):cfg.color} strokeWidth={2}/>
-                        <span style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.4,wordBreak:"break-word"}}>{cfg.text(item.data,t)}</span>
-                      </div>
-                    </div>
-                    {/* Actions — right side, same row */}
-                    <div style={{display:"flex",gap:6,flexShrink:0,alignItems:"center"}}>
-                      <button onClick={()=>toggleFeedLike(item.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:12,background:item.liked?"rgba(246,154,154,0.1)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),border:item.liked?"1px solid rgba(246,154,154,0.15)":(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"),cursor:"pointer",color:item.liked?(isLight?"#DC2626":"#F69A9A"):(isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"),fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"all 0.2s"}}
-                        onMouseEnter={e=>{if(!item.liked)e.currentTarget.style.background=isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.07)";}}
-                        onMouseLeave={e=>{if(!item.liked)e.currentTarget.style.background=isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)";}}>
-                        <Heart size={16} strokeWidth={2} fill={item.liked?"#F69A9A":"none"}/>{item.likes}
-                      </button>
-                      <button onClick={()=>toggleComments(item.id)} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:12,background:isExpanded?"rgba(196,181,253,0.1)":(isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)"),border:isExpanded?"1px solid rgba(196,181,253,0.15)":(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"),cursor:"pointer",color:isExpanded?(isLight?"#7C3AED":"#C4B5FD"):(isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"),fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"all 0.2s"}}
-                        onMouseEnter={e=>{if(!isExpanded)e.currentTarget.style.background=isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.07)";}}
-                        onMouseLeave={e=>{if(!isExpanded)e.currentTarget.style.background=isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)";}}>
-                        <MessageCircle size={16} strokeWidth={2} fill={isExpanded?"rgba(196,181,253,0.15)":"none"}/>{item.comments.length||""}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* ── Inline Comments Section ── */}
-                  <div style={{overflow:"hidden",maxHeight:isExpanded?600:0,opacity:isExpanded?1:0,transition:"all 0.35s cubic-bezier(0.16,1,0.3,1)",marginTop:isExpanded?12:0}}>
-                    {/* Existing comments */}
-                    {item.comments.length>0&&(
-                      <div style={{borderTop:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
-                        {item.comments.map(c=>(
-                          <div key={c.id} style={{display:"flex",gap:8,marginBottom:10}}>
-                            <div style={{width:26,height:26,borderRadius:8,flexShrink:0,background:`${c.user.color}15`,border:`1px solid ${c.user.color}20`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:c.user.color}}>{c.user.initial}</div>
-                            <div style={{flex:1,minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:2}}>
-                                <span style={{fontSize:12,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{c.user.name}</span>
-                                <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{timeAgo(c.time)}</span>
-                              </div>
-                              <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.4,wordBreak:"break-word"}}>{c.text}</div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {/* Comment input */}
-                    <div style={{display:"flex",gap:8,alignItems:"center",marginTop:item.comments.length?4:0,paddingTop:item.comments.length?0:10,borderTop:item.comments.length?"none":(isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)")}}>
-                      <div style={{width:26,height:26,borderRadius:8,flexShrink:0,background:"rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#7C3AED":"#C4B5FD"}}>S</div>
-                      <div style={{flex:1,display:"flex",alignItems:"center",gap:6,padding:"6px 12px",borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
-                        <input value={isExpanded?commentInput:""} onChange={e=>setCommentInput(e.target.value)}
-                          onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();addComment(item.id);}}}
-                          placeholder="Write a comment..." style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:12,fontFamily:"inherit"}}/>
-                        {commentInput.trim()&&(
-                          <button onClick={()=>addComment(item.id)} aria-label="Send comment" style={{background:"none",border:"none",cursor:"pointer",color:isLight?"#7C3AED":"#C4B5FD",display:"flex",alignItems:"center",transition:"all 0.15s"}}>
-                            <ArrowUpCircle size={18} strokeWidth={2}/>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: hasUnviewed ? "var(--dp-text-primary)" : "var(--dp-text-muted)", textAlign: "center", maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {(group.user.displayName || group.user.username || "").split(" ")[0]}
+                  </span>
                 </div>
+              );
+            })}
+
+            {/* Online friends without stories */}
+            {ONLINE_FRIENDS.filter(function (f) {
+              return !storyGroups.some(function (g) { return g.user && g.user.id === String(f.id); });
+            }).map(function (f) {
+              return (
+                <div key={"ol-" + f.id} onClick={function () { navigate("/user/" + f.id); }} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, minWidth: 68, cursor: "pointer" }}>
+                  <div style={{ position: "relative" }}>
+                    <div style={{ width: 68, height: 68, borderRadius: "50%", background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", padding: 3 }}>
+                      <div style={{ width: "100%", height: "100%", borderRadius: "50%", background: "var(--dp-body-bg)", display: "flex", alignItems: "center", justifyContent: "center", padding: 2 }}>
+                        <Avatar name={f.name} size={56} shape="circle" color={f.color} />
+                      </div>
+                    </div>
+                    <div style={{ position: "absolute", bottom: 1, right: 1, width: 12, height: 12, borderRadius: "50%", background: "#22C55E", border: "2px solid var(--dp-body-bg)" }} />
+                  </div>
+                  <span style={{ fontSize: 11, fontWeight: 500, color: "var(--dp-text-muted)", textAlign: "center", maxWidth: 68, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name.split(" ")[0]}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Hidden file input for story */}
+        <input ref={storyInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleStoryFileSelected} />
+
+        {/* ── Social Quick Nav ── */}
+        <div style={{ display: "flex", gap: 8, padding: "12px 16px", overflowX: "auto", scrollbarWidth: "none" }}>
+          {[
+            { icon: UsersIcon, label: t("social.circles") || "Circles", path: "/circles", color: "#8B5CF6" },
+            { icon: Trophy, label: t("social.leaderboard") || "Leaderboard", path: "/leaderboard", color: "#FCD34D" },
+            { icon: UserPlus, label: t("social.findBuddy") || "Find Buddy", path: "/find-buddy", color: "#10B981" },
+            { icon: Handshake, label: t("social.buddyRequests") || "Buddy Requests", path: "/buddy-requests", color: "#EC4899" },
+            { icon: Search, label: t("social.userSearch") || "Search Users", path: "/search", color: "#6366F1" },
+          ].map(function (nav) {
+            return (
+              <div key={nav.path} onClick={function () { navigate(nav.path); }} style={{
+                flexShrink: 0, display: "flex", alignItems: "center", gap: 6,
+                padding: "8px 14px", borderRadius: 12, cursor: "pointer",
+                background: nav.color + "10", border: "1px solid " + nav.color + "20",
+                transition: "all 0.2s",
+              }}>
+                <nav.icon size={15} color={nav.color} strokeWidth={2} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-text)" }}>{nav.label}</span>
               </div>
             );
           })}
-          <div ref={feedInf.sentinelRef} style={{height:1}} />
-          {feedInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+        </div>
 
-          {/* ── Find a Buddy CTA ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${400+feed.length*80+80}ms`}}>
-            <div className="dp-g" style={{padding:20,textAlign:"center",marginTop:8}}>
-              <div style={{width:56,height:56,borderRadius:18,margin:"0 auto 12px",background:"rgba(20,184,166,0.1)",border:"1px solid rgba(20,184,166,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Target size={26} color={isLight?"#0D9488":"#5EEAD4"} strokeWidth={1.5}/>
+        {/* ── Mixed Feed ── */}
+        <div style={{ padding: "0 16px" }}>
+          {mixedFeed.length === 0 && !postsFeed.isLoading && !activityFeed.isLoading && (
+            <div style={{ textAlign: "center", padding: "60px 20px" }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, background: "var(--dp-glass-bg)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                <Sparkles size={32} color="var(--dp-text-secondary)" />
               </div>
-              <div style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:4}}>{t("social.findBuddy")}</div>
-              <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",marginBottom:14,lineHeight:1.5}}>{t("social.findBuddyDesc")}</div>
-              <button onClick={()=>navigate("/find-buddy")} style={{padding:"10px 24px",borderRadius:14,border:"none",background:"linear-gradient(135deg,#14B8A6,#0D9488)",color:"#fff",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit",boxShadow:"0 4px 16px rgba(20,184,166,0.3)",transition:"all 0.2s"}}
-                onMouseEnter={e=>e.currentTarget.style.transform="scale(1.03)"}
-                onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-                {t("social.findMyBuddy")}
-              </button>
+              <div style={{ fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)", marginBottom: 6 }}>{t("feed.noPosts") || "No posts yet"}</div>
+              <div style={{ fontSize: 13, color: "var(--dp-text-secondary)" }}>{t("feed.beFirst") || "Be the first to share!"}</div>
             </div>
-          </div>
+          )}
 
+          {mixedFeed.map(function (item, idx) {
+            if (item._type === "post") return <PostCard key={"p-" + item.id} item={item} idx={idx} mounted={mounted} isLight={isLight} user={user} navigate={navigate} expandedComments={expandedComments} setExpandedComments={setExpandedComments} commentInputs={commentInputs} setCommentInputs={setCommentInputs} savedPosts={savedPosts} handleLikePost={handleLikePost} handleSavePost={handleSavePost} handleShare={handleShare} handleComment={handleComment} handleRegisterEvent={handleRegisterEvent} t={t} />;
+            return <EventCard key={"e-" + item.id} item={item} idx={idx} mounted={mounted} isLight={isLight} navigate={navigate} expandedComments={expandedComments} setExpandedComments={setExpandedComments} commentInputs={commentInputs} setCommentInputs={setCommentInputs} handleLikeEvent={handleLikeEvent} handleShare={handleShare} handleComment={handleComment} t={t} />;
+          })}
+
+          <div ref={postsFeed.sentinelRef} style={{ height: 1 }} />
+          <div ref={activityFeed.sentinelRef} style={{ height: 1 }} />
+          {(postsFeed.loadingMore || activityFeed.loadingMore) && (
+            <div style={{ textAlign: "center", padding: 16, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading more…</div>
+          )}
         </div>
       </main>
+
+      {/* ═══ CREATE POST FAB ═══ */}
+      <button onClick={function () { setShowCreate(true); }} style={{ position: "fixed", bottom: 90, right: 20, zIndex: 50, width: 56, height: 56, borderRadius: 18, border: "none", background: GRADIENTS.primary, color: BRAND.white, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", boxShadow: "0 8px 24px rgba(139,92,246,0.4)", transition: "all 0.3s", opacity: mounted ? 1 : 0, transform: mounted ? "scale(1)" : "scale(0.5)", fontFamily: "inherit" }}>
+        <Plus size={24} strokeWidth={2.5} />
+      </button>
 
       {/* ═══ BOTTOM NAV ═══ */}
       <BottomNav />
 
-      {/* ═══ SEARCH OVERLAY ═══ */}
-      {showSearch&&(
-        <div style={{position:"fixed",inset:0,zIndex:300}}>
-          <div onClick={()=>{setShowSearch(false);setSearchQ("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
-          <div style={{position:"relative",maxWidth:420,margin:"80px auto 0",padding:"0 16px",animation:"dpFS 0.2s ease-out"}}>
-            <div style={{background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:18,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",overflow:"hidden"}}>
-              <div style={{display:"flex",alignItems:"center",gap:10,padding:"14px 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
-                <Search size={18} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>
-                <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("social.searchPeople")} autoFocus style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:15,fontFamily:"inherit"}}/>
-                <button onClick={()=>{setShowSearch(false);setSearchQ("");}} aria-label="Close search" style={{background:"none",border:"none",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",cursor:"pointer"}}><X size={18}/></button>
-              </div>
-              {searchQ&&searchQ.length>=2&&(
-                <div style={{padding:12,maxHeight:300,overflowY:"auto"}}>
-                  {searchLoading&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>{t("social.searching")}</div>}
-                  {!searchLoading&&searchResults.map(f=>(
-                    <div key={f.id} onClick={()=>{setShowSearch(false);setSearchQ("");navigate("/user/"+f.id);}} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 8px",borderRadius:10,cursor:"pointer",transition:"background 0.15s"}}
-                      onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.04)"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                      <div style={{width:32,height:32,borderRadius:10,background:`${f.color||"#8B5CF6"}15`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:700,color:f.color||"#8B5CF6"}}>{f.initial}</div>
-                      <div style={{flex:1,minWidth:0}}><div style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{f.name}</div><div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{f.title} · Level {f.level}{f.isFriend?" · Friend":""}</div></div>
-                      {!f.isFriend&&f.friendshipStatus!=="pending"&&(
-                        <button onClick={function(e){e.stopPropagation();apiPost(SOCIAL.FRIENDS.REQUEST,{targetUserId:f.id}).then(function(){showToast("Friend request sent!","success");setSearchResults(function(prev){return prev.map(function(s){return s.id===f.id?Object.assign({},s,{friendshipStatus:"pending"}):s;});});}).catch(function(err){showToast(err.message||"Failed to send request","error");});}} style={{padding:"6px 12px",borderRadius:10,border:"none",background:"rgba(139,92,246,0.15)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0,fontFamily:"inherit"}}>
-                          <UserPlus size={14} style={{verticalAlign:"middle",marginRight:4}} strokeWidth={2.5}/>{t("social.add")}
-                        </button>
-                      )}
-                      {f.friendshipStatus==="pending"&&(
-                        <span style={{padding:"6px 12px",borderRadius:10,background:"rgba(93,229,168,0.1)",color:isLight?"#059669":"#5DE5A8",fontSize:12,fontWeight:500,flexShrink:0}}>{t("social.pending")}</span>
-                      )}
-                    </div>
-                  ))}
-                  {!searchLoading&&searchResults.length===0&&<div style={{padding:20,textAlign:"center",color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:13}}>{t("social.noResults")}</div>}
+      {/* ═══ CREATE POST MODAL ═══ */}
+      <GlassModal open={showCreate} onClose={_resetCreateForm} variant="center" title={t("feed.newPost") || "New Post"} maxWidth={440}>
+        <div style={{ padding: 20 }}>
+          <input type="file" ref={mediaInputRef} style={{ display: "none" }} onChange={handleMediaSelected} />
+
+          <GlassInput
+            value={createContent}
+            onChange={function (e) { setCreateContent(e.target.value); }}
+            placeholder={t("feed.shareDreamJourney") || "Share your dream journey..."}
+            multiline
+            style={{ borderRadius: 16, width: "100%", marginBottom: 14 }}
+            inputStyle={{ minHeight: 80, lineHeight: 1.5 }}
+          />
+
+          {/* Media buttons */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {[
+              { type: "image", Icon: Image, label: "Photo" },
+              { type: "video", Icon: Video, label: "Video" },
+              { type: "audio", Icon: Music, label: "Audio" },
+            ].map(function (m) {
+              var active = createMediaType === m.type && createMediaFile;
+              return (
+                <button key={m.type} onClick={function () { handleMediaPick(m.type); }} style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 12, border: active ? "1px solid var(--dp-accent-border)" : "1px solid var(--dp-input-border)", background: active ? "var(--dp-accent-soft)" : "var(--dp-glass-bg)", color: active ? "var(--dp-accent)" : "var(--dp-text-secondary)", fontSize: 13, fontWeight: 500, fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s" }}>
+                  <m.Icon size={16} strokeWidth={2} />{m.label}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Media preview */}
+          {createMediaFile && (
+            <div style={{ marginBottom: 14, position: "relative" }}>
+              {createMediaType === "image" && createMediaPreview && (
+                <img src={createMediaPreview} alt="Preview" style={{ width: "100%", maxHeight: 200, objectFit: "cover", borderRadius: 14 }} />
+              )}
+              {createMediaType !== "image" && (
+                <div style={{ padding: "12px 16px", borderRadius: 14, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text-secondary)", fontSize: 13 }}>
+                  {createMediaType === "video" ? <Video size={16} style={{ verticalAlign: "middle", marginRight: 8 }} /> : <Music size={16} style={{ verticalAlign: "middle", marginRight: 8 }} />}
+                  {createMediaFile.name}
                 </div>
               )}
+              <button onClick={function () { if (createMediaPreview && createMediaPreview.startsWith("blob:")) { URL.revokeObjectURL(createMediaPreview); } setCreateMediaFile(null); setCreateMediaType("none"); setCreateMediaPreview(""); }} style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: "50%", background: "rgba(0,0,0,0.5)", border: "none", color: BRAND.white, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontFamily: "inherit" }}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Dream selector */}
+          <div style={{ marginBottom: 14 }}>
+            <select value={createDreamId} onChange={function (e) { setCreateDreamId(e.target.value); }} style={{ width: "100%", padding: "10px 14px", borderRadius: 14, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 13, fontFamily: "inherit", outline: "none" }}>
+              <option value="">{t("feed.noDreamLinked") || "No dream linked"}</option>
+              {myDreams.map(function (d) { return <option key={d.id} value={d.id}>{d.title || d.name || "Untitled"}</option>; })}
+            </select>
+          </div>
+
+          {/* Visibility */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+            {["public", "friends", "private"].map(function (v) {
+              var active = createVisibility === v;
+              return (
+                <button key={v} onClick={function () { setCreateVisibility(v); }} style={{ flex: 1, padding: "9px 0", borderRadius: 12, border: active ? "1px solid var(--dp-accent-border)" : "1px solid var(--dp-input-border)", background: active ? "var(--dp-accent-soft)" : "transparent", color: active ? "var(--dp-accent)" : "var(--dp-text-secondary)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s", textTransform: "capitalize" }}>{v}</button>
+              );
+            })}
+          </div>
+
+          {/* Event toggle */}
+          <button onClick={function () { setShowEventFields(!showEventFields); }} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "10px 14px", borderRadius: 14, border: showEventFields ? "1px solid var(--dp-accent-border)" : "1px solid var(--dp-input-border)", background: showEventFields ? "var(--dp-accent-soft)" : "transparent", color: showEventFields ? "var(--dp-accent)" : "var(--dp-text-secondary)", fontSize: 13, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", transition: "all 0.2s", marginBottom: showEventFields ? 14 : 20 }}>
+            <Calendar size={16} strokeWidth={2} /> Create Event
+          </button>
+
+          {/* Event fields */}
+          {showEventFields && (
+            <div style={{ padding: 14, borderRadius: 16, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", marginBottom: 20 }}>
+              <GlassInput value={eventTitle} onChange={function (e) { setEventTitle(e.target.value); }} placeholder="Event title" style={{ marginBottom: 10, borderRadius: 12 }} />
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                {["virtual", "physical", "challenge"].map(function (et) {
+                  var active = eventType === et;
+                  return (
+                    <button key={et} onClick={function () { setEventType(et); }} style={{ flex: 1, padding: "7px 0", borderRadius: 10, border: active ? "1px solid var(--dp-accent-border)" : "1px solid var(--dp-input-border)", background: active ? "var(--dp-accent-soft)" : "transparent", color: active ? "var(--dp-accent)" : "var(--dp-text-secondary)", fontSize: 12, fontWeight: 600, fontFamily: "inherit", cursor: "pointer", textTransform: "capitalize" }}>{et}</button>
+                  );
+                })}
+              </div>
+              {eventType === "virtual" && (
+                <GlassInput value={eventLink} onChange={function (e) { setEventLink(e.target.value); }} placeholder="Meeting link" icon={Link2} style={{ marginBottom: 10, borderRadius: 12 }} />
+              )}
+              {eventType === "physical" && (
+                <GlassInput value={eventLocation} onChange={function (e) { setEventLocation(e.target.value); }} placeholder="Address" icon={MapPin} style={{ marginBottom: 10, borderRadius: 12 }} />
+              )}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <input type="datetime-local" value={eventStart} onChange={function (e) { setEventStart(e.target.value); }} style={{ flex: 1, padding: "8px 10px", borderRadius: 10, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                <input type="datetime-local" value={eventEnd} onChange={function (e) { setEventEnd(e.target.value); }} style={{ flex: 1, padding: "8px 10px", borderRadius: 10, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+              </div>
+              <GlassInput value={eventMaxPart} onChange={function (e) { setEventMaxPart(e.target.value); }} placeholder="Max participants (optional)" type="number" icon={UsersIcon} style={{ borderRadius: 12 }} />
+            </div>
+          )}
+
+          {/* Submit */}
+          <GradientButton gradient="primary" onClick={handleCreatePost} disabled={!createContent.trim() || createMut.isPending} loading={createMut.isPending} fullWidth size="lg">
+            {createMut.isPending ? "Publishing..." : "Publish Post"}
+          </GradientButton>
+        </div>
+      </GlassModal>
+
+      {/* ═══ SEARCH OVERLAY ═══ */}
+      <GlassModal open={showSearch} onClose={function () { setShowSearch(false); setSearchQ(""); }} variant="center" title={t("social.searchPeople")}>
+        <div style={{ padding: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 4px 12px", borderBottom: "1px solid var(--dp-divider)", marginBottom: 12 }}>
+            <Search size={18} color="var(--dp-text-muted)" strokeWidth={2} />
+            <input value={searchQ} onChange={function (e) { setSearchQ(e.target.value); }} placeholder={t("social.searchPeople")} autoFocus style={{ flex: 1, background: "none", border: "none", outline: "none", color: "var(--dp-text)", fontSize: 15, fontFamily: "inherit" }} />
+          </div>
+          {searchQ && searchQ.length >= 2 && (
+            <div style={{ maxHeight: 300, overflowY: "auto" }}>
+              {searchLoading && <div style={{ padding: 20, textAlign: "center", color: "var(--dp-text-muted)", fontSize: 13 }}>{t("social.searching")}</div>}
+              {!searchLoading && searchResults.map(function (f) {
+                return (
+                  <div key={f.id} className="dp-gh" onClick={function () { setShowSearch(false); setSearchQ(""); navigate("/user/" + f.id); }} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 8px", borderRadius: 10, cursor: "pointer", transition: "background 0.15s" }}>
+                    <Avatar name={f.name} size={32} color={f.color || BRAND.purple} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text)" }}>{f.name}</div>
+                      <div style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>{f.title} · Level {f.level}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              {!searchLoading && searchResults.length === 0 && <div style={{ padding: 20, textAlign: "center", color: "var(--dp-text-muted)", fontSize: 13 }}>{t("social.noResults")}</div>}
+            </div>
+          )}
+        </div>
+      </GlassModal>
+
+      {/* ═══ STORY CREATION MODAL ═══ */}
+      <GlassModal open={showStoryCreate} onClose={function () { setShowStoryCreate(false); setStoryFile(null); if (storyPreview && storyPreview.startsWith("blob:")) { URL.revokeObjectURL(storyPreview); } setStoryPreview(""); setStoryCaption(""); }} variant="bottom" title="New Story" maxWidth={440}>
+        <div style={{ padding: 20 }}>
+          {/* Preview */}
+          {storyPreview && (
+            <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", marginBottom: 16, background: "#000" }}>
+              {storyMediaType === "image" ? (
+                <img src={storyPreview} alt="Story preview" style={{ width: "100%", maxHeight: 360, objectFit: "contain", display: "block" }} />
+              ) : (
+                <video src={storyPreview} controls style={{ width: "100%", maxHeight: 360, display: "block" }} />
+              )}
+              <button onClick={function () { if (storyPreview && storyPreview.startsWith("blob:")) { URL.revokeObjectURL(storyPreview); } setStoryFile(null); setStoryPreview(""); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontFamily: "inherit" }}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* Pick media if none selected */}
+          {!storyPreview && (
+            <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+              <button onClick={function () { handleStoryFilePick("image"); }} style={{ flex: 1, padding: "32px 16px", borderRadius: 16, border: "1px dashed var(--dp-input-border)", background: "var(--dp-glass-bg)", color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 500, fontFamily: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <Image size={28} strokeWidth={1.5} />
+                Photo
+              </button>
+              <button onClick={function () { handleStoryFilePick("video"); }} style={{ flex: 1, padding: "32px 16px", borderRadius: 16, border: "1px dashed var(--dp-input-border)", background: "var(--dp-glass-bg)", color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 500, fontFamily: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                <Video size={28} strokeWidth={1.5} />
+                Video
+              </button>
+            </div>
+          )}
+
+          {/* Caption */}
+          <GlassInput
+            value={storyCaption}
+            onChange={function (e) { setStoryCaption(e.target.value); }}
+            placeholder="Add a caption..."
+            style={{ borderRadius: 14, marginBottom: 16 }}
+          />
+
+          {/* Post button */}
+          <GradientButton
+            onClick={handleCreateStory}
+            disabled={!storyFile || createStoryMut.isPending}
+            style={{ width: "100%", borderRadius: 14 }}
+          >
+            {createStoryMut.isPending ? "Posting..." : "Share Story"}
+          </GradientButton>
+        </div>
+      </GlassModal>
+
+      {/* ═══ FULLSCREEN STORY VIEWER ═══ */}
+      {storyViewer && (function () {
+        var group = storyGroups[storyViewer.groupIndex];
+        if (!group || !group.stories || group.stories.length === 0) return null;
+        var story = group.stories[storyViewer.storyIndex];
+        if (!story) return null;
+        var storyUser = group.user;
+        var isOwnStory = storyUser && storyUser.id === String(user?.id);
+        var totalStories = group.stories.length;
+        var currentIdx = storyViewer.storyIndex;
+
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "#000", display: "flex", flexDirection: "column" }}>
+            {/* Progress bars */}
+            <div style={{ display: "flex", gap: 3, padding: "8px 12px 0", zIndex: 2 }}>
+              {group.stories.map(function (_, i) {
+                var pct = i < currentIdx ? 1 : i === currentIdx ? storyProgress : 0;
+                return (
+                  <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
+                    <div style={{ width: (pct * 100) + "%", height: "100%", background: "#fff", borderRadius: 2, transition: i === currentIdx ? "none" : "width 0.2s" }} />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Header: user info + close */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", zIndex: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Avatar name={storyUser.displayName || storyUser.username} src={storyUser.avatar} size={36} shape="circle" />
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{storyUser.displayName || storyUser.username}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{timeAgo(story.createdAt)}</div>
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {isOwnStory && (
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                    {story.viewCount || 0} view{(story.viewCount || 0) !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <button onClick={closeStoryViewer} style={{ width: 36, height: 36, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.15)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontFamily: "inherit" }}>
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Media */}
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+              {story.mediaType === "image" && story.imageUrl && (
+                <img src={story.imageUrl} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+              )}
+              {story.mediaType === "video" && story.videoUrl && (
+                <video src={story.videoUrl} autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} onEnded={function () { advanceStory(1); }} />
+              )}
+
+              {/* Tap zones */}
+              <div onClick={function () { advanceStory(-1); }} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "30%", cursor: "pointer" }} />
+              <div onClick={function () { advanceStory(1); }} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "70%", cursor: "pointer" }} />
+            </div>
+
+            {/* Caption */}
+            {story.caption && (
+              <div style={{ padding: "12px 20px 24px", zIndex: 2, background: "linear-gradient(transparent, rgba(0,0,0,0.6))" }}>
+                <div style={{ fontSize: 14, color: "#fff", lineHeight: 1.5 }}>{story.caption}</div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+        *{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:0;}
+        input::placeholder{color:var(--dp-text-muted);}
+        textarea::placeholder{color:var(--dp-text-muted);}
+        .dp-a{opacity:0;transform:translateY(16px);transition:opacity 0.5s cubic-bezier(0.16,1,0.3,1),transform 0.5s cubic-bezier(0.16,1,0.3,1);}
+        .dp-a.dp-s{opacity:1;transform:translateY(0);}
+      `}</style>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Post Card (from SOCIAL.POSTS.FEED)
+// ═══════════════════════════════════════════════════════════════════
+function PostCard({ item, idx, mounted, isLight, user, navigate, expandedComments, setExpandedComments, commentInputs, setCommentInputs, savedPosts, handleLikePost, handleSavePost, handleShare, handleComment, handleRegisterEvent, t }) {
+  var a = item.author || item.user || {};
+  var aName = a.username || a.displayName || "User";
+  var aColor = avatarColor(aName);
+  var isOpen = expandedComments === item.id;
+  var liked = item.hasLiked || item.isLiked || item.liked || false;
+  var saved = savedPosts[item.id] != null ? savedPosts[item.id] : (item.hasSaved || false);
+  var lc = item.likesCount != null ? item.likesCount : (item.likes_count || item.likes || 0);
+  var cc = item.commentsCount != null ? item.commentsCount : (item.comments_count || 0);
+  var dTitle = item.dreamTitle || (item.dream && (item.dream.title || item.dream.name)) || "";
+  var postType = item.postType || item.post_type || "regular";
+  var mediaType = item.mediaType || item.media_type || "none";
+  var imageUrl = item.imageUrl || item.image_url || "";
+  var videoUrl = item.videoUrl || item.video_url || "";
+  var audioUrl = item.audioUrl || item.audio_url || "";
+  var achievement = item.linkedAchievement || null;
+  var eventDetail = item.eventDetail || null;
+
+  return (
+    <div className={"dp-a " + (mounted ? "dp-s" : "")} style={{ animationDelay: (100 + idx * 60) + "ms", marginTop: 12 }}>
+      <GlassCard padding={0}>
+        {/* Author row */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px 0" }}>
+          <Avatar name={aName} size={40} color={aColor} src={a.avatar || a.avatarUrl} shape="circle" style={{ cursor: a.id ? "pointer" : "default" }} onClick={function () { if (a.id) navigate("/user/" + a.id); }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{aName}</div>
+            <div style={{ fontSize: 12, color: "var(--dp-text-tertiary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {timeAgo(item.createdAt || item.created_at)}
+              {postType === "achievement" && " · Achievement"}
+              {postType === "milestone" && " · Milestone"}
+              {postType === "event" && " · Event"}
             </div>
           </div>
         </div>
-      )}
 
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
-        *{margin:0;padding:0;box-sizing:border-box;}::-webkit-scrollbar{width:0;}
-        input::placeholder{color:rgba(255,255,255,0.35);}
-        .dp-a{opacity:0;transform:translateY(16px);transition:opacity 0.5s cubic-bezier(0.16,1,0.3,1),transform 0.5s cubic-bezier(0.16,1,0.3,1);}
-        .dp-a.dp-s{opacity:1;transform:translateY(0);}
-        @keyframes dpFS{from{opacity:0;transform:scale(0.95) translateY(-8px);}to{opacity:1;transform:scale(1) translateY(0);}}
-        [data-theme="light"] .dp-dot{background:rgba(26,21,53,0.4) !important;}
-        [data-theme="light"] input::placeholder,
-        [data-theme="light"] textarea::placeholder{color:rgba(26,21,53,0.4) !important;}
-      `}</style>
+        {/* Achievement badge */}
+        {achievement && (
+          <div style={{ padding: "8px 16px 0" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 10, background: "var(--dp-accent-soft)", border: "1px solid var(--dp-accent-border)" }}>
+              <Trophy size={14} color="var(--dp-accent)" strokeWidth={2} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>
+                {achievement.goalTitle || achievement.milestoneTitle || achievement.dreamTitle || "Achievement"}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Media */}
+        {mediaType === "image" && imageUrl && (
+          <div style={{ marginTop: 10 }}>
+            <img src={imageUrl} alt="" style={{ width: "100%", maxHeight: 400, objectFit: "cover" }} loading="lazy" />
+          </div>
+        )}
+        {mediaType === "video" && videoUrl && (
+          <div style={{ marginTop: 10 }}>
+            <video src={videoUrl} controls style={{ width: "100%", maxHeight: 400, borderRadius: 0 }} />
+          </div>
+        )}
+        {mediaType === "audio" && audioUrl && (
+          <div style={{ margin: "10px 16px 0", padding: "10px 14px", borderRadius: 14, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)" }}>
+            <audio src={audioUrl} controls style={{ width: "100%" }} />
+          </div>
+        )}
+
+        {/* Content */}
+        <ExpandableText text={item.content} maxLines={4} fontSize={14} color="var(--dp-text)" style={{ padding: "10px 16px" }} />
+
+        {/* Dream badge */}
+        {dTitle && (
+          <div style={{ padding: "0 16px 8px" }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 10, background: "var(--dp-accent-soft)", border: "1px solid var(--dp-accent-border)", cursor: "pointer" }}
+              onClick={function () { var did = (item.dream && item.dream.id) || item.dreamId; if (did) navigate("/dream/" + did); }}>
+              <Sparkles size={13} color="var(--dp-accent)" strokeWidth={2} />
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 }}>{dTitle}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Event detail */}
+        {eventDetail && (
+          <div style={{ margin: "0 16px 10px", padding: 14, borderRadius: 16, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)" }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-text)", marginBottom: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{eventDetail.title}</div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4, fontSize: 12, color: "var(--dp-text-secondary)" }}>
+              {eventDetail.eventType === "virtual" && <><Link2 size={13} />{eventDetail.meetingLink ? "Online" : "Virtual"}</>}
+              {eventDetail.eventType === "physical" && <><MapPin size={13} />{eventDetail.location || "TBD"}</>}
+              {eventDetail.eventType === "challenge" && <><Zap size={13} />Challenge</>}
+              <span>·</span>
+              <Calendar size={13} />
+              <span>{new Date(eventDetail.startTime).toLocaleDateString()}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--dp-text-tertiary)" }}>
+                <UsersIcon size={14} />
+                <span>{eventDetail.participantsCount}{eventDetail.maxParticipants ? "/" + eventDetail.maxParticipants : ""} registered</span>
+              </div>
+              {!eventDetail.isRegistered && (
+                <button onClick={function () { handleRegisterEvent(eventDetail.id); }} style={{ padding: "6px 16px", borderRadius: 10, border: "none", background: GRADIENTS.primary, color: BRAND.white, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit" }}>Register</button>
+              )}
+              {eventDetail.isRegistered && (
+                <span style={{ padding: "6px 16px", borderRadius: 10, background: "var(--dp-accent-soft)", color: "var(--dp-accent)", fontSize: 12, fontWeight: 600 }}>Registered</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Action bar */}
+        <div style={{ display: "flex", alignItems: "center", padding: "8px 16px 12px", borderTop: "1px solid var(--dp-divider)" }}>
+          <ActionBtn onClick={function () { handleLikePost(item.id); }} active={liked} activeColor="var(--dp-danger)">
+            <Heart size={22} strokeWidth={1.8} fill={liked ? BRAND.redSolid : "none"} color={liked ? BRAND.redSolid : undefined} />
+          </ActionBtn>
+          <ActionBtn onClick={function () { setExpandedComments(function (p) { return p === item.id ? null : item.id; }); }}>
+            <MessageCircle size={22} strokeWidth={1.8} />
+          </ActionBtn>
+          <ActionBtn onClick={function () { handleShare(item); }}>
+            <Share2 size={22} strokeWidth={1.8} />
+          </ActionBtn>
+          <div style={{ flex: 1 }} />
+          <ActionBtn onClick={function () { handleSavePost(item.id); }} active={saved} activeColor="var(--dp-text)">
+            <Bookmark size={22} strokeWidth={1.8} fill={saved ? "var(--dp-text)" : "none"} />
+          </ActionBtn>
+        </div>
+
+        {/* Like count */}
+        {lc > 0 && (
+          <div style={{ padding: "0 16px 8px", fontSize: 13, fontWeight: 600, color: "var(--dp-text)" }}>
+            {lc} {lc === 1 ? "like" : "likes"}
+          </div>
+        )}
+
+        {/* Comments */}
+        {isOpen && (
+          <div style={{ padding: "0 16px 14px" }}>
+            <div style={{ borderTop: "1px solid var(--dp-divider)", paddingTop: 12 }}>
+              <CommentInput itemId={item.id} type="post" commentInputs={commentInputs} setCommentInputs={setCommentInputs} handleComment={handleComment} />
+            </div>
+          </div>
+        )}
+      </GlassCard>
+    </div>
+  );
+}
+
+
+// ═══════════════════════════════════════════════════════════════════
+// Event Card (from SOCIAL.FEED.FRIENDS — activity events)
+// ═══════════════════════════════════════════════════════════════════
+function EventCard({ item, idx, mounted, isLight, navigate, expandedComments, setExpandedComments, commentInputs, setCommentInputs, handleLikeEvent, handleShare, handleComment, t }) {
+  var u = item.user || {};
+  var uName = u.username || u.name || "User";
+  var cfg = FEED_CONFIG[item.type] || FEED_CONFIG.task_completed;
+  var FIcon = cfg.Icon;
+  var isOpen = expandedComments === item.id;
+  var eventText = "";
+  var d = item.data || item.content || {};
+  if (item.type === "level_up") eventText = "Reached Level " + (d.level || "?");
+  else if (item.type === "task_completed") eventText = d.task || "Completed a task";
+  else if (item.type === "dream_created") eventText = "Created dream: " + (d.dream || "a new dream");
+  else if (item.type === "dream_completed") eventText = "Completed a dream!";
+  else if (item.type === "streak") eventText = (d.days || 0) + " day streak!";
+  else if (item.type === "milestone_reached") eventText = "Reached a milestone!";
+  else if (item.type === "badge_earned") eventText = "Earned a badge!";
+  else eventText = d.task || d.dream || "Activity";
+
+  return (
+    <div className={"dp-a " + (mounted ? "dp-s" : "")} style={{ animationDelay: (100 + idx * 60) + "ms", marginTop: 12 }}>
+      <GlassCard padding={14}>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <Avatar name={uName} size={36} color={u.color || avatarColor(uName)} shape="circle" style={{ cursor: u.id ? "pointer" : "default" }} onClick={function () { if (u.id) navigate("/user/" + u.id); }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "50%" }}>{uName}</span>
+              <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>{timeAgo(item._time)}</span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--dp-text-primary)" }}>
+              <FIcon size={14} color={adaptColor(cfg.color, isLight)} strokeWidth={2} />
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }}>{eventText}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action bar */}
+        <div style={{ display: "flex", alignItems: "center", marginTop: 10, paddingTop: 8, borderTop: "1px solid var(--dp-divider)" }}>
+          <ActionBtn onClick={function () { handleLikeEvent(item.id); }} small>
+            <Heart size={18} strokeWidth={1.8} />
+          </ActionBtn>
+          <ActionBtn onClick={function () { setExpandedComments(function (p) { return p === item.id ? null : item.id; }); }} small>
+            <MessageCircle size={18} strokeWidth={1.8} />
+          </ActionBtn>
+          <ActionBtn onClick={function () { handleShare(item); }} small>
+            <Share2 size={18} strokeWidth={1.8} />
+          </ActionBtn>
+          <div style={{ flex: 1 }} />
+          <ActionBtn small>
+            <Bookmark size={18} strokeWidth={1.8} />
+          </ActionBtn>
+        </div>
+
+        {/* Comments */}
+        {isOpen && (
+          <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--dp-divider)" }}>
+            <CommentInput itemId={item.id} type="event" commentInputs={commentInputs} setCommentInputs={setCommentInputs} handleComment={handleComment} />
+          </div>
+        )}
+      </GlassCard>
+    </div>
+  );
+}
+
+
+// ── Shared Components ────────────────────────────────────────────
+
+function ActionBtn({ onClick, active, activeColor, small, children }) {
+  return (
+    <button onClick={onClick} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: small ? 36 : 40, height: small ? 36 : 40, border: "none", background: "transparent", color: active ? (activeColor || "var(--dp-accent)") : "var(--dp-text-tertiary)", cursor: "pointer", borderRadius: 10, transition: "all 0.15s", fontFamily: "inherit", padding: 0 }}>
+      {children}
+    </button>
+  );
+}
+
+function CommentInput({ itemId, type, commentInputs, setCommentInputs, handleComment }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <GlassInput
+        value={commentInputs[itemId] || ""}
+        onChange={function (e) { setCommentInputs(function (p) { return Object.assign({}, p, { [itemId]: e.target.value }); }); }}
+        onKeyDown={function (e) { if (e.key === "Enter") { e.preventDefault(); handleComment(itemId, type); } }}
+        placeholder="Write a comment..."
+        style={{ flex: 1, borderRadius: 14 }}
+        inputStyle={{ fontSize: 13 }}
+      />
+      <button onClick={function () { handleComment(itemId, type); }} disabled={!(commentInputs[itemId] || "").trim()} style={{ width: 36, height: 36, borderRadius: 12, border: "none", background: (commentInputs[itemId] || "").trim() ? GRADIENTS.primary : "var(--dp-glass-bg)", color: (commentInputs[itemId] || "").trim() ? BRAND.white : "var(--dp-text-tertiary)", display: "flex", alignItems: "center", justifyContent: "center", cursor: (commentInputs[itemId] || "").trim() ? "pointer" : "default", transition: "all 0.2s", flexShrink: 0, fontFamily: "inherit" }}>
+        <Send size={16} strokeWidth={2} />
+      </button>
     </div>
   );
 }

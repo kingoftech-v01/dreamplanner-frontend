@@ -5,6 +5,7 @@ import { ArrowLeft, Check, X, Crown, Star, Zap, CreditCard, XCircle, Receipt, Ta
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { useTheme } from "../../context/ThemeContext";
+import { BRAND, GRADIENTS, adaptColor } from "../../styles/colors";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { SkeletonCard } from "../../components/shared/Skeleton";
@@ -12,20 +13,16 @@ import { apiGet, apiPost } from "../../services/api";
 import { SUBSCRIPTIONS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { openBrowser, isNative } from "../../services/native";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
 
 const PLAN_ACCENTS = {
   free: { color: "#9CA3AF", gradient: "linear-gradient(135deg, #6B7280, #4B5563)", glow: "none" },
-  premium: { color: "#8B5CF6", gradient: "linear-gradient(135deg, #8B5CF6, #6D28D9)", glow: "0 0 30px rgba(139,92,246,0.3)" },
-  pro: { color: "#FCD34D", gradient: "linear-gradient(135deg, #FCD34D, #F59E0B)", glow: "0 0 30px rgba(252,211,77,0.3)" },
-};
-
-const glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+  premium: { color: BRAND.purple, gradient: GRADIENTS.primaryDark, glow: "0 0 30px rgba(139,92,246,0.3)" },
+  pro: { color: BRAND.yellow, gradient: "linear-gradient(135deg, #FCD34D, #F59E0B)", glow: "0 0 30px rgba(252,211,77,0.3)" },
 };
 
 const ALL_FEATURES = [
@@ -75,16 +72,16 @@ export default function SubscriptionScreen() {
   // ─── Mutations ────────────────────────────────────────────────────
   var checkoutMut = useMutation({
     mutationFn: function (planSlug) {
-      var payload = { planSlug: planSlug };
+      var payload = { plan_slug: planSlug };
       if (isNative) {
-        payload.successUrl = "com.dreamplanner.app://stripe/return";
-        payload.cancelUrl = "com.dreamplanner.app://stripe/return?cancelled=true";
+        payload.success_url = "com.dreamplanner.app://stripe/return";
+        payload.cancel_url = "com.dreamplanner.app://stripe/return?cancelled=true";
       }
       return apiPost(SUBSCRIPTIONS.CHECKOUT, payload);
     },
     onSuccess: function (data) {
       var url = data && (data.checkoutUrl || data.url);
-      if (url && /^https:\/\/(checkout\.stripe\.com|billing\.stripe\.com)\b/.test(url)) {
+      if (url && (function(u){ try { var p = new URL(u); return p.protocol === "https:" && (p.hostname === "checkout.stripe.com" || p.hostname === "billing.stripe.com"); } catch(e){ return false; } })(url)) {
         if (isNative) {
           openBrowser(url);
         } else {
@@ -100,7 +97,7 @@ export default function SubscriptionScreen() {
   var portalMut = useMutation({
     mutationFn: function () { return apiPost(SUBSCRIPTIONS.PORTAL); },
     onSuccess: function (data) {
-      if (data && data.url && /^https:\/\/(billing\.stripe\.com|checkout\.stripe\.com)\b/.test(data.url)) {
+      if (data && data.url && (function(u){ try { var p = new URL(u); return p.protocol === "https:" && (p.hostname === "checkout.stripe.com" || p.hostname === "billing.stripe.com"); } catch(e){ return false; } })(data.url)) {
         if (isNative) {
           openBrowser(data.url);
         } else {
@@ -145,7 +142,7 @@ export default function SubscriptionScreen() {
   });
 
   var couponMut = useMutation({
-    mutationFn: function (code) { return apiPost(SUBSCRIPTIONS.CURRENT + "apply-coupon/", { couponCode: code }); },
+    mutationFn: function (code) { return apiPost(SUBSCRIPTIONS.CURRENT + "apply-coupon/", { coupon_code: code }); },
     onSuccess: function (data) {
       showToast(data.message || "Coupon applied!", "success");
       setCouponCode("");
@@ -177,7 +174,12 @@ export default function SubscriptionScreen() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />}
+        title="Subscription"
+      />
+    }>
       <style>{`
         @keyframes shimmerBadge {
           0% { background-position: -200% center; }
@@ -188,24 +190,6 @@ export default function SubscriptionScreen() {
           50% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 0 35px rgba(252,211,77,0.25); }
         }
       `}</style>
-
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16,
-        paddingTop: 16, paddingBottom: 20,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <button className="dp-ib" onClick={() => navigate(-1)}>
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <h1 style={{
-          fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-          fontFamily: "Inter, sans-serif", margin: 0,
-        }}>
-          Subscription
-        </h1>
-      </div>
 
       {/* Loading Skeletons */}
       {isLoading && (
@@ -219,15 +203,17 @@ export default function SubscriptionScreen() {
 
       {/* Current Plan Indicator */}
       {!isLoading && (
-        <div style={{
-          ...glassStyle, padding: "16px 20px",
-          marginBottom: 20,
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          background: "rgba(252,211,77,0.06)",
-          border: "1px solid rgba(252,211,77,0.15)",
-          opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-          transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
-        }}>
+        <GlassCard
+          padding="16px 20px"
+          mb={20}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            background: "rgba(252,211,77,0.06)",
+            border: "1px solid rgba(252,211,77,0.15)",
+            opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <div style={{
               width: 40, height: 40, borderRadius: 12,
@@ -239,13 +225,12 @@ export default function SubscriptionScreen() {
             <div>
               <div style={{
                 fontSize: 12, color: "var(--dp-text-tertiary)",
-                fontFamily: "Inter, sans-serif", fontWeight: 500,
+                fontWeight: 500,
               }}>
                 Current Plan
               </div>
               <div style={{
-                fontSize: 18, fontWeight: 800, fontFamily: "Inter, sans-serif",
-                background: "linear-gradient(90deg, #FCD34D, #F59E0B, #FCD34D, #F59E0B)",
+                fontSize: 18, fontWeight: 800, background: "linear-gradient(90deg, #FCD34D, #F59E0B, #FCD34D, #F59E0B)",
                 backgroundSize: "200% 100%",
                 animation: "shimmerBadge 3s linear infinite",
                 WebkitBackgroundClip: "text",
@@ -258,35 +243,36 @@ export default function SubscriptionScreen() {
           </div>
           <div style={{
             fontSize: 12, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif",
-          }}>
+            }}>
             {renewalDate ? "Renews " + renewalDate : ""}
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* Pending Downgrade Banner */}
       {!isLoading && pendingPlan && (
-        <div style={{
-          ...glassStyle, padding: "16px 20px",
-          marginBottom: 16,
-          background: "rgba(251,191,36,0.08)",
-          border: "1px solid rgba(251,191,36,0.2)",
-          opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-          transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.12s",
-        }}>
+        <GlassCard
+          padding="16px 20px"
+          mb={16}
+          style={{
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.2)",
+            opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.12s",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
             <AlertTriangle size={20} color="#FBBF24" style={{ flexShrink: 0, marginTop: 2 }} />
             <div style={{ flex: 1 }}>
               <div style={{
                 fontSize: 14, fontWeight: 600, color: "var(--dp-text)",
-                fontFamily: "Inter, sans-serif", marginBottom: 4,
+                marginBottom: 4,
               }}>
                 Plan change scheduled
               </div>
               <div style={{
                 fontSize: 13, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif", marginBottom: 12,
+                marginBottom: 12,
               }}>
                 Your plan will change to <strong>{pendingPlan.name}</strong>
                 {pendingPlanEffectiveDate
@@ -300,40 +286,51 @@ export default function SubscriptionScreen() {
                   padding: "8px 16px", borderRadius: 10,
                   background: "transparent",
                   border: "1px solid rgba(251,191,36,0.3)",
-                  color: isLight ? "#92400E" : "#FBBF24",
+                  color: "var(--dp-warning)",
                   fontSize: 13, fontWeight: 600,
-                  fontFamily: "Inter, sans-serif",
                   cursor: cancelPendingChangeMut.isPending ? "wait" : "pointer",
                   opacity: cancelPendingChangeMut.isPending ? 0.6 : 1,
-                  transition: "all 0.25s ease",
+                  transition: "all 0.25s ease", fontFamily: "inherit",
                 }}>
                 {cancelPendingChangeMut.isPending ? "Cancelling..." : "Cancel Change"}
               </button>
             </div>
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* Coupon Code Input */}
       {!isLoading && currentPlan !== "free" && (
-        <div style={{
-          ...glassStyle, padding: "16px 20px", marginBottom: 16,
-          opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-          transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.12s",
-        }}>
+        <GlassCard
+          padding="16px 20px"
+          mb={16}
+          style={{
+            opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.12s",
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <Tag size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} />
-            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)", fontFamily: "Inter, sans-serif" }}>Have a coupon?</span>
+            <Tag size={16} color={adaptColor(BRAND.purpleLight, isLight)} />
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--dp-text)" }}>Have a coupon?</span>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <input value={couponCode} onChange={function (e) { setCouponCode(e.target.value); }} placeholder="Enter coupon code"
-              style={{ flex: 1, padding: "10px 14px", borderRadius: 12, background: "var(--dp-input-bg)", border: "1px solid var(--dp-input-border)", color: "var(--dp-text)", fontSize: 14, fontFamily: "Inter, sans-serif", outline: "none" }} />
-            <button disabled={!couponCode.trim() || couponMut.isPending} onClick={function () { couponMut.mutate(couponCode.trim()); }}
-              style={{ padding: "10px 18px", borderRadius: 12, border: "none", background: couponCode.trim() ? "linear-gradient(135deg, #8B5CF6, #6D28D9)" : "var(--dp-surface-hover)", color: couponCode.trim() ? "#fff" : "var(--dp-text-muted)", fontSize: 14, fontWeight: 600, fontFamily: "Inter, sans-serif", cursor: couponCode.trim() ? "pointer" : "not-allowed" }}>
-              {couponMut.isPending ? "..." : "Apply"}
-            </button>
+            <GlassInput
+              value={couponCode}
+              onChange={function (e) { setCouponCode(e.target.value); }}
+              placeholder="Enter coupon code"
+              style={{ flex: 1 }}
+            />
+            <GradientButton
+              gradient="primaryDark"
+              onClick={function () { couponMut.mutate(couponCode.trim()); }}
+              disabled={!couponCode.trim() || couponMut.isPending}
+              loading={couponMut.isPending}
+              size="sm"
+            >
+              Apply
+            </GradientButton>
           </div>
-        </div>
+        </GlassCard>
       )}
 
       {/* Plan Cards */}
@@ -343,11 +340,10 @@ export default function SubscriptionScreen() {
         var isPopular = plan.popular;
 
         return (
-          <div
+          <GlassCard
             key={plan.slug}
+            mb={16}
             style={{
-              ...glassStyle,
-              marginBottom: 16,
               padding: 0,
               overflow: "hidden",
               border: isCurrent
@@ -357,7 +353,7 @@ export default function SubscriptionScreen() {
                 : "1px solid var(--dp-input-border)",
               boxShadow: isCurrent
                 ? `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 25px ${accent.color}20`
-                : glassStyle.boxShadow,
+                : "inset 0 1px 0 rgba(255,255,255,0.06)",
               ...(isCurrent && plan.slug === "pro" ? { animation: "planGlow 4s ease-in-out infinite" } : {}),
               opacity: mounted ? 1 : 0,
               transform: mounted ? "translateY(0)" : "translateY(20px)",
@@ -370,9 +366,9 @@ export default function SubscriptionScreen() {
               <div style={{
                 position: "absolute", top: 14, right: 14,
                 padding: "4px 10px", borderRadius: 8,
-                background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                background: GRADIENTS.primaryDark,
                 fontSize: 10, fontWeight: 700, color: "#fff",
-                fontFamily: "Inter, sans-serif", letterSpacing: "0.3px",
+                letterSpacing: "0.3px",
               }}>
                 Most Popular
               </div>
@@ -386,7 +382,7 @@ export default function SubscriptionScreen() {
                 background: accent.gradient,
                 fontSize: 10, fontWeight: 700,
                 color: plan.slug === "pro" ? "#000" : "#fff",
-                fontFamily: "Inter, sans-serif", letterSpacing: "0.3px",
+                letterSpacing: "0.3px",
               }}>
                 Current Plan
               </div>
@@ -404,29 +400,24 @@ export default function SubscriptionScreen() {
                 <div style={{
                   display: "flex", alignItems: "center", gap: 8, marginBottom: 6,
                 }}>
-                  {plan.slug === "pro" && <Crown size={18} color={isLight ? "#B45309" : "#FCD34D"} />}
+                  {plan.slug === "pro" && <Crown size={18} color={adaptColor(BRAND.yellow, isLight)} />}
                   {plan.slug === "premium" && <Star size={18} color="#8B5CF6" />}
-                  {plan.slug === "free" && <Zap size={18} color={isLight ? "#4B5563" : "#9CA3AF"} />}
+                  {plan.slug === "free" && <Zap size={18} color={adaptColor("#9CA3AF", isLight)} />}
                   <span style={{
                     fontSize: 20, fontWeight: 700, color: "var(--dp-text)",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    }}>
                     {plan.name}
                   </span>
                 </div>
                 <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                   <span style={{
-                    fontSize: 32, fontWeight: 800, color: isLight
-                      ? (accent.color === "#9CA3AF" ? "#4B5563" : accent.color === "#FCD34D" ? "#B45309" : accent.color)
-                      : accent.color,
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    fontSize: 32, fontWeight: 800, color: adaptColor(accent.color, isLight),
+                    }}>
                     ${plan.price === 0 ? "0" : plan.price.toFixed(2)}
                   </span>
                   <span style={{
                     fontSize: 14, color: "var(--dp-text-muted)",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    }}>
                     /{plan.period === "forever" ? "forever" : "mo"}
                   </span>
                 </div>
@@ -448,8 +439,7 @@ export default function SubscriptionScreen() {
                     </div>
                     <span style={{
                       fontSize: 13, color: "var(--dp-text-primary)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {feature}
                     </span>
                   </div>
@@ -468,7 +458,6 @@ export default function SubscriptionScreen() {
                     </div>
                     <span style={{
                       fontSize: 13, color: "var(--dp-text-muted)",
-                      fontFamily: "Inter, sans-serif",
                       textDecoration: "line-through",
                       textDecorationColor: "rgba(255,255,255,0.15)",
                     }}>
@@ -489,12 +478,10 @@ export default function SubscriptionScreen() {
                       padding: "14px 0", width: "100%", borderRadius: 14,
                       background: "var(--dp-surface-hover)",
                       border: `1px solid ${accent.color}30`,
-                      color: isLight
-                        ? (accent.color === "#9CA3AF" ? "#4B5563" : accent.color === "#FCD34D" ? "#B45309" : accent.color)
-                        : accent.color, fontSize: 14, fontWeight: 700,
-                      fontFamily: "Inter, sans-serif", cursor: portalMut.isPending ? "wait" : "pointer",
+                      color: adaptColor(accent.color, isLight), fontSize: 14, fontWeight: 700,
+                      cursor: portalMut.isPending ? "wait" : "pointer",
                       transition: "all 0.25s ease",
-                      opacity: portalMut.isPending ? 0.6 : 1,
+                      opacity: portalMut.isPending ? 0.6 : 1, fontFamily: "inherit",
                     }}>
                     <CreditCard size={16} />
                     {portalMut.isPending ? "Opening..." : "Manage Billing"}
@@ -508,10 +495,10 @@ export default function SubscriptionScreen() {
                         padding: "12px 0", width: "100%", borderRadius: 14,
                         background: "transparent",
                         border: "1px solid rgba(239,68,68,0.25)",
-                        color: "#EF4444", fontSize: 13, fontWeight: 600,
-                        fontFamily: "Inter, sans-serif", cursor: cancelMut.isPending ? "wait" : "pointer",
+                        color: "var(--dp-danger-solid)", fontSize: 13, fontWeight: 600,
+                        cursor: cancelMut.isPending ? "wait" : "pointer",
                         transition: "all 0.25s ease",
-                        opacity: cancelMut.isPending ? 0.6 : 1,
+                        opacity: cancelMut.isPending ? 0.6 : 1, fontFamily: "inherit",
                       }}>
                       <XCircle size={15} />
                       {cancelMut.isPending ? "Cancelling..." : "Cancel Subscription"}
@@ -541,11 +528,11 @@ export default function SubscriptionScreen() {
                     border: plan.slug === "free"
                       ? "1px solid var(--dp-input-border)"
                       : "none",
-                    color: plan.slug === "pro" ? "#000" : plan.slug === "free" ? (isLight ? "#1a1535" : "#fff") : "#fff",
-                    fontSize: 14, fontWeight: 700, fontFamily: "Inter, sans-serif",
-                    cursor: (checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending) ? "wait" : "pointer",
+                    color: plan.slug === "pro" ? "#000" : plan.slug === "free" ? "var(--dp-text)" : "#fff",
+                    fontSize: 14, fontWeight: 700, cursor: (checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending) ? "wait" : "pointer",
                     transition: "all 0.25s ease",
                     opacity: (checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending) ? 0.6 : 1,
+                    fontFamily: "inherit",
                   }}>
                   {(checkoutMut.isPending || cancelMut.isPending || changePlanMut.isPending)
                     ? "Processing..."
@@ -557,7 +544,7 @@ export default function SubscriptionScreen() {
                 </button>
               )}
             </div>
-          </div>
+          </GlassCard>
         );
       })}
 
@@ -570,11 +557,11 @@ export default function SubscriptionScreen() {
       }}>
         <h3 style={{
           fontSize: 18, fontWeight: 700, color: "var(--dp-text)",
-          fontFamily: "Inter, sans-serif", marginBottom: 16,
+          marginBottom: 16,
         }}>
           Feature Comparison
         </h3>
-        <div style={{ ...glassStyle, overflow: "hidden" }}>
+        <GlassCard style={{ overflow: "hidden" }}>
           {/* Column headers */}
           <div style={{
             display: "grid", gridTemplateColumns: "1fr 50px 50px 50px",
@@ -584,18 +571,14 @@ export default function SubscriptionScreen() {
           }}>
             <div style={{
               fontSize: 12, fontWeight: 600, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif",
-            }}>
+              }}>
               Feature
             </div>
             {["Free", "Pro", "Pro+"].map((label, i) => (
               <div key={label} style={{
                 fontSize: 10, fontWeight: 700, textAlign: "center",
-                color: isLight
-                  ? [("#4B5563"), PLAN_ACCENTS.premium.color, ("#B45309")][i]
-                  : [PLAN_ACCENTS.free.color, PLAN_ACCENTS.premium.color, PLAN_ACCENTS.pro.color][i],
-                fontFamily: "Inter, sans-serif",
-              }}>
+                color: [adaptColor(PLAN_ACCENTS.free.color, isLight), adaptColor(PLAN_ACCENTS.premium.color, isLight), adaptColor(PLAN_ACCENTS.pro.color, isLight)][i],
+                }}>
                 {["Free", "Prem", "Pro"][i]}
               </div>
             ))}
@@ -614,8 +597,7 @@ export default function SubscriptionScreen() {
             >
               <div style={{
                 fontSize: 12, color: "var(--dp-text-secondary)",
-                fontFamily: "Inter, sans-serif",
-              }}>
+                }}>
                 {feature}
               </div>
               {["free", "premium", "pro"].map((planId) => {
@@ -631,7 +613,7 @@ export default function SubscriptionScreen() {
                     ) : (
                       <span style={{
                         fontSize: 9, color: "var(--dp-text-tertiary)",
-                        fontFamily: "Inter, sans-serif", fontWeight: 500,
+                        fontWeight: 500,
                       }}>
                         {val}
                       </span>
@@ -641,7 +623,7 @@ export default function SubscriptionScreen() {
               })}
             </div>
           ))}
-        </div>
+        </GlassCard>
       </div>
 
       {/* Invoice History */}
@@ -652,20 +634,20 @@ export default function SubscriptionScreen() {
           transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.55s",
         }}>
           <button onClick={function () { setShowInvoices(!showInvoices); }} style={{
-            display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: showInvoices ? 16 : 0,
+            display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", padding: 0, marginBottom: showInvoices ? 16 : 0, fontFamily: "inherit",
           }}>
-            <Receipt size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} />
-            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--dp-text)", fontFamily: "Inter, sans-serif" }}>Invoice History</span>
+            <Receipt size={16} color={adaptColor(BRAND.purpleLight, isLight)} />
+            <span style={{ fontSize: 16, fontWeight: 700, color: "var(--dp-text)" }}>Invoice History</span>
           </button>
           {showInvoices && (
-            <div style={{ ...glassStyle, overflow: "hidden" }}>
+            <GlassCard style={{ overflow: "hidden" }}>
               {invoicesInf.isLoading && (
                 <div style={{ padding: 24, textAlign: "center" }}>
                   <Loader size={20} color="var(--dp-accent)" style={{ animation: "shimmerBadge 1s linear infinite" }} />
                 </div>
               )}
               {!invoicesInf.isLoading && invoices.length === 0 && (
-                <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>No invoices yet</div>
+                <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 13, color: "var(--dp-text-muted)" }}>No invoices yet</div>
               )}
               {!invoicesInf.isLoading && invoices.map(function (inv, i) {
                 return (
@@ -674,23 +656,22 @@ export default function SubscriptionScreen() {
                     borderBottom: i < invoices.length - 1 ? "1px solid var(--dp-glass-border)" : "none",
                   }}>
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text)", fontFamily: "Inter, sans-serif" }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text)" }}>
                         {inv.description || inv.planName || "Subscription"}
                       </div>
-                      <div style={{ fontSize: 11, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif", marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: "var(--dp-text-muted)", marginTop: 2 }}>
                         {inv.date || inv.createdAt || ""}
                       </div>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)", fontFamily: "Inter, sans-serif" }}>
+                      <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}>
                         ${inv.amount || inv.total || "0.00"}
                       </span>
                       <span style={{
                         padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600,
                         background: inv.status === "paid" ? "rgba(16,185,129,0.1)" : "rgba(252,211,77,0.1)",
-                        color: inv.status === "paid" ? "#10B981" : (isLight ? "#B45309" : "#FCD34D"),
-                        fontFamily: "Inter, sans-serif",
-                      }}>
+                        color: inv.status === "paid" ? BRAND.greenSolid : adaptColor(BRAND.yellow, isLight),
+                        }}>
                         {inv.status || "paid"}
                       </span>
                     </div>
@@ -700,9 +681,9 @@ export default function SubscriptionScreen() {
               {/* Infinite scroll sentinel for invoices */}
               <div ref={invoicesInf.sentinelRef} />
               {invoicesInf.loadingMore && (
-                <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+                <div style={{ textAlign: "center", padding: "12px 0", fontSize: 12, color: "var(--dp-text-muted)" }}>Loading more...</div>
               )}
-            </div>
+            </GlassCard>
           )}
         </div>
       )}

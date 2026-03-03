@@ -7,46 +7,23 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
 import { useTheme } from "../../context/ThemeContext";
+import { CATEGORIES as CAT_MAP, catSolid } from "../../styles/colors";
 import { apiPost } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 import { useToast } from "../../context/ToastContext";
 import { sanitizeText, validateRequired } from "../../utils/sanitize";
-
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-};
-
-const inputStyle = {
-  width: "100%",
-  background: "var(--dp-input-bg)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 14,
-  padding: "14px 16px",
-  color: "var(--dp-text)",
-  fontSize: 15,
-  fontFamily: "Inter, sans-serif",
-  outline: "none",
-  resize: "none",
-  transition: "border-color 0.25s ease, box-shadow 0.25s ease",
-  boxSizing: "border-box",
-};
-
-const inputFocusStyle = {
-  borderColor: "rgba(139,92,246,0.5)",
-  boxShadow: "0 0 0 3px rgba(139,92,246,0.15)",
-};
+import IconButton from "../../components/shared/IconButton";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassInput from "../../components/shared/GlassInput";
 
 const CATEGORIES = [
-  { id: "career", label: "Career", icon: Briefcase, color: "#8B5CF6" },
-  { id: "health", label: "Health", icon: Heart, color: "#10B981" },
-  { id: "finance", label: "Finance", icon: DollarSign, color: "#FCD34D" },
-  { id: "hobbies", label: "Hobbies", icon: Palette, color: "#EC4899" },
-  { id: "personal", label: "Growth", icon: TrendingUp, color: "#6366F1" },
-  { id: "relationships", label: "Social", icon: Users, color: "#14B8A6" },
+  { id: "career", label: CAT_MAP.career.label, icon: Briefcase, color: catSolid("career") },
+  { id: "health", label: CAT_MAP.health.label, icon: Heart, color: catSolid("health") },
+  { id: "finance", label: CAT_MAP.finance.label, icon: DollarSign, color: catSolid("finance") },
+  { id: "hobbies", label: CAT_MAP.hobbies.label, icon: Palette, color: catSolid("hobbies") },
+  { id: "personal", label: CAT_MAP.personal.label, icon: TrendingUp, color: catSolid("personal") },
+  { id: "relationships", label: CAT_MAP.relationships.label, icon: Users, color: catSolid("relationships") },
 ];
 
 const TIMEFRAMES = [
@@ -73,11 +50,40 @@ export default function DreamCreateScreen() {
   const [showCustom, setShowCustom] = useState(false);
   const [calMonth, setCalMonth] = useState(new Date().getMonth());
   const [calYear, setCalYear] = useState(new Date().getFullYear());
-  const [focusedField, setFocusedField] = useState(null);
   const [touched, setTouched] = useState({ 0: false, 1: false, 2: false, 3: false });
 
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
+
+  // ─── DRAFT AUTO-SAVE ─────────────────────────────────────────
+  // Load draft from localStorage on mount
+  useEffect(function () {
+    try {
+      var draft = localStorage.getItem("dp-dream-draft");
+      if (draft) {
+        var parsed = JSON.parse(draft);
+        if (parsed.title && !title) setTitle(parsed.title);
+        if (parsed.description && !description) setDescription(parsed.description);
+        if (parsed.category) setCategory(parsed.category);
+      }
+    } catch (e) {}
+  }, []);
+
+  // Save draft to localStorage on changes (debounced)
+  useEffect(function () {
+    if (!title && !description) return;
+    var timer = setTimeout(function () {
+      try {
+        localStorage.setItem("dp-dream-draft", JSON.stringify({ title: title, description: description, category: category }));
+      } catch (e) {}
+    }, 1000);
+    return function () { clearTimeout(timer); };
+  }, [title, description, category]);
+
+  // Clear draft on successful submission
+  function clearDraft() {
+    try { localStorage.removeItem("dp-dream-draft"); } catch (e) {}
+  }
 
   useEffect(() => {
     const timer = setTimeout(() => setMounted(true), 50);
@@ -122,6 +128,7 @@ export default function DreamCreateScreen() {
       category: cleanCategory,
       target_date: targetDate,
     }).then(function (dream) {
+      clearDraft();
       setSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
       navigate("/dream/" + dream.id + "/calibration");
@@ -183,32 +190,16 @@ export default function DreamCreateScreen() {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           marginBottom: 8,
         }}>
-          <button className="dp-ib" onClick={() => step > 0 ? setStep(step - 1) : navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
+          <IconButton icon={ArrowLeft} onClick={() => step > 0 ? setStep(step - 1) : navigate(-1)} />
 
           <span style={{
             fontSize: 13, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif", fontWeight: 500,
+            fontWeight: 500,
           }}>
             Step {step + 1} of {STEPS.length}
           </span>
 
-          <button
-            onClick={() => navigate(-1)}
-            style={{
-              width: 42, height: 42, borderRadius: 14,
-              background: "var(--dp-glass-bg)",
-              border: "1px solid var(--dp-input-border)",
-              cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "background 0.25s ease",
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = "var(--dp-surface-hover)"}
-            onMouseLeave={(e) => e.currentTarget.style.background = "var(--dp-glass-bg)"}
-          >
-            <X size={20} color="var(--dp-text-secondary)" />
-          </button>
+          <IconButton icon={X} onClick={() => navigate(-1)} />
         </div>
 
         {/* Progress Bar */}
@@ -235,7 +226,7 @@ export default function DreamCreateScreen() {
         }}>
           <h1 style={{
             fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-            fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+            margin: 0, letterSpacing: "-0.5px",
           }}>
             {step === 0 && "What's your dream?"}
             {step === 1 && "Choose a category"}
@@ -243,7 +234,7 @@ export default function DreamCreateScreen() {
           </h1>
           <p style={{
             fontSize: 14, color: "var(--dp-text-tertiary)",
-            fontFamily: "Inter, sans-serif", marginTop: 6,
+            marginTop: 6,
           }}>
             {step === 0 && "Describe the dream you want to achieve"}
             {step === 1 && "Pick the category that best fits your dream"}
@@ -256,51 +247,24 @@ export default function DreamCreateScreen() {
           {/* STEP 0: Details */}
           {step === 0 && (
             <div style={stagger(3)}>
-              <div style={{ marginBottom: 18 }}>
-                <label style={{
-                  fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                  fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
-                }}>
-                  Dream Title
-                </label>
-                <textarea
-                  placeholder="e.g., Launch my own business, Run a marathon..."
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  onFocus={() => setFocusedField("title")}
-                  onBlur={() => setFocusedField(null)}
-                  rows={2}
-                  style={{
-                    ...inputStyle,
-                    fontSize: 18,
-                    fontWeight: 600,
-                    lineHeight: 1.4,
-                    ...(focusedField === "title" ? inputFocusStyle : {}),
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{
-                  fontSize: 13, fontWeight: 500, color: "var(--dp-text-secondary)",
-                  fontFamily: "Inter, sans-serif", display: "block", marginBottom: 8,
-                }}>
-                  Description *
-                </label>
-                <textarea
-                  placeholder="Add more details about what you want to achieve..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  onFocus={() => setFocusedField("desc")}
-                  onBlur={() => setFocusedField(null)}
-                  rows={4}
-                  style={{
-                    ...inputStyle,
-                    lineHeight: 1.6,
-                    ...(focusedField === "desc" ? inputFocusStyle : {}),
-                  }}
-                />
-              </div>
-
+              <GlassInput
+                label="Dream Title"
+                placeholder="e.g., Launch my own business, Run a marathon..."
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                multiline
+                inputStyle={{ fontSize: 18, fontWeight: 600, lineHeight: 1.4, minHeight: 56, resize: "none" }}
+                style={{ marginBottom: 18 }}
+              />
+              <GlassInput
+                label="Description"
+                required
+                placeholder="Add more details about what you want to achieve..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                multiline
+                inputStyle={{ lineHeight: 1.6, minHeight: 100, resize: "none" }}
+              />
             </div>
           )}
 
@@ -320,12 +284,15 @@ export default function DreamCreateScreen() {
                     onClick={() => setCategory(cat.id)}
                     style={{
                       ...stagger(3 + idx),
-                      ...glass,
+                      background: "var(--dp-glass-bg)",
+                      backdropFilter: "blur(40px)",
+                      WebkitBackdropFilter: "blur(40px)",
+                      border: isSelected ? `1px solid ${cat.color}55` : "1px solid var(--dp-input-border)",
+                      borderRadius: 20,
                       padding: "20px 16px",
                       cursor: "pointer",
                       display: "flex", flexDirection: "column",
                       alignItems: "center", gap: 12,
-                      borderColor: isSelected ? `${cat.color}55` : "var(--dp-input-border)",
                       boxShadow: isSelected
                         ? `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 20px ${cat.color}20, 0 0 0 1px ${cat.color}33`
                         : "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
@@ -354,8 +321,7 @@ export default function DreamCreateScreen() {
                     </div>
                     <span style={{
                       fontSize: 14, fontWeight: 600, color: "var(--dp-text)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {cat.label}
                     </span>
                   </button>
@@ -393,7 +359,6 @@ export default function DreamCreateScreen() {
                         cursor: "pointer",
                         color: isSelected ? "#fff" : "var(--dp-text-secondary)",
                         fontSize: 14, fontWeight: 600,
-                        fontFamily: "Inter, sans-serif",
                         transition: "all 0.25s ease",
                         boxShadow: isSelected
                           ? "0 4px 16px rgba(139,92,246,0.3)"
@@ -418,11 +383,10 @@ export default function DreamCreateScreen() {
                   padding: 0, marginBottom: showCustom ? 14 : 0,
                 }}
               >
-                <Calendar size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} />
+                <Calendar size={16} color={"var(--dp-accent-text)"} />
                 <span style={{
-                  fontSize: 14, color: isLight ? "#6D28D9" : "#C4B5FD", fontWeight: 500,
-                  fontFamily: "Inter, sans-serif",
-                }}>
+                  fontSize: 14, color: "var(--dp-accent-text)", fontWeight: 500,
+                  }}>
                   {showCustom ? "Hide custom date" : "Set a custom date"}
                 </span>
               </button>
@@ -445,9 +409,7 @@ export default function DreamCreateScreen() {
                 const isPast = (d) => new Date(calYear, calMonth, d) < new Date(todayY, todayM, todayD);
 
                 return (
-                <div style={{
-                  ...glass,
-                  padding: 20,
+                <GlassCard padding={20} style={{
                   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
                 }}>
                   {/* Month/Year header */}
@@ -455,19 +417,15 @@ export default function DreamCreateScreen() {
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     marginBottom: 18,
                   }}>
-                    <button onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); } else setCalMonth(calMonth - 1); }}
-                      style={{ width: 34, height: 34, borderRadius: 10, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dp-text-secondary)", transition: "background 0.2s" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "var(--dp-surface-hover)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "var(--dp-glass-bg)"}>
+                    <button className="dp-gh" onClick={() => { if (calMonth === 0) { setCalMonth(11); setCalYear(calYear - 1); } else setCalMonth(calMonth - 1); }}
+                      style={{ width: 34, height: 34, borderRadius: 10, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dp-text-secondary)", transition: "all 0.2s", fontFamily: "inherit" }}>
                       <ChevronLeft size={16} />
                     </button>
-                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-text)", fontFamily: "Inter, sans-serif" }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: "var(--dp-text)" }}>
                       {MONTHS[calMonth]} {calYear}
                     </span>
-                    <button onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); } else setCalMonth(calMonth + 1); }}
-                      style={{ width: 34, height: 34, borderRadius: 10, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dp-text-secondary)", transition: "background 0.2s" }}
-                      onMouseEnter={e => e.currentTarget.style.background = "var(--dp-surface-hover)"}
-                      onMouseLeave={e => e.currentTarget.style.background = "var(--dp-glass-bg)"}>
+                    <button className="dp-gh" onClick={() => { if (calMonth === 11) { setCalMonth(0); setCalYear(calYear + 1); } else setCalMonth(calMonth + 1); }}
+                      style={{ width: 34, height: 34, borderRadius: 10, background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--dp-text-secondary)", transition: "all 0.2s", fontFamily: "inherit" }}>
                       <ChevronRight size={16} />
                     </button>
                   </div>
@@ -475,7 +433,7 @@ export default function DreamCreateScreen() {
                   {/* Day headers */}
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 6 }}>
                     {DAYS.map(d => (
-                      <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif", padding: "6px 0" }}>
+                      <div key={d} style={{ textAlign: "center", fontSize: 11, fontWeight: 600, color: "var(--dp-text-muted)", padding: "6px 0" }}>
                         {d}
                       </div>
                     ))}
@@ -500,7 +458,7 @@ export default function DreamCreateScreen() {
                           style={{
                             aspectRatio: "1", borderRadius: 10, border: "none",
                             cursor: cell.outside || past ? "default" : "pointer",
-                            fontFamily: "Inter, sans-serif", fontSize: 13, fontWeight: sel ? 700 : 500,
+                            fontSize: 13, fontWeight: sel ? 700 : 500,
                             display: "flex", alignItems: "center", justifyContent: "center",
                             transition: "all 0.2s ease",
                             background: sel
@@ -515,13 +473,11 @@ export default function DreamCreateScreen() {
                                 : sel
                                   ? "#fff"
                                   : td
-                                    ? (isLight ? "#6D28D9" : "#C4B5FD")
+                                    ? "var(--dp-accent-text)"
                                     : "var(--dp-text-primary)",
                             boxShadow: sel ? "0 2px 12px rgba(139,92,246,0.4)" : "none",
                             border: td && !sel ? "1px solid rgba(139,92,246,0.3)" : "1px solid transparent",
                           }}
-                          onMouseEnter={e => { if (!cell.outside && !past && !sel) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-                          onMouseLeave={e => { if (!cell.outside && !past && !sel) e.currentTarget.style.background = td ? "rgba(139,92,246,0.15)" : "transparent"; }}
                         >
                           {cell.day}
                         </button>
@@ -536,13 +492,13 @@ export default function DreamCreateScreen() {
                       background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.15)",
                       display: "flex", alignItems: "center", gap: 8,
                     }}>
-                      <Calendar size={14} color={isLight ? "#6D28D9" : "#C4B5FD"} />
-                      <span style={{ fontSize: 13, color: isLight ? "#6D28D9" : "#C4B5FD", fontWeight: 600, fontFamily: "Inter, sans-serif" }}>
+                      <Calendar size={14} color={"var(--dp-accent-text)"} />
+                      <span style={{ fontSize: 13, color: "var(--dp-accent-text)", fontWeight: 600 }}>
                         {MONTHS[customDate.month]} {customDate.day}, {customDate.year}
                       </span>
                     </div>
                   )}
-                </div>
+                </GlassCard>
                 );
               })()}
 
@@ -555,13 +511,12 @@ export default function DreamCreateScreen() {
                   background: "rgba(139,92,246,0.08)",
                   border: "1px solid rgba(139,92,246,0.15)",
                 }}>
-                  <Clock size={16} color={isLight ? "#6D28D9" : "#C4B5FD"} />
+                  <Clock size={16} color={"var(--dp-accent-text)"} />
                   <span style={{
                     fontSize: 13, color: "var(--dp-text-secondary)",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    }}>
                     Estimated{" "}
-                    <strong style={{ color: isLight ? "#6D28D9" : "#C4B5FD" }}>
+                    <strong style={{ color: "var(--dp-accent-text)" }}>
                       {timeframe === "1m" ? "4 weeks" : timeframe === "3m" ? "12 weeks" : timeframe === "6m" ? "26 weeks" : timeframe === "1y" ? "52 weeks" : "custom period"}
                     </strong>{" "}
                     to achieve your dream
@@ -576,7 +531,7 @@ export default function DreamCreateScreen() {
             <div style={{
               background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)",
               borderRadius: 12, padding: "12px 16px", marginTop: 16,
-              fontSize: 13, color: "#FCA5A5", fontFamily: "Inter, sans-serif", lineHeight: 1.5,
+              fontSize: 13, color: "var(--dp-danger)", lineHeight: 1.5,
             }}>
               {serverError}
             </div>
@@ -596,8 +551,7 @@ export default function DreamCreateScreen() {
           }}>
             <span style={{
               fontSize: 13, color: "#F87171", fontWeight: 500,
-              fontFamily: "Inter, sans-serif",
-            }}>
+              }}>
               {getValidationMessage(step)}
             </span>
           </div>
@@ -617,6 +571,7 @@ export default function DreamCreateScreen() {
         }}>
           {step > 0 && (
             <button
+              className="dp-gh"
               onClick={() => setStep(step - 1)}
               disabled={submitting}
               style={{
@@ -625,41 +580,30 @@ export default function DreamCreateScreen() {
                 border: "1px solid var(--dp-input-border)",
                 cursor: submitting ? "not-allowed" : "pointer",
                 color: "var(--dp-text-secondary)", fontSize: 15, fontWeight: 600,
-                fontFamily: "Inter, sans-serif",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                transition: "background 0.25s ease",
+                transition: "all 0.25s ease",
                 opacity: submitting ? 0.5 : 1,
+                fontFamily: "inherit",
               }}
-              onMouseEnter={(e) => { if (!submitting) e.currentTarget.style.background = "var(--dp-surface-hover)"; }}
-              onMouseLeave={(e) => e.currentTarget.style.background = "var(--dp-glass-bg)"}
             >
               <ArrowLeft size={18} />
               Back
             </button>
           )}
-          <button
+          <GradientButton
+            gradient="primaryDark"
             onClick={handleNext}
-            disabled={submitting}
+            disabled={!canNext() || submitting}
+            loading={submitting}
+            icon={!submitting && step < 2 ? ArrowRight : !submitting && step === 2 ? Sparkles : undefined}
             style={{
               flex: step === 0 ? "unset" : 1,
               width: step === 0 ? "100%" : "auto",
-              height: 50, borderRadius: 14,
-              background: canNext()
-                ? "linear-gradient(135deg, #8B5CF6, #7C3AED)"
-                : "rgba(139,92,246,0.45)",
-              border: "none", cursor: (canNext() && !submitting) ? "pointer" : "not-allowed",
-              color: "#fff", fontSize: 15, fontWeight: 700,
-              fontFamily: "Inter, sans-serif",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              boxShadow: canNext() ? "0 4px 20px rgba(139,92,246,0.4)" : "none",
-              opacity: (canNext() && !submitting) ? 1 : 0.6,
-              transition: "all 0.25s ease",
+              height: 50,
             }}
           >
             {submitting ? "Creating..." : step === 2 ? "Create Dream" : "Next"}
-            {!submitting && step < 2 && <ArrowRight size={18} />}
-            {!submitting && step === 2 && <Sparkles size={18} />}
-          </button>
+          </GradientButton>
         </div>
       </div>
     </PageLayout>

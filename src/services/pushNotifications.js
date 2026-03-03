@@ -9,6 +9,7 @@
 import { isNative } from "./native";
 import { registerNativePush, checkNativePushPermission, unregisterNativePush } from "./nativeNotifications";
 import { NOTIFICATIONS } from "./endpoints";
+import { getToken } from "./api";
 
 var VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
 
@@ -34,6 +35,11 @@ export function subscribeToPush() {
   // Always try native/FCM registration first
   return registerNativePush().then(function (token) {
     if (token) return token;
+
+    // Always request notification permission on web (needed for service worker push)
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch(function () {});
+    }
 
     // Fallback to VAPID web push if FCM didn't work
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -70,7 +76,7 @@ function webPushSubscribe() {
 
         // Send subscription to backend
         var token = null;
-        try { token = localStorage.getItem("dp-token"); } catch (e) {}
+        try { token = getToken(); } catch (e) {}
 
         return fetch(
           (import.meta.env.VITE_API_BASE || "") + NOTIFICATIONS.PUSH_SUBSCRIPTIONS,
@@ -78,7 +84,7 @@ function webPushSubscribe() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              ...(token ? { Authorization: "Token " + token } : {}),
+              ...(token ? { Authorization: "Bearer " + token } : {}),
             },
             credentials: "include",
             body: JSON.stringify({
@@ -118,7 +124,7 @@ export function unsubscribeFromPush() {
 
       return subscription.unsubscribe().then(function () {
         var token = null;
-        try { token = localStorage.getItem("dp-token"); } catch (e) {}
+        try { token = getToken(); } catch (e) {}
 
         return fetch(
           (import.meta.env.VITE_API_BASE || "") + NOTIFICATIONS.PUSH_SUBSCRIPTIONS,
@@ -126,7 +132,7 @@ export function unsubscribeFromPush() {
             method: "DELETE",
             headers: {
               "Content-Type": "application/json",
-              ...(token ? { Authorization: "Token " + token } : {}),
+              ...(token ? { Authorization: "Bearer " + token } : {}),
             },
             credentials: "include",
             body: JSON.stringify({ endpoint: subscription.endpoint }),

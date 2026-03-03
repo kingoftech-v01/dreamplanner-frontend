@@ -22,7 +22,8 @@ export default function VideoCallScreen() {
   var callerName = searchParams.get("callerName") || "Unknown";
   var buddyName = searchParams.get("buddyName") || callerName;
   var buddyInitial = buddyName.charAt(0).toUpperCase();
-  var buddyColor = searchParams.get("color") || "#8B5CF6";
+  var rawBuddyColor = searchParams.get("color") || "#8B5CF6";
+  var buddyColor = /^#[0-9a-fA-F]{6}$/.test(rawBuddyColor) ? rawBuddyColor : "#8B5CF6";
 
   var [callStatus, setCallStatus] = useState(answering ? "connecting" : "ringing");
   var [seconds, setSeconds] = useState(0);
@@ -194,6 +195,7 @@ export default function VideoCallScreen() {
           backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", transition: "all 0.2s",
+          fontFamily: "inherit",
         }}
       >
         <Icon size={22} color="#fff" />
@@ -211,8 +213,7 @@ export default function VideoCallScreen() {
   return (
     <div style={{
       position: "fixed", inset: 0, overflow: "hidden",
-      fontFamily: "Inter, sans-serif",
-    }}>
+      }}>
       <style>{"\
         @keyframes vidFadeIn { from { opacity: 0; } to { opacity: 1; } }\
         @keyframes vidSlideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }\
@@ -320,6 +321,7 @@ export default function VideoCallScreen() {
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", boxShadow: "0 4px 20px rgba(239,68,68,0.4)",
               transition: "transform 0.15s",
+              fontFamily: "inherit",
             }}
             onMouseDown={function (e) { e.currentTarget.style.transform = "scale(0.92)"; }}
             onMouseUp={function (e) { e.currentTarget.style.transform = "scale(1)"; }}

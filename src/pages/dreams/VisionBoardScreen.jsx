@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft, Heart, Sparkles, RefreshCw, X, Maximize2,
   Briefcase, Palette, Heart as HeartIcon, Wallet, Brain, Users, ImageOff, Loader2,
@@ -12,10 +12,15 @@ import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { useAuth } from "../../context/AuthContext";
-import { apiPost, getToken } from "../../services/api";
+import { apiPost, apiUpload, apiGet } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
 import { useT } from "../../context/I18nContext";
+import { BRAND, CATEGORIES, adaptColor, GRADIENTS } from "../../styles/colors";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassModal from "../../components/shared/GlassModal";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Vision Board Screen
@@ -31,27 +36,19 @@ var QUOTES = [
 
 // ─── Category config ──────────────────────────────────────────────
 var CATS = {
-  career:        { Icon: Briefcase, color: "#8B5CF6", gradient: "linear-gradient(135deg, #7C3AED, #4F46E5)" },
-  hobbies:       { Icon: Palette,   color: "#EC4899", gradient: "linear-gradient(135deg, #EC4899, #D946EF)" },
-  health:        { Icon: HeartIcon, color: "#10B981", gradient: "linear-gradient(135deg, #10B981, #14B8A6)" },
-  finance:       { Icon: Wallet,    color: "#FCD34D", gradient: "linear-gradient(135deg, #F59E0B, #EAB308)" },
-  personal:      { Icon: Brain,     color: "#6366F1", gradient: "linear-gradient(135deg, #6366F1, #8B5CF6)" },
-  relationships: { Icon: Users,     color: "#14B8A6", gradient: "linear-gradient(135deg, #3B82F6, #06B6D4)" },
+  career:        { Icon: Briefcase, color: CATEGORIES.career.solid, gradient: "linear-gradient(135deg, #7C3AED, #4F46E5)" },
+  hobbies:       { Icon: Palette,   color: CATEGORIES.hobbies.solid, gradient: "linear-gradient(135deg, #EC4899, #D946EF)" },
+  health:        { Icon: HeartIcon, color: CATEGORIES.health.solid, gradient: "linear-gradient(135deg, #10B981, #14B8A6)" },
+  finance:       { Icon: Wallet,    color: CATEGORIES.finance.solid, gradient: "linear-gradient(135deg, #F59E0B, #EAB308)" },
+  personal:      { Icon: Brain,     color: CATEGORIES.personal.solid, gradient: "linear-gradient(135deg, #6366F1, #8B5CF6)" },
+  relationships: { Icon: Users,     color: CATEGORIES.relationships.solid, gradient: "linear-gradient(135deg, #3B82F6, #06B6D4)" },
 };
 
-var DEFAULT_CAT = { Icon: Sparkles, color: "#8B5CF6", gradient: "linear-gradient(135deg, #8B5CF6, #7C3AED)" };
+var DEFAULT_CAT = { Icon: Sparkles, color: BRAND.purple, gradient: GRADIENTS.primary };
 
 // Vary card heights for visual interest based on index
 var HEIGHTS = [240, 200, 220, 260, 210, 230, 240, 200];
 
-var glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
 
 export default function VisionBoardScreen() {
   var navigate = useNavigate();
@@ -66,16 +63,20 @@ export default function VisionBoardScreen() {
   var [showGenModal, setShowGenModal] = useState(false);
   var [generating, setGenerating] = useState(null);
   var queryClient = useQueryClient();
-  var [likedIds, setLikedIds] = useState(function () {
-    try {
-      var saved = localStorage.getItem("dp-vision-likes");
-      return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
-  });
+  var [likedIds, setLikedIds] = useState({});
 
   // ── Fetch all user dreams (infinite scroll) ──
   var dreamsInf = useInfiniteList({ queryKey: ["dreams"], url: DREAMS.LIST, limit: 20 });
   var allDreams = dreamsInf.items;
+
+  // Initialize liked state from API data
+  useEffect(function () {
+    var map = {};
+    allDreams.forEach(function (d) {
+      if (d.isFavorited) map[d.id] = true;
+    });
+    setLikedIds(map);
+  }, [allDreams]);
 
   // Map dreams into vision board items
   var items = allDreams.map(function (dream, i) {
@@ -99,17 +100,30 @@ export default function VisionBoardScreen() {
     setTimeout(function () { setMounted(true); }, 100);
   }, []);
 
+  var likeMut = useMutation({
+    mutationFn: function (id) { return apiPost(DREAMS.LIKE(id)); },
+    onSuccess: function () {
+      queryClient.invalidateQueries({ queryKey: ["dreams"] });
+    },
+    onError: function (err, id) {
+      // Revert optimistic update
+      setLikedIds(function (prev) {
+        var next = Object.assign({}, prev);
+        if (next[id]) { delete next[id]; } else { next[id] = true; }
+        return next;
+      });
+      showToast(err.message || "Failed to update favorite", "error");
+    },
+  });
+
   var toggleLike = function (id) {
+    // Optimistic update
     setLikedIds(function (prev) {
       var next = Object.assign({}, prev);
-      if (next[id]) {
-        delete next[id];
-      } else {
-        next[id] = true;
-      }
-      localStorage.setItem("dp-vision-likes", JSON.stringify(next));
+      if (next[id]) { delete next[id]; } else { next[id] = true; }
       return next;
     });
+    likeMut.mutate(id);
   };
 
   var refreshQuote = function () {
@@ -127,7 +141,7 @@ export default function VisionBoardScreen() {
   };
 
   var [uploading, setUploading] = useState(null);
-  var fileInputRef = useState(null);
+  var fileInputRef = useRef(null);
 
   var generateForDream = function (dreamId) {
     if (!hasSubscription("pro")) {
@@ -157,16 +171,7 @@ export default function VisionBoardScreen() {
       var formData = new FormData();
       formData.append("image", file);
       formData.append("caption", "");
-      fetch((import.meta.env.VITE_API_BASE || "") + DREAMS.VISION_BOARD_ADD(dreamId), {
-        method: "POST",
-        headers: {
-          "Authorization": "Token " + getToken(),
-        },
-        body: formData,
-      }).then(function (resp) {
-        if (!resp.ok) throw new Error("Upload failed");
-        return resp.json();
-      }).then(function (data) {
+      apiUpload(DREAMS.VISION_BOARD_ADD(dreamId), formData).then(function (data) {
         showToast(t("vision.imageUploaded"), "success");
         setUploading(null);
         setShowGenModal(false);
@@ -184,7 +189,6 @@ export default function VisionBoardScreen() {
     return (
       <PageLayout>
         <div style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
           minHeight: "100vh",
           paddingBottom: 100,
         }}>
@@ -192,10 +196,8 @@ export default function VisionBoardScreen() {
             display: "flex", alignItems: "center", gap: 12,
             padding: "20px 0 16px",
           }}>
-            <button className="dp-ib" onClick={function () { navigate(-1); }}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
-            <Sparkles size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
+            <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />
+            <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
             <span style={{
               fontSize: 17, fontWeight: 700, color: "var(--dp-text)",
               letterSpacing: "-0.3px", flex: 1,
@@ -219,7 +221,6 @@ export default function VisionBoardScreen() {
     return (
       <PageLayout>
         <div style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
           minHeight: "100vh",
           paddingBottom: 100,
         }}>
@@ -227,10 +228,8 @@ export default function VisionBoardScreen() {
             display: "flex", alignItems: "center", gap: 12,
             padding: "20px 0 16px",
           }}>
-            <button className="dp-ib" onClick={function () { navigate(-1); }}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
-            <Sparkles size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
+            <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />
+            <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
             <span style={{
               fontSize: 17, fontWeight: 700, color: "var(--dp-text)",
               letterSpacing: "-0.3px", flex: 1,
@@ -251,7 +250,6 @@ export default function VisionBoardScreen() {
     <PageLayout>
       <div
         style={{
-          fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
           minHeight: "100vh",
           paddingBottom: 100,
         }}
@@ -268,10 +266,8 @@ export default function VisionBoardScreen() {
             transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
           }}
         >
-          <button className="dp-ib" onClick={function () { navigate(-1); }}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
-          <Sparkles size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
+          <IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} />
+          <Sparkles size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} />
           <span
             style={{
               fontSize: 17,
@@ -288,8 +284,8 @@ export default function VisionBoardScreen() {
             borderRadius: 10,
             fontSize: 12,
             fontWeight: 600,
-            background: isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.06)",
-            color: isLight ? "rgba(26,21,53,0.72)" : "rgba(255,255,255,0.72)",
+            background: "var(--dp-accent-soft)",
+            color: "var(--dp-text-secondary)",
           }}>
             {items.length} {items.length === 1 ? "dream" : "dreams"}
           </span>
@@ -303,14 +299,10 @@ export default function VisionBoardScreen() {
             transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s",
           }}
         >
-          <div
-            style={{
-              ...glass,
-              padding: "18px 20px",
-              marginBottom: 20,
-              position: "relative",
-              overflow: "hidden",
-            }}
+          <GlassCard
+            padding="18px 20px"
+            mb={20}
+            style={{ position: "relative", overflow: "hidden" }}
           >
             {/* Decorative glow */}
             <div
@@ -354,7 +346,7 @@ export default function VisionBoardScreen() {
                   style={{
                     fontSize: 12,
                     fontWeight: 600,
-                    color: isLight ? "#6D28D9" : "#C4B5FD",
+                    color: adaptColor(BRAND.purpleLight, isLight),
                   }}
                 >
                   -- {quote.author}
@@ -372,6 +364,7 @@ export default function VisionBoardScreen() {
                     alignItems: "center",
                     justifyContent: "center",
                     cursor: "pointer",
+                    fontFamily: "inherit",
                     transition: "all 0.2s",
                   }}
                 >
@@ -379,7 +372,7 @@ export default function VisionBoardScreen() {
                 </button>
               </div>
             </div>
-          </div>
+          </GlassCard>
         </div>
 
         {/* Empty state */}
@@ -404,36 +397,29 @@ export default function VisionBoardScreen() {
               display: "flex", alignItems: "center", justifyContent: "center",
               marginBottom: 20,
             }}>
-              <ImageOff size={28} color={isLight ? "#7C3AED" : "#C4B5FD"} />
+              <ImageOff size={28} color={adaptColor(BRAND.purpleLight, isLight)} />
             </div>
             <h3 style={{
               fontSize: 18, fontWeight: 700, color: "var(--dp-text)",
-              fontFamily: "Inter, sans-serif", margin: "0 0 8px",
+              margin: "0 0 8px",
             }}>
               {t("vision.empty")}
             </h3>
             <p style={{
               fontSize: 14, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif", lineHeight: 1.6,
+              lineHeight: 1.6,
               maxWidth: 280, margin: "0 0 24px",
             }}>
               {t("vision.emptyDesc")}
             </p>
-            <button
+            <GradientButton
+              gradient="primary"
+              icon={Sparkles}
               onClick={function () { navigate("/dream/create"); }}
-              style={{
-                height: 44, borderRadius: 14, padding: "0 24px",
-                background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
-                border: "none", cursor: "pointer",
-                color: "#fff", fontSize: 14, fontWeight: 600,
-                fontFamily: "Inter, sans-serif",
-                display: "flex", alignItems: "center", gap: 8,
-                boxShadow: "0 4px 20px rgba(139,92,246,0.3)",
-              }}
+              style={{ height: 44, padding: "0 24px" }}
             >
-              <Sparkles size={16} />
               {t("dreams.createDream")}
-            </button>
+            </GradientButton>
           </div>
         )}
 
@@ -543,18 +529,19 @@ export default function VisionBoardScreen() {
                       background: "rgba(0,0,0,0.3)",
                       backdropFilter: "blur(8px)",
                       WebkitBackdropFilter: "blur(8px)",
-                      color: likedIds[item.id] ? "#EF4444" : "rgba(255,255,255,0.7)",
+                      color: likedIds[item.id] ? BRAND.redSolid : "rgba(255,255,255,0.7)",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       cursor: "pointer",
+                      fontFamily: "inherit",
                       transition: "all 0.2s",
                     }}
                   >
                     <Heart
                       size={15}
                       strokeWidth={2}
-                      fill={likedIds[item.id] ? "#EF4444" : "none"}
+                      fill={likedIds[item.id] ? BRAND.redSolid : "none"}
                     />
                   </button>
 
@@ -596,7 +583,7 @@ export default function VisionBoardScreen() {
                         width: item.progress + "%",
                         borderRadius: 2,
                         background: item.progress >= 80
-                          ? "linear-gradient(90deg, #10B981, #34D399)"
+                          ? GRADIENTS.highProgress
                           : "rgba(255,255,255,0.7)",
                         transition: "width 1s ease",
                       }} />
@@ -660,12 +647,13 @@ export default function VisionBoardScreen() {
             height: 56,
             borderRadius: 18,
             border: "none",
-            background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+            background: GRADIENTS.primaryDark,
             color: "#fff",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             cursor: "pointer",
+            fontFamily: "inherit",
             boxShadow: "0 6px 24px rgba(139,92,246,0.4), 0 0 40px rgba(139,92,246,0.15)",
             zIndex: 100,
             transition: "all 0.25s",
@@ -677,59 +665,9 @@ export default function VisionBoardScreen() {
         </button>
 
         {/* Full-Screen Modal */}
-        {fullscreen && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 300,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              animation: "vbFadeIn 0.25s ease-out",
-            }}
-          >
-            <div
-              onClick={function () { setFullscreen(null); }}
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "rgba(0,0,0,0.75)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-              }}
-            />
-            <div
-              style={{
-                position: "relative",
-                width: "90%",
-                maxWidth: 400,
-                animation: "vbScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-              }}
-            >
-              {/* Close button */}
-              <button
-                onClick={function () { setFullscreen(null); }}
-                style={{
-                  position: "absolute",
-                  top: -16,
-                  right: -8,
-                  width: 36,
-                  height: 36,
-                  borderRadius: 12,
-                  border: "1px solid var(--dp-surface-hover)",
-                  background: "var(--dp-modal-bg)",
-                  color: "var(--dp-text)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                  zIndex: 10,
-                }}
-              >
-                <X size={16} strokeWidth={2} />
-              </button>
-
+        <GlassModal open={!!fullscreen} onClose={function () { setFullscreen(null); }} maxWidth={400}>
+          {fullscreen && (
+            <div style={{ padding: 20 }}>
               {/* Large image area */}
               <div
                 style={{
@@ -830,7 +768,7 @@ export default function VisionBoardScreen() {
                           width: fullscreen.progress + "%",
                           borderRadius: 2,
                           background: fullscreen.progress >= 80
-                            ? "linear-gradient(90deg, #10B981, #34D399)"
+                            ? GRADIENTS.highProgress
                             : "rgba(255,255,255,0.8)",
                         }} />
                       </div>
@@ -853,6 +791,7 @@ export default function VisionBoardScreen() {
                   setFullscreen(null);
                   navigate("/dream/" + fullscreen.id);
                 }}
+                className="dp-gh"
                 style={{
                   width: "100%",
                   marginTop: 12,
@@ -865,102 +804,25 @@ export default function VisionBoardScreen() {
                   color: "var(--dp-text)",
                   fontSize: 14,
                   fontWeight: 600,
-                  fontFamily: "Inter, sans-serif",
                   cursor: "pointer",
+                  fontFamily: "inherit",
                   transition: "all 0.2s",
                 }}
               >
                 View Dream Details
               </button>
             </div>
-          </div>
-        )}
+          )}
+        </GlassModal>
 
         {/* Generate Vision Modal */}
-        {showGenModal && (
-          <div
-            style={{
-              position: "fixed",
-              inset: 0,
-              zIndex: 400,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              animation: "vbFadeIn 0.25s ease-out",
-            }}
-          >
-            <div
-              onClick={function () { if (!generating) setShowGenModal(false); }}
-              style={{
-                position: "absolute",
-                inset: 0,
-                background: "rgba(0,0,0,0.75)",
-                backdropFilter: "blur(12px)",
-                WebkitBackdropFilter: "blur(12px)",
-              }}
-            />
-            <div
-              style={{
-                position: "relative",
-                width: "90%",
-                maxWidth: 400,
-                maxHeight: "70vh",
-                display: "flex",
-                flexDirection: "column",
-                animation: "vbScaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
-              }}
-            >
-              {/* Modal header */}
-              <div style={{
-                ...glass,
-                borderRadius: "20px 20px 0 0",
-                padding: "18px 20px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                borderBottom: "none",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <ImagePlus size={18} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-                  <span style={{
-                    fontSize: 16,
-                    fontWeight: 700,
-                    color: "var(--dp-text)",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
-                    {t("vision.addImage")}
-                  </span>
-                </div>
-                <button
-                  onClick={function () { if (!generating) setShowGenModal(false); }}
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 10,
-                    border: "1px solid var(--dp-input-border)",
-                    background: "var(--dp-glass-bg)",
-                    color: "var(--dp-text-tertiary)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: generating ? "not-allowed" : "pointer",
-                    opacity: generating ? 0.5 : 1,
-                    transition: "all 0.2s",
-                  }}
-                >
-                  <X size={14} strokeWidth={2} />
-                </button>
-              </div>
-
-              {/* Dream list */}
-              <div style={{
-                ...glass,
-                borderRadius: "0 0 20px 20px",
-                borderTop: "1px solid var(--dp-input-border)",
-                padding: "8px 12px 12px",
-                overflowY: "auto",
-                flex: 1,
-              }}>
+        <GlassModal
+          open={showGenModal}
+          onClose={function () { if (!generating) setShowGenModal(false); }}
+          title={t("vision.addImage")}
+          maxWidth={400}
+        >
+          <div style={{ padding: "8px 12px 12px" }}>
                 {allDreams.length === 0 && (
                   <div style={{
                     padding: "32px 16px",
@@ -969,7 +831,6 @@ export default function VisionBoardScreen() {
                     <p style={{
                       fontSize: 14,
                       color: "var(--dp-text-tertiary)",
-                      fontFamily: "Inter, sans-serif",
                       margin: 0,
                     }}>
                       No dreams yet. Create a dream first!
@@ -990,7 +851,7 @@ export default function VisionBoardScreen() {
                         padding: "12px 14px",
                         borderRadius: 14,
                         marginTop: 6,
-                        background: isLight ? "rgba(139,92,246,0.04)" : "rgba(255,255,255,0.03)",
+                        background: "var(--dp-accent-soft)",
                         border: "1px solid var(--dp-input-border)",
                         cursor: generating ? "not-allowed" : "pointer",
                         opacity: generating && !isGenerating ? 0.5 : 1,
@@ -1017,7 +878,6 @@ export default function VisionBoardScreen() {
                           fontSize: 14,
                           fontWeight: 600,
                           color: "var(--dp-text)",
-                          fontFamily: "Inter, sans-serif",
                           whiteSpace: "nowrap",
                           overflow: "hidden",
                           textOverflow: "ellipsis",
@@ -1027,7 +887,6 @@ export default function VisionBoardScreen() {
                         <div style={{
                           fontSize: 12,
                           color: "var(--dp-text-tertiary)",
-                          fontFamily: "Inter, sans-serif",
                           marginTop: 2,
                           textTransform: "capitalize",
                         }}>
@@ -1049,14 +908,14 @@ export default function VisionBoardScreen() {
                             height: 34,
                             borderRadius: 10,
                             padding: 0,
-                            border: "1px solid " + (isLight ? "rgba(139,92,246,0.2)" : "rgba(139,92,246,0.3)"),
+                            border: "1px solid var(--dp-glass-border)",
                             background: uploading === dream.id
                               ? "linear-gradient(135deg, #6D28D9, #5B21B6)"
-                              : (isLight ? "rgba(139,92,246,0.06)" : "rgba(139,92,246,0.1)"),
-                            color: uploading === dream.id ? "#fff" : (isLight ? "#7C3AED" : "#C4B5FD"),
+                              : "var(--dp-accent-soft)",
+                            color: uploading === dream.id ? "#fff" : (adaptColor(BRAND.purpleLight, isLight)),
                             fontSize: 12,
                             fontWeight: 600,
-                            fontFamily: "Inter, sans-serif",
+                            fontFamily: "inherit",
                             cursor: (generating || uploading) ? "not-allowed" : "pointer",
                             display: "flex",
                             alignItems: "center",
@@ -1087,11 +946,11 @@ export default function VisionBoardScreen() {
                             border: "none",
                             background: isGenerating
                               ? "linear-gradient(135deg, #6D28D9, #5B21B6)"
-                              : "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                              : GRADIENTS.primary,
                             color: "#fff",
                             fontSize: 12,
                             fontWeight: 600,
-                            fontFamily: "Inter, sans-serif",
+                            fontFamily: "inherit",
                             cursor: (generating || uploading) ? "not-allowed" : "pointer",
                             display: "flex",
                             alignItems: "center",
@@ -1118,10 +977,8 @@ export default function VisionBoardScreen() {
                     </div>
                   );
                 })}
-              </div>
-            </div>
           </div>
-        )}
+        </GlassModal>
 
         <style>{`
           @keyframes vbFadeIn {

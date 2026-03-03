@@ -7,32 +7,34 @@ import { takePicture, isNative } from "../../services/native";
 import { useToast } from "../../context/ToastContext";
 import { useTheme } from "../../context/ThemeContext";
 import { sanitizeText, validateRequired } from "../../utils/sanitize";
+import { BRAND, CATEGORIES as CAT_MAP, catSolid, adaptColor } from "../../styles/colors";
 import {
   ArrowLeft, Users, Image, ChevronDown, Globe, Lock,
-  Loader, Check, X
+  Check, X
 } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import SubscriptionGate from "../../components/shared/SubscriptionGate";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassInput from "../../components/shared/GlassInput";
 
 // ═══════════════════════════════════════════════════════════════
 // DreamPlanner — Circle Create Screen
 // ═══════════════════════════════════════════════════════════════
 
-var glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
-
 var CATEGORIES = [
-  { id: "Health", label: "Health", color: "#10B981" },
-  { id: "Career", label: "Career", color: "#8B5CF6" },
-  { id: "Growth", label: "Growth", color: "#6366F1" },
-  { id: "Finance", label: "Finance", color: "#FCD34D" },
-  { id: "Hobbies", label: "Hobbies", color: "#EC4899" },
+  { id: "career", label: "Career", color: catSolid("career") },
+  { id: "health", label: "Health", color: catSolid("health") },
+  { id: "fitness", label: "Fitness", color: "#3B82F6" },
+  { id: "education", label: "Education", color: "#6366F1" },
+  { id: "finance", label: "Finance", color: catSolid("finance") },
+  { id: "creativity", label: "Creativity", color: "#EC4899" },
+  { id: "relationships", label: "Relationships", color: "#14B8A6" },
+  { id: "personal_growth", label: "Personal Growth", color: catSolid("personal") },
+  { id: "hobbies", label: "Hobbies", color: catSolid("hobbies") },
+  { id: "other", label: "Other", color: "#9CA3AF" },
 ];
 
 export default function CircleCreateScreen() {
@@ -48,7 +50,6 @@ export default function CircleCreateScreen() {
   var [coverImage, setCoverImage] = useState(null);
   var [coverPreview, setCoverPreview] = useState(null);
   var [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  var [focusedField, setFocusedField] = useState(null);
 
   useEffect(function () {
     setTimeout(function () { setMounted(true); }, 100);
@@ -137,62 +138,19 @@ export default function CircleCreateScreen() {
 
   var selectedCategory = CATEGORIES.find(function (c) { return c.id === category; });
 
-  var inputStyle = {
-    width: "100%",
-    padding: "14px 16px",
-    borderRadius: 14,
-    border: "1px solid var(--dp-input-border)",
-    background: "var(--dp-input-bg)",
-    color: "var(--dp-text)",
-    fontSize: 15,
-    fontFamily: "Inter, sans-serif",
-    outline: "none",
-    transition: "border-color 0.25s ease, box-shadow 0.25s ease",
-    boxSizing: "border-box",
-  };
-
-  var inputFocusStyle = {
-    borderColor: "rgba(139,92,246,0.5)",
-    boxShadow: "0 0 0 3px rgba(139,92,246,0.15)",
-  };
-
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={function () { navigate(-1); }} label="Back" />}
+        title={<span style={{ display: "flex", alignItems: "center", gap: 8 }}><Users size={20} color={adaptColor(BRAND.purpleLight, isLight)} strokeWidth={2} /><span style={{ fontSize: 17, fontWeight: 700, color: "var(--dp-text)", letterSpacing: "-0.3px" }}>Create Circle</span></span>}
+      />
+    }>
       <SubscriptionGate required="pro" feature="Create Circle">
         <div
           style={{
-            fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-            minHeight: "100vh",
             paddingBottom: 80,
           }}
         >
-          {/* Header */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              padding: "20px 0 16px",
-              opacity: mounted ? 1 : 0,
-              transform: mounted ? "translateY(0)" : "translateY(-10px)",
-              transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1)",
-            }}
-          >
-            <button className="dp-ib" onClick={function () { navigate(-1); }}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
-            <Users size={20} color={isLight ? "#6D28D9" : "#C4B5FD"} strokeWidth={2} />
-            <span
-              style={{
-                fontSize: 17,
-                fontWeight: 700,
-                color: "var(--dp-text)",
-                letterSpacing: "-0.3px",
-              }}
-            >
-              Create Circle
-            </span>
-          </div>
 
           {/* Form Card */}
           <div
@@ -202,7 +160,7 @@ export default function CircleCreateScreen() {
               transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s",
             }}
           >
-            <div style={{ ...glass, padding: 20, marginBottom: 16 }}>
+            <GlassCard padding={20} mb={16}>
               {/* Name */}
               <div style={{ marginBottom: 16 }}>
                 <label
@@ -216,17 +174,11 @@ export default function CircleCreateScreen() {
                 >
                   Circle Name
                 </label>
-                <input
+                <GlassInput
                   value={name}
                   onChange={function (e) { setName(e.target.value); }}
-                  onFocus={function () { setFocusedField("name"); }}
-                  onBlur={function () { setFocusedField(null); }}
                   placeholder="Enter circle name"
                   maxLength={60}
-                  style={{
-                    ...inputStyle,
-                    ...(focusedField === "name" ? inputFocusStyle : {}),
-                  }}
                 />
               </div>
 
@@ -243,20 +195,13 @@ export default function CircleCreateScreen() {
                 >
                   Description
                 </label>
-                <textarea
+                <GlassInput
                   value={description}
                   onChange={function (e) { setDescription(e.target.value); }}
-                  onFocus={function () { setFocusedField("desc"); }}
-                  onBlur={function () { setFocusedField(null); }}
                   placeholder="What is this circle about?"
-                  rows={3}
+                  multiline
                   maxLength={300}
-                  style={{
-                    ...inputStyle,
-                    resize: "none",
-                    lineHeight: 1.5,
-                    ...(focusedField === "desc" ? inputFocusStyle : {}),
-                  }}
+                  inputStyle={{ rows: 3, lineHeight: 1.5 }}
                 />
                 <div
                   style={{
@@ -286,13 +231,22 @@ export default function CircleCreateScreen() {
                 <button
                   onClick={function () { setShowCategoryDropdown(!showCategoryDropdown); }}
                   style={{
-                    ...inputStyle,
+                    width: "100%",
+                    padding: "14px 16px",
+                    borderRadius: 14,
+                    border: "1px solid var(--dp-input-border)",
+                    background: "var(--dp-input-bg)",
+                    color: selectedCategory ? "var(--dp-text)" : "var(--dp-text-muted)",
+                    fontSize: 15,
+                    outline: "none",
+                    transition: "border-color 0.25s ease, box-shadow 0.25s ease",
+                    boxSizing: "border-box",
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
                     textAlign: "left",
-                    color: selectedCategory ? "var(--dp-text)" : "var(--dp-text-muted)",
+                    fontFamily: "inherit",
                   }}
                 >
                   <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -330,10 +284,10 @@ export default function CircleCreateScreen() {
                       right: 0,
                       marginTop: 4,
                       borderRadius: 14,
-                      background: isLight ? "rgba(255,255,255,0.97)" : "rgba(12,8,26,0.97)",
+                      background: "var(--dp-modal-bg)",
                       backdropFilter: "blur(40px)",
                       WebkitBackdropFilter: "blur(40px)",
-                      border: isLight ? "1px solid rgba(139,92,246,0.15)" : "1px solid rgba(255,255,255,0.08)",
+                      border: "1px solid var(--dp-glass-border)",
                       boxShadow: "0 8px 32px rgba(0,0,0,0.3)",
                       zIndex: 50,
                       padding: "6px",
@@ -345,6 +299,7 @@ export default function CircleCreateScreen() {
                       return (
                         <button
                           key={cat.id}
+                          className="dp-gh"
                           onClick={function () {
                             setCategory(cat.id);
                             setShowCategoryDropdown(false);
@@ -362,12 +317,6 @@ export default function CircleCreateScreen() {
                             fontFamily: "inherit",
                             transition: "background 0.15s",
                           }}
-                          onMouseEnter={function (e) {
-                            if (!isSelected) e.currentTarget.style.background = isLight ? "rgba(139,92,246,0.06)" : "rgba(255,255,255,0.04)";
-                          }}
-                          onMouseLeave={function (e) {
-                            if (!isSelected) e.currentTarget.style.background = "transparent";
-                          }}
                         >
                           <span
                             style={{
@@ -382,12 +331,12 @@ export default function CircleCreateScreen() {
                             style={{
                               fontSize: 14,
                               fontWeight: isSelected ? 600 : 400,
-                              color: isSelected ? (isLight ? "#7C3AED" : "#C4B5FD") : (isLight ? "rgba(26,21,53,0.9)" : "rgba(255,255,255,0.85)"),
+                              color: isSelected ? "var(--dp-accent)" : "var(--dp-text)",
                             }}
                           >
                             {cat.label}
                           </span>
-                          {isSelected && <Check size={14} color={isLight ? "#7C3AED" : "#C4B5FD"} strokeWidth={2.5} style={{ marginLeft: "auto" }} />}
+                          {isSelected && <Check size={14} color="var(--dp-accent)" strokeWidth={2.5} style={{ marginLeft: "auto" }} />}
                         </button>
                       );
                     })}
@@ -425,10 +374,10 @@ export default function CircleCreateScreen() {
                           borderRadius: 14,
                           border: isActive
                             ? "1px solid rgba(139,92,246,0.4)"
-                            : (isLight ? "1px solid rgba(139,92,246,0.12)" : "1px solid rgba(255,255,255,0.06)"),
+                            : "1px solid var(--dp-glass-border)",
                           background: isActive
-                            ? "rgba(139,92,246,0.12)"
-                            : (isLight ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.02)"),
+                            ? "var(--dp-accent-soft)"
+                            : "var(--dp-surface)",
                           display: "flex",
                           flexDirection: "column",
                           alignItems: "center",
@@ -440,14 +389,14 @@ export default function CircleCreateScreen() {
                       >
                         <Icon
                           size={18}
-                          color={isActive ? (isLight ? "#7C3AED" : "#C4B5FD") : (isLight ? "rgba(26,21,53,0.45)" : "rgba(255,255,255,0.4)")}
+                          color={isActive ? "var(--dp-accent)" : "var(--dp-text-muted)"}
                           strokeWidth={2}
                         />
                         <span
                           style={{
                             fontSize: 13,
                             fontWeight: isActive ? 600 : 500,
-                            color: isActive ? (isLight ? "#7C3AED" : "#C4B5FD") : (isLight ? "rgba(26,21,53,0.7)" : "rgba(255,255,255,0.85)"),
+                            color: isActive ? "var(--dp-accent)" : "var(--dp-text-secondary)",
                           }}
                         >
                           {opt.label}
@@ -455,7 +404,7 @@ export default function CircleCreateScreen() {
                         <span
                           style={{
                             fontSize: 11,
-                            color: isLight ? "rgba(26,21,53,0.45)" : "rgba(255,255,255,0.4)",
+                            color: "var(--dp-text-muted)",
                           }}
                         >
                           {opt.sub}
@@ -466,7 +415,7 @@ export default function CircleCreateScreen() {
                               width: 6,
                               height: 6,
                               borderRadius: 3,
-                              background: isLight ? "#7C3AED" : "#C4B5FD",
+                              background: "var(--dp-accent)",
                               boxShadow: "0 0 6px rgba(196,181,253,0.5)",
                             }}
                           />
@@ -519,6 +468,7 @@ export default function CircleCreateScreen() {
                         alignItems: "center",
                         justifyContent: "center",
                         cursor: "pointer",
+                        fontFamily: "inherit",
                       }}
                     >
                       <X size={14} strokeWidth={2.5} />
@@ -536,14 +486,14 @@ export default function CircleCreateScreen() {
                         width: "100%",
                         padding: "24px 16px",
                         borderRadius: 14,
-                        border: isLight ? "2px dashed rgba(139,92,246,0.2)" : "2px dashed rgba(255,255,255,0.08)",
-                        background: isLight ? "rgba(139,92,246,0.03)" : "rgba(255,255,255,0.02)",
+                        border: "2px dashed var(--dp-glass-border)",
+                        background: "var(--dp-surface)",
                         cursor: "pointer",
                         transition: "all 0.2s",
                         fontFamily: "inherit",
                       }}
                     >
-                      <Image size={28} color={isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.2)"} strokeWidth={1.5} style={{ marginBottom: 8 }} />
+                      <Image size={28} color="var(--dp-text-muted)" strokeWidth={1.5} style={{ marginBottom: 8 }} />
                       <span style={{ fontSize: 13, color: "var(--dp-text-tertiary)", fontWeight: 500 }}>
                         Tap to choose a cover image
                       </span>
@@ -557,13 +507,13 @@ export default function CircleCreateScreen() {
                         justifyContent: "center",
                         padding: "24px 16px",
                         borderRadius: 14,
-                        border: isLight ? "2px dashed rgba(139,92,246,0.2)" : "2px dashed rgba(255,255,255,0.08)",
-                        background: isLight ? "rgba(139,92,246,0.03)" : "rgba(255,255,255,0.02)",
+                        border: "2px dashed var(--dp-glass-border)",
+                        background: "var(--dp-surface)",
                         cursor: "pointer",
                         transition: "all 0.2s",
                       }}
                     >
-                      <Image size={28} color={isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.2)"} strokeWidth={1.5} style={{ marginBottom: 8 }} />
+                      <Image size={28} color="var(--dp-text-muted)" strokeWidth={1.5} style={{ marginBottom: 8 }} />
                       <span style={{ fontSize: 13, color: "var(--dp-text-tertiary)", fontWeight: 500 }}>
                         Tap to upload a cover image
                       </span>
@@ -576,7 +526,7 @@ export default function CircleCreateScreen() {
                     </label>
                   )}
               </div>
-            </div>
+            </GlassCard>
           </div>
 
           {/* Create Button */}
@@ -587,37 +537,17 @@ export default function CircleCreateScreen() {
               transition: "all 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.2s",
             }}
           >
-            <button
+            <GradientButton
+              gradient="primaryDark"
+              icon={Users}
               onClick={handleSubmit}
               disabled={createMutation.isPending || !name.trim()}
-              style={{
-                width: "100%",
-                padding: "15px 0",
-                borderRadius: 16,
-                border: "none",
-                background: name.trim()
-                  ? "linear-gradient(135deg, #8B5CF6, #6D28D9)"
-                  : "var(--dp-glass-bg)",
-                color: name.trim() ? "#fff" : "var(--dp-text-muted)",
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: name.trim() && !createMutation.isPending ? "pointer" : "not-allowed",
-                fontFamily: "inherit",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-                boxShadow: name.trim() ? "0 4px 20px rgba(139,92,246,0.3)" : "none",
-                transition: "all 0.25s",
-                opacity: createMutation.isPending ? 0.7 : 1,
-              }}
+              loading={createMutation.isPending}
+              fullWidth
+              size="lg"
             >
-              {createMutation.isPending
-                ? <Loader size={18} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
-                : <Users size={18} strokeWidth={2} />
-              }
               {createMutation.isPending ? "Creating..." : "Create Circle"}
-            </button>
+            </GradientButton>
           </div>
 
           <style>{`

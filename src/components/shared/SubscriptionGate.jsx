@@ -30,14 +30,14 @@ export default function SubscriptionGate({ required, feature, children }) {
 
       <h3 style={{
         fontSize: 20, fontWeight: 700, color: "var(--dp-text)",
-        fontFamily: "Inter, sans-serif", margin: "0 0 8px",
+        margin: "0 0 8px",
       }}>
         {tierLabel} Feature
       </h3>
 
       <p style={{
         fontSize: 14, color: "var(--dp-text-tertiary)",
-        fontFamily: "Inter, sans-serif", lineHeight: 1.6,
+        lineHeight: 1.6,
         maxWidth: 280, margin: "0 0 24px",
       }}>
         {feature || "This feature"} requires a {tierLabel} subscription to access.
@@ -50,7 +50,6 @@ export default function SubscriptionGate({ required, feature, children }) {
           background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
           border: "none", cursor: "pointer",
           color: "#fff", fontSize: 14, fontWeight: 600,
-          fontFamily: "Inter, sans-serif",
           display: "flex", alignItems: "center", gap: 8,
           boxShadow: "0 4px 20px rgba(139,92,246,0.3)",
         }}

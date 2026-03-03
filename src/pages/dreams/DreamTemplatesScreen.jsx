@@ -10,24 +10,21 @@ import { apiGet, apiPost } from "../../services/api";
 import { DREAMS } from "../../services/endpoints";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
+import { CATEGORIES as CAT_MAP, catSolid, catColor, adaptColor } from "../../styles/colors";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
-
-const glass = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-};
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GradientButton from "../../components/shared/GradientButton";
+import PillTabs from "../../components/shared/PillTabs";
 
 const CATEGORY_META = {
-  career: { color: "#8B5CF6", label: "Career", icon: Briefcase },
-  health: { color: "#10B981", label: "Health", icon: Heart },
-  finance: { color: "#FCD34D", label: "Finance", icon: DollarSign },
-  hobbies: { color: "#EC4899", label: "Hobbies", icon: Palette },
-  personal: { color: "#6366F1", label: "Growth", icon: TrendingUp },
-  relationships: { color: "#14B8A6", label: "Social", icon: Users },
+  career: { color: catSolid("career"), label: CAT_MAP.career.label, icon: Briefcase },
+  health: { color: catSolid("health"), label: CAT_MAP.health.label, icon: Heart },
+  finance: { color: catSolid("finance"), label: CAT_MAP.finance.label, icon: DollarSign },
+  hobbies: { color: catSolid("hobbies"), label: CAT_MAP.hobbies.label, icon: Palette },
+  personal: { color: catSolid("personal"), label: CAT_MAP.personal.label, icon: TrendingUp },
+  relationships: { color: catSolid("relationships"), label: CAT_MAP.relationships.label, icon: Users },
 };
 
 const FILTER_TABS = ["All", "Health", "Career", "Finance", "Hobbies", "Growth"];
@@ -90,19 +87,17 @@ export default function DreamTemplatesScreen() {
             display: "flex", alignItems: "center", gap: 16,
             marginBottom: 24,
           }}>
-            <button className="dp-ib" onClick={() => navigate(-1)}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
+            <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
             <div>
               <h1 style={{
                 fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
-                fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+                margin: 0, letterSpacing: "-0.5px",
               }}>
                 Dream Templates
               </h1>
               <p style={{
                 fontSize: 13, color: "var(--dp-text-tertiary)",
-                fontFamily: "Inter, sans-serif", margin: 0, marginTop: 2,
+                margin: 0, marginTop: 2,
               }}>
                 Pre-built plans to jumpstart your dreams
               </p>
@@ -129,19 +124,17 @@ export default function DreamTemplatesScreen() {
             display: "flex", alignItems: "center", gap: 16,
             marginBottom: 24,
           }}>
-            <button className="dp-ib" onClick={() => navigate(-1)}>
-              <ArrowLeft size={20} strokeWidth={2} />
-            </button>
+            <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
             <div>
               <h1 style={{
                 fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
-                fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+                margin: 0, letterSpacing: "-0.5px",
               }}>
                 Dream Templates
               </h1>
               <p style={{
                 fontSize: 13, color: "var(--dp-text-tertiary)",
-                fontFamily: "Inter, sans-serif", margin: 0, marginTop: 2,
+                margin: 0, marginTop: 2,
               }}>
                 Pre-built plans to jumpstart your dreams
               </p>
@@ -168,19 +161,17 @@ export default function DreamTemplatesScreen() {
           display: "flex", alignItems: "center", gap: 16,
           marginBottom: 24,
         }}>
-          <button className="dp-ib" onClick={() => navigate(-1)}>
-            <ArrowLeft size={20} strokeWidth={2} />
-          </button>
+          <IconButton icon={ArrowLeft} onClick={() => navigate(-1)} />
           <div>
             <h1 style={{
               fontSize: 22, fontWeight: 700, color: "var(--dp-text)",
-              fontFamily: "Inter, sans-serif", margin: 0, letterSpacing: "-0.5px",
+              margin: 0, letterSpacing: "-0.5px",
             }}>
               Dream Templates
             </h1>
             <p style={{
               fontSize: 13, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif", margin: 0, marginTop: 2,
+              margin: 0, marginTop: 2,
             }}>
               Pre-built plans to jumpstart your dreams
             </p>
@@ -188,45 +179,13 @@ export default function DreamTemplatesScreen() {
         </div>
 
         {/* Filter Tabs */}
-        <div style={{
-          ...stagger(1),
-          display: "flex", gap: 8,
-          overflowX: "auto",
-          paddingBottom: 4,
-          marginBottom: 20,
-          WebkitOverflowScrolling: "touch",
-          msOverflowStyle: "none",
-          scrollbarWidth: "none",
-        }}>
-          {FILTER_TABS.map((tab) => {
-            const isActive = activeFilter === tab;
-            return (
-              <button
-                key={tab}
-                onClick={() => setActiveFilter(tab)}
-                style={{
-                  padding: "8px 18px",
-                  borderRadius: 50,
-                  background: isActive
-                    ? "linear-gradient(135deg, #8B5CF6, #7C3AED)"
-                    : "var(--dp-surface)",
-                  border: isActive
-                    ? "1px solid rgba(139,92,246,0.5)"
-                    : "1px solid var(--dp-input-border)",
-                  cursor: "pointer",
-                  color: isActive ? "#fff" : "var(--dp-text-tertiary)",
-                  fontSize: 13, fontWeight: 600,
-                  fontFamily: "Inter, sans-serif",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.25s ease",
-                  boxShadow: isActive ? "0 4px 14px rgba(139,92,246,0.3)" : "none",
-                  flexShrink: 0,
-                }}
-              >
-                {tab}
-              </button>
-            );
-          })}
+        <div style={{ ...stagger(1), marginBottom: 20 }}>
+          <PillTabs
+            tabs={FILTER_TABS.map((tab) => ({ key: tab, label: tab }))}
+            active={activeFilter}
+            onChange={setActiveFilter}
+            scrollable
+          />
         </div>
 
         {/* Template Cards */}
@@ -237,21 +196,17 @@ export default function DreamTemplatesScreen() {
             };
             const diffConfig = DIFFICULTY_CONFIG[template.difficulty] || DIFFICULTY_CONFIG.Medium;
             const CatIcon = catMeta.icon;
-            const catTextColor = isLight && catMeta.color === "#FCD34D" ? "#B45309" : catMeta.color;
-            const diffTextColor = isLight && diffConfig.color === "#FCD34D" ? "#B45309" : diffConfig.color;
+            const catTextColor = catColor(template.category, isLight);
+            const diffTextColor = adaptColor(diffConfig.color, isLight);
 
             return (
-              <div
+              <GlassCard
                 key={template.id}
+                padding={20}
                 style={{
                   ...stagger(2 + idx),
-                  ...glass,
-                  padding: "20px",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
                   position: "relative",
                   overflow: "hidden",
-                  transition: "transform 0.25s ease, box-shadow 0.25s ease",
-                  cursor: "default",
                 }}
               >
                 {/* Popular star */}
@@ -264,11 +219,10 @@ export default function DreamTemplatesScreen() {
                     background: "rgba(252,211,77,0.1)",
                     border: "1px solid rgba(252,211,77,0.2)",
                   }}>
-                    <Star size={12} color={isLight ? "#B45309" : "#FCD34D"} fill={isLight ? "#B45309" : "#FCD34D"} />
+                    <Star size={12} color={"var(--dp-warning)"} fill={"var(--dp-warning)"} />
                     <span style={{
-                      fontSize: 11, fontWeight: 600, color: isLight ? "#B45309" : "#FCD34D",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      fontSize: 11, fontWeight: 600, color: "var(--dp-warning)",
+                      }}>
                       Popular
                     </span>
                   </div>
@@ -277,7 +231,7 @@ export default function DreamTemplatesScreen() {
                 {/* Title */}
                 <h3 style={{
                   fontSize: 17, fontWeight: 700, color: "var(--dp-text)",
-                  fontFamily: "Inter, sans-serif", margin: 0,
+                  margin: 0,
                   paddingRight: template.popular ? 90 : 0,
                 }}>
                   {template.title}
@@ -286,7 +240,7 @@ export default function DreamTemplatesScreen() {
                 {/* Description */}
                 <p style={{
                   fontSize: 13, color: "var(--dp-text-tertiary)",
-                  fontFamily: "Inter, sans-serif", margin: "8px 0 14px",
+                  margin: "8px 0 14px",
                   lineHeight: 1.5,
                 }}>
                   {template.description}
@@ -308,8 +262,7 @@ export default function DreamTemplatesScreen() {
                     <CatIcon size={12} color={catTextColor} />
                     <span style={{
                       fontSize: 11, fontWeight: 600, color: catTextColor,
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {catMeta.label}
                     </span>
                   </div>
@@ -321,8 +274,7 @@ export default function DreamTemplatesScreen() {
                     <Target size={12} color="var(--dp-text-muted)" />
                     <span style={{
                       fontSize: 12, color: "var(--dp-text-tertiary)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {template.goalCount} goals
                     </span>
                   </div>
@@ -334,8 +286,7 @@ export default function DreamTemplatesScreen() {
                     <Clock size={12} color="var(--dp-text-muted)" />
                     <span style={{
                       fontSize: 12, color: "var(--dp-text-tertiary)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {template.duration}
                     </span>
                   </div>
@@ -349,15 +300,18 @@ export default function DreamTemplatesScreen() {
                   }}>
                     <span style={{
                       fontSize: 11, fontWeight: 600, color: diffTextColor,
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {template.difficulty}
                     </span>
                   </div>
                 </div>
 
                 {/* Use Template Button */}
-                <button
+                <GradientButton
+                  gradient="primaryDark"
+                  icon={Sparkles}
+                  fullWidth
+                  size="sm"
                   onClick={() => {
                     apiPost(DREAMS.TEMPLATES.USE(template.id)).then(function (data) {
                       showToast("Dream created from template!", "success");
@@ -366,29 +320,10 @@ export default function DreamTemplatesScreen() {
                       showToast(err.message || "Failed to use template", "error");
                     });
                   }}
-                  style={{
-                    width: "100%", height: 42, borderRadius: 12,
-                    background: "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(124,58,237,0.1))",
-                    border: "1px solid rgba(139,92,246,0.25)",
-                    cursor: "pointer",
-                    color: isLight ? "#6D28D9" : "#C4B5FD", fontSize: 13, fontWeight: 600,
-                    fontFamily: "Inter, sans-serif",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    transition: "all 0.25s ease",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(124,58,237,0.15))";
-                    e.currentTarget.style.borderColor = "rgba(139,92,246,0.4)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "linear-gradient(135deg, rgba(139,92,246,0.2), rgba(124,58,237,0.1))";
-                    e.currentTarget.style.borderColor = "rgba(139,92,246,0.25)";
-                  }}
                 >
-                  <Sparkles size={14} />
                   Use Template
-                </button>
-              </div>
+                </GradientButton>
+              </GlassCard>
             );
           })}
         </div>
@@ -403,13 +338,13 @@ export default function DreamTemplatesScreen() {
             <BookOpen size={40} color="var(--dp-text-muted)" style={{ marginBottom: 16 }} />
             <p style={{
               fontSize: 15, fontWeight: 600, color: "var(--dp-text-tertiary)",
-              fontFamily: "Inter, sans-serif", margin: 0,
+              margin: 0,
             }}>
               No templates found
             </p>
             <p style={{
               fontSize: 13, color: "var(--dp-text-muted)",
-              fontFamily: "Inter, sans-serif", marginTop: 6,
+              marginTop: 6,
             }}>
               Try a different category filter
             </p>

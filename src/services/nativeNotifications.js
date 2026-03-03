@@ -8,6 +8,7 @@
 import { Capacitor } from "@capacitor/core";
 import { apiPost } from "./api";
 import { NOTIFICATIONS } from "./endpoints";
+import logger from "../utils/logger";
 
 var isNative = Capacitor.isNativePlatform();
 
@@ -37,7 +38,7 @@ function capacitorPushRegister() {
       var resolved = false;
 
       PushNotifications.addListener("registration", function (token) {
-        console.log("[Push] Capacitor token received");
+        logger.debug("[Push] Capacitor token received");
         if (resolved) return;
         resolved = true;
         sendTokenToBackend(token.value).then(function () {
@@ -58,7 +59,7 @@ function capacitorPushRegister() {
       }, 8000);
 
       PushNotifications.requestPermissions().then(function (result) {
-        console.log("[Push] Capacitor permission:", result.receive);
+        logger.debug("[Push] Capacitor permission:", result.receive);
         if (result.receive !== "granted") {
           if (!resolved) { resolved = true; resolve(null); }
           return;

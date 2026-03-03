@@ -11,6 +11,12 @@ import { useT } from "../../context/I18nContext";
 import { clipboardWrite } from "../../services/native";
 import { sanitizeText } from "../../utils/sanitize";
 import DOMPurify from "dompurify";
+import { GRADIENTS } from "../../styles/colors";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GlassCard from "../../components/shared/GlassCard";
+import IconButton from "../../components/shared/IconButton";
+import Avatar from "../../components/shared/Avatar";
+import GlassInput from "../../components/shared/GlassInput";
 import {
   ArrowLeft, Bot, Sparkles, RotateCw, Copy, Check,
   Send, ChevronDown, MoreVertical, Pin, Heart, Search,
@@ -36,9 +42,12 @@ import {
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 function formatTime(d){return d.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});}
-function formatMarkdown(text,isLight){
-  return text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-    .replace(/\*\*(.*?)\*\*/g,`<strong style="color:${isLight?'#1a1535':'#fff'};font-weight:600">$1</strong>`)
+function formatMarkdown(text){
+  // Escape HTML first to prevent injection
+  var escaped = text.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#039;");
+  // Apply markdown formatting on escaped content (safe since all HTML entities are escaped)
+  return escaped
+    .replace(/\*\*(.*?)\*\*/g,'<strong style="color:var(--dp-text);font-weight:600">$1</strong>')
     .replace(/\n/g,"<br/>");
 }
 function getDateLabel(date,t){
@@ -399,70 +408,74 @@ export default function AIChatScreen(){
   const isEmpty=messages.length===0;
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* ═══ APP BAR ═══ */}
-      <header style={{position:"relative",zIndex:100,height:64,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 12px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button className="dp-ib" onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2}/></button>
-          <div style={{width:36,height:36,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.2)"}}>
-            <Bot size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
-          </div>
+      <GlassAppBar
+        left={
+          <>
+            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+            <div style={{width:36,height:36,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--dp-accent-soft)",border:"1px solid var(--dp-accent-border)",flexShrink:0}}>
+              <Bot size={18} color="var(--dp-accent)" strokeWidth={2}/>
+            </div>
+          </>
+        }
+        title={
           <div>
-            <div style={{fontSize:15,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.aiCoach")}</div>
+            <div style={{fontSize:15,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.aiCoach")}</div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{display:"flex",alignItems:"center",gap:5}}>
-                <div className="dp-conn" style={{width:6,height:6,borderRadius:"50%",background:"#5DE5A8",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
-                <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{t("chat.connected")}</span>
+                <div className="dp-conn" style={{width:6,height:6,borderRadius:"50%",background:"var(--dp-success)",boxShadow:"0 0 6px rgba(93,229,168,0.5)"}}/>
+                <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{t("chat.connected")}</span>
               </div>
               {aiUsage.remaining !== undefined && (
-                <span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:8,background:aiUsage.remaining>10?"rgba(93,229,168,0.1)":"rgba(252,211,77,0.1)",color:aiUsage.remaining>10?(isLight?"#059669":"#5DE5A8"):(isLight?"#B45309":"#FCD34D")}}>{aiUsage.remaining}/{aiUsage.limit||"--"}</span>
+                <span style={{fontSize:10,fontWeight:600,padding:"2px 7px",borderRadius:8,background:aiUsage.remaining>10?"var(--dp-success-soft)":"var(--dp-warning-soft)",color:aiUsage.remaining>10?"var(--dp-success)":"var(--dp-warning)"}}>{aiUsage.remaining}/{aiUsage.limit||"--"}</span>
               )}
             </div>
           </div>
-        </div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <button className="dp-ib" aria-label="Reset conversation"><RotateCw size={17} strokeWidth={2}/></button>
-          <div style={{position:"relative"}}>
-            <button className="dp-ib" onClick={()=>setMenuOpen(!menuOpen)} aria-label="More options"><MoreVertical size={18} strokeWidth={2}/></button>
-            {menuOpen&&(
-              <div style={{position:"absolute",top:44,right:0,zIndex:200,background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
-                {[
-                  {icon:Clock,label:t("chat.conversationHistory"),count:null,action:()=>{setPanel("history");setMenuOpen(false);}},
-                  {icon:Pin,label:t("chat.pinnedMessages"),count:pinnedMsgs.length,action:()=>{setPanel("pinned");setMenuOpen(false);}},
-                  {icon:Heart,label:t("chat.likedMessages"),count:likedMsgs.length,action:()=>{setPanel("liked");setMenuOpen(false);}},
-                  {icon:Search,label:t("chat.searchMessages"),count:null,action:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
-                ].map(({icon:I,label,count,action},i)=>(
-                  <button key={i} onClick={action} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",borderRadius:10,cursor:"pointer",color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"background 0.15s"}}
-                    onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"}
-                    onMouseLeave={e=>e.currentTarget.style.background="none"}>
-                    <I size={16} strokeWidth={2}/>{label}
-                    {count!==null&&<span style={{marginLeft:"auto",fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",background:isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)",padding:"2px 7px",borderRadius:8}}>{count}</span>}
-                  </button>
-                ))}
-              </div>
-            )}
+        }
+        right={
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <IconButton icon={RotateCw} label="Reset conversation" />
+            <div style={{position:"relative"}}>
+              <IconButton icon={MoreVertical} onClick={()=>setMenuOpen(!menuOpen)} label="More options" />
+              {menuOpen&&(
+                <div style={{position:"absolute",top:44,right:0,zIndex:200,background:"var(--dp-card-solid)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:14,border:"1px solid var(--dp-glass-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.5)",padding:6,minWidth:180,animation:"dpFS 0.15s ease-out"}}>
+                  {[
+                    {icon:Clock,label:t("chat.conversationHistory"),count:null,action:()=>{setPanel("history");setMenuOpen(false);}},
+                    {icon:Pin,label:t("chat.pinnedMessages"),count:pinnedMsgs.length,action:()=>{setPanel("pinned");setMenuOpen(false);}},
+                    {icon:Heart,label:t("chat.likedMessages"),count:likedMsgs.length,action:()=>{setPanel("liked");setMenuOpen(false);}},
+                    {icon:Search,label:t("chat.searchMessages"),count:null,action:()=>{setPanel("search");setMenuOpen(false);setSearchQ("");}},
+                  ].map(({icon:I,label,count,action},i)=>(
+                    <button key={i} onClick={action} className="dp-gh" style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 14px",background:"none",border:"none",borderRadius:10,cursor:"pointer",color:"var(--dp-text-primary)",fontSize:13,fontWeight:500,fontFamily:"inherit",transition:"background 0.15s"}}>
+                      <I size={16} strokeWidth={2}/>{label}
+                      {count!==null&&<span style={{marginLeft:"auto",fontSize:12,color:"var(--dp-text-tertiary)",background:"var(--dp-surface)",padding:"2px 7px",borderRadius:8}}>{count}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </header>
+        }
+      />
 
       {/* ═══ MESSAGES AREA ═══ */}
       <div ref={scrollRef} onScroll={handleScroll} onClick={()=>setActiveMsg(null)} style={{flex:1,overflowY:"auto",overflowX:"hidden",zIndex:10,padding:"12px 16px 80px",display:"flex",flexDirection:"column",opacity:uiOpacity,transition:"opacity 0.3s ease"}}>
         <div style={{maxWidth:560,margin:"0 auto",width:"100%",flex:1,display:"flex",flexDirection:"column"}}>
           {isEmpty&&!isStreaming?(
             <div className={`dp-a ${mounted?"dp-s":""}`} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",textAlign:"center",animationDelay:"0ms"}}>
-              <div style={{width:80,height:80,borderRadius:24,margin:"0 auto 24px",background:"rgba(139,92,246,0.08)",border:"1px solid rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <Sparkles size={36} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={1.5}/>
+              <div style={{width:80,height:80,borderRadius:24,margin:"0 auto 24px",background:"var(--dp-accent-soft)",border:"1px solid var(--dp-accent-border)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Sparkles size={36} color="var(--dp-accent)" strokeWidth={1.5}/>
               </div>
-              <div style={{fontSize:18,fontWeight:600,color:isLight?"#1a1535":"#fff",marginBottom:8}}>{t("chat.startConversation")}</div>
-              <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)",lineHeight:1.5,maxWidth:300}}>{t("chat.aiReady")}</div>
+              <div style={{fontSize:18,fontWeight:600,color:"var(--dp-text)",marginBottom:8}}>{t("chat.startConversation")}</div>
+              <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.5,maxWidth:300}}>{t("chat.aiReady")}</div>
             </div>
           ):(
             <>
               <div style={{flex:1,minHeight:8}}/>
               {hasMore && (
                 <div style={{textAlign:"center",padding:"8px 0 12px"}}>
-                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?t("chat.loading"):t("chat.loadOlder")}</button>
+                  <button onClick={loadOlderMessages} disabled={loadingMore} style={{padding:"6px 16px",borderRadius:12,border:"1px solid var(--dp-accent-border)",background:"var(--dp-accent-soft)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",opacity:loadingMore?0.5:1}}>{loadingMore?t("chat.loading"):t("chat.loadOlder")}</button>
                 </div>
               )}
               {messages.map((msg,i)=>(
@@ -470,7 +483,7 @@ export default function AIChatScreen(){
                   {/* Date separator */}
                   {shouldShowDate(messages,i)&&(
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",margin:"16px 0 12px"}}>
-                      <div style={{padding:"4px 14px",borderRadius:12,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{getDateLabel(msg.time,t)}</div>
+                      <div style={{padding:"4px 14px",borderRadius:12,background:"var(--dp-surface)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",border:"1px solid var(--dp-glass-border)",fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>{getDateLabel(msg.time,t)}</div>
                     </div>
                   )}
                   <MsgBubble msg={msg} userInitial={userInitial} showActions={activeMsg===msg.id} copiedId={copiedId}
@@ -481,12 +494,12 @@ export default function AIChatScreen(){
               ))}
               {isStreaming&&(
                 <div className="dp-mai" style={{display:"flex",gap:10,marginBottom:20,alignItems:"flex-end"}}>
-                  <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.15)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <Bot size={16} color={isLight?"#6D28D9":"#C4B5FD"} strokeWidth={2}/>
+                  <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"var(--dp-accent-soft)",border:"1px solid var(--dp-accent-border)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <Bot size={16} color="var(--dp-accent-text)" strokeWidth={2}/>
                   </div>
-                  <div style={{padding:"14px 18px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",gap:4,alignItems:"center"}}>
+                  <div style={{padding:"14px 18px",borderRadius:"18px 18px 18px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",border:"1px solid var(--dp-glass-border)",display:"flex",gap:4,alignItems:"center"}}>
                     {streamingContent ? (
-                      <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent,isLight))}}/>
+                      <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(streamingContent))}}/>
                     ) : (
                       <><span className="dp-dot dp-d1"/><span className="dp-dot dp-d2"/><span className="dp-dot dp-d3"/></>
                     )}
@@ -500,16 +513,14 @@ export default function AIChatScreen(){
       </div>
 
       {/* Scroll to bottom */}
-      {showScroll&&<button aria-label="Scroll to bottom" onClick={()=>messagesEndRef.current?.scrollIntoView({behavior:"smooth"})} style={{position:"fixed",bottom:162,left:"50%",transform:"translateX(-50%)",zIndex:50,width:36,height:36,borderRadius:"50%",border:isLight?"1px solid rgba(139,92,246,0.18)":"1px solid rgba(255,255,255,0.1)",background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.85)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",color:isLight?"#1a1535":"#fff",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.3)"}}><ChevronDown size={18} strokeWidth={2}/></button>}
+      {showScroll&&<button aria-label="Scroll to bottom" onClick={()=>messagesEndRef.current?.scrollIntoView({behavior:"smooth"})} style={{position:"fixed",bottom:162,left:"50%",transform:"translateX(-50%)",zIndex:50,width:36,height:36,borderRadius:"50%",border:"1px solid var(--dp-glass-border)",background:"var(--dp-card-solid)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",color:"var(--dp-text)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.3)"}}><ChevronDown size={18} strokeWidth={2}/></button>}
 
       {/* ═══ SUGGESTION CHIPS ═══ */}
       {isEmpty&&!isStreaming&&(
         <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"200ms",zIndex:10,padding:"0 16px 8px"}}>
           <div style={{maxWidth:560,margin:"0 auto",display:"flex",flexWrap:"wrap",gap:8}}>
             {SUGGESTIONS.map((s,i)=>(
-              <button key={i} onClick={()=>{setInput(s);}} style={{padding:"9px 16px",borderRadius:20,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:isLight?"#7C3AED":"#C4B5FD",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",whiteSpace:"nowrap",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}
-                onMouseEnter={e=>{e.currentTarget.style.background="rgba(139,92,246,0.18)";e.currentTarget.style.borderColor="rgba(139,92,246,0.35)";}}
-                onMouseLeave={e=>{e.currentTarget.style.background="rgba(139,92,246,0.08)";e.currentTarget.style.borderColor="rgba(139,92,246,0.2)";}}
+              <button key={i} onClick={()=>{setInput(s);}} className="dp-gh" style={{padding:"9px 16px",borderRadius:20,border:"1px solid var(--dp-accent-border)",background:"var(--dp-accent-soft)",color:"var(--dp-accent)",fontSize:13,fontWeight:500,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",whiteSpace:"nowrap",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}
               >{s}</button>
             ))}
           </div>
@@ -517,28 +528,28 @@ export default function AIChatScreen(){
       )}
 
       {/* ═══ INPUT BAR ═══ */}
-      <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)"}}>
+      <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:"var(--dp-header-bg)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:"1px solid var(--dp-header-border)"}}>
         <div style={{maxWidth:560,margin:"0 auto",display:"flex",alignItems:"flex-end",gap:8}}>
           <div style={{position:"relative"}}>
-            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?(isLight?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.1)"):undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
+            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-surface-hover)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
             {emojiOpen&&(
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:isLight?"rgba(255,255,255,0.97)":"rgba(20,16,35,0.97)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.08)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
+              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:"var(--dp-modal-bg)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:"1px solid var(--dp-glass-border)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
                 {['😀','😂','🥹','😍','🤩','😎','🥳','🤔','😅','😢','😤','🔥','💪','👏','❤️','💜','⭐','✨','🎯','🏆','🚀','💡','📝','🌟','👍','👎','🙏','🎉','💯','🌈','🍀','☕','🧠','💭','🎵','✅','🤝','💫','🌙','☀️','🦋','🌻'].map(emoji=>(
                   <button key={emoji} onClick={()=>insertEmoji(emoji)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:6,borderRadius:8,transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background=isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.08)";e.currentTarget.style.transform="scale(1.2)";}}
+                    onMouseEnter={e=>{e.currentTarget.style.background="var(--dp-surface-hover)";e.currentTarget.style.transform="scale(1.2)";}}
                     onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.transform="scale(1)";}}
                   >{emoji}</button>
                 ))}
               </div>
             )}
           </div>
-          <div style={{flex:1,display:"flex",alignItems:"flex-end",gap:8,padding:"8px 14px",borderRadius:22,background:isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.05)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)"}}>
+          <div style={{flex:1,display:"flex",alignItems:"flex-end",gap:8,padding:"8px 14px",borderRadius:22,background:"var(--dp-surface)",border:"1px solid var(--dp-glass-border)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInputChange}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
               placeholder={t("chat.typeMessage")} rows={1}
-              style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
+              style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"var(--dp-text)",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
           </div>
-          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:44,height:44,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?"linear-gradient(135deg,#8B5CF6,#6D28D9)":isLight?"rgba(139,92,246,0.1)":"rgba(255,255,255,0.05)",color:input.trim()?"#fff":(isLight?"rgba(139,92,246,0.3)":"rgba(255,255,255,0.3)"),display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(139,92,246,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
+          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:44,height:44,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?GRADIENTS.primaryDark:"var(--dp-surface)",color:input.trim()?"#fff":"var(--dp-text-muted)",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(139,92,246,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
             <Send size={18} strokeWidth={2} style={{transform:"translateX(1px)"}}/>
           </button>
         </div>
@@ -549,27 +560,23 @@ export default function AIChatScreen(){
       {panel&&(
         <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column"}}>
           {/* Backdrop */}
-          <div onClick={()=>{setPanel(null);setSearchQ("");}} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
+          <div onClick={()=>{setPanel(null);setSearchQ("");}} style={{position:"absolute",inset:0,background:"var(--dp-overlay-blur)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
           {/* Panel */}
-          <div style={{position:"absolute",top:0,right:0,bottom:0,width:"100%",maxWidth:420,background:isLight?"rgba(255,255,255,0.97)":"rgba(12,8,26,0.97)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderLeft:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",display:"flex",flexDirection:"column",animation:"dpSlideIn 0.3s cubic-bezier(0.16,1,0.3,1)"}}>
+          <div style={{position:"absolute",top:0,right:0,bottom:0,width:"100%",maxWidth:420,background:"var(--dp-modal-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderLeft:"1px solid var(--dp-glass-border)",display:"flex",flexDirection:"column",animation:"dpSlideIn 0.3s cubic-bezier(0.16,1,0.3,1)"}}>
             {/* Panel header */}
-            <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
+            <div style={{height:64,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",borderBottom:"1px solid var(--dp-glass-border)",flexShrink:0}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                {panel==="history"&&<><Clock size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.conversationHistory")}</span></>}
-                {panel==="pinned"&&<><Pin size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.pinnedMessages")}</span></>}
-                {panel==="liked"&&<><Heart size={18} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.likedMessages")}</span></>}
-                {panel==="search"&&<><Search size={18} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:isLight?"#1a1535":"#fff"}}>{t("chat.search")}</span></>}
+                {panel==="history"&&<><Clock size={18} color="var(--dp-accent)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.conversationHistory")}</span></>}
+                {panel==="pinned"&&<><Pin size={18} color="var(--dp-accent)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.pinnedMessages")}</span></>}
+                {panel==="liked"&&<><Heart size={18} color="var(--dp-danger)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.likedMessages")}</span></>}
+                {panel==="search"&&<><Search size={18} color="var(--dp-accent)" strokeWidth={2}/><span style={{fontSize:16,fontWeight:600,color:"var(--dp-text)"}}>{t("chat.search")}</span></>}
               </div>
-              <button className="dp-ib" onClick={()=>{setPanel(null);setSearchQ("");}} aria-label="Close"><X size={18} strokeWidth={2}/></button>
+              <IconButton icon={X} onClick={()=>{setPanel(null);setSearchQ("");}} label="Close" />
             </div>
             {/* Search input */}
             {panel==="search"&&(
-              <div style={{padding:"12px 16px",borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.04)"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:14,background:"var(--dp-surface)",border:"1px solid var(--dp-input-border)"}}>
-                  <Search size={16} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2}/>
-                  <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("chat.searchPlaceholder")} autoFocus
-                    style={{flex:1,background:"none",border:"none",outline:"none",color:isLight?"#1a1535":"#fff",fontSize:14,fontFamily:"inherit"}}/>
-                </div>
+              <div style={{padding:"12px 16px",borderBottom:"1px solid var(--dp-divider)"}}>
+                <GlassInput value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder={t("chat.searchPlaceholder")} autoFocus icon={Search} />
               </div>
             )}
             {/* Panel content */}
@@ -577,7 +584,7 @@ export default function AIChatScreen(){
               {panel==="history"&&(function(){
                 var convs = aiHistoryQuery.data || [];
                 if(!Array.isArray(convs)) convs = [];
-                if(aiHistoryQuery.isLoading) return <div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>{t("chat.loading")}</div>;
+                if(aiHistoryQuery.isLoading) return <div style={{textAlign:"center",paddingTop:40,color:"var(--dp-text-tertiary)",fontSize:14}}>{t("chat.loading")}</div>;
                 if(convs.length===0) return <EmptyPanel icon={Clock} text={t("chat.noConversations")}/>;
                 return convs.map(function(c){
                   var isCurrent = c.id === id;
@@ -587,25 +594,24 @@ export default function AIChatScreen(){
                   return (
                     <button key={c.id} onClick={function(){if(!isCurrent){setPanel(null);navigate("/chat/"+c.id);}}} style={{
                       display:"flex",alignItems:"center",gap:12,width:"100%",padding:"12px 14px",marginBottom:8,
-                      borderRadius:14,border:isCurrent?(isLight?"1.5px solid rgba(139,92,246,0.3)":"1.5px solid rgba(139,92,246,0.4)"):"1px solid "+(isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)"),
-                      background:isCurrent?(isLight?"rgba(139,92,246,0.08)":"rgba(139,92,246,0.1)"):(isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.03)"),
+                      borderRadius:14,border:isCurrent?"1.5px solid var(--dp-accent-border)":"1px solid var(--dp-glass-border)",
+                      background:isCurrent?"var(--dp-accent-soft)":"var(--dp-glass-bg)",
                       cursor:isCurrent?"default":"pointer",fontFamily:"inherit",textAlign:"left",transition:"background 0.15s",
                     }}
-                      onMouseEnter={function(e){if(!isCurrent)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.06)";}}
-                      onMouseLeave={function(e){if(!isCurrent)e.currentTarget.style.background=isCurrent?(isLight?"rgba(139,92,246,0.08)":"rgba(139,92,246,0.1)"):(isLight?"rgba(255,255,255,0.6)":"rgba(255,255,255,0.03)");}}
+                      className={isCurrent ? "" : "dp-gh"}
                     >
-                      <div style={{width:36,height:36,borderRadius:12,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(139,92,246,0.1)",border:"1px solid rgba(139,92,246,0.15)"}}>
-                        <Bot size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+                      <div style={{width:36,height:36,borderRadius:12,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",background:"var(--dp-accent-soft)",border:"1px solid var(--dp-accent-border)"}}>
+                        <Bot size={16} color="var(--dp-accent)" strokeWidth={2}/>
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
-                          <span style={{fontSize:13,fontWeight:600,color:isLight?"#1a1535":"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{c.title || t("chat.aiCoach")}</span>
-                          <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.45)",flexShrink:0}}>{ago}</span>
+                          <span style={{fontSize:13,fontWeight:600,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,marginRight:8}}>{c.title || t("chat.aiCoach")}</span>
+                          <span style={{fontSize:11,color:"var(--dp-text-muted)",flexShrink:0}}>{ago}</span>
                         </div>
-                        {preview && <div style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.5)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}</div>}
+                        {preview && <div style={{fontSize:12,color:"var(--dp-text-tertiary)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{preview}</div>}
                         <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                          <span style={{fontSize:11,color:isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.35)"}}>{(c.totalMessages || 0) + " " + t("chat.messages")}</span>
-                          {isCurrent && <span style={{fontSize:10,fontWeight:600,color:isLight?"#7C3AED":"#C4B5FD",background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.15)",padding:"1px 7px",borderRadius:6}}>{t("chat.current")}</span>}
+                          <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{(c.totalMessages || 0) + " " + t("chat.messages")}</span>
+                          {isCurrent && <span style={{fontSize:10,fontWeight:600,color:"var(--dp-accent)",background:"var(--dp-accent-soft)",padding:"1px 7px",borderRadius:6}}>{t("chat.current")}</span>}
                         </div>
                       </div>
                     </button>
@@ -614,7 +620,7 @@ export default function AIChatScreen(){
               })()}
               {panel==="pinned"&&(pinnedMsgs.length===0?<EmptyPanel icon={Pin} text={t("chat.noPinned")}/>:pinnedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
               {panel==="liked"&&(likedMsgs.length===0?<EmptyPanel icon={Heart} text={t("chat.noLiked")}/>:likedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>))}
-              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text={t("chat.noResults")}/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>):<div style={{textAlign:"center",paddingTop:40,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",fontSize:14}}>{t("chat.typeToSearch")}</div>)}
+              {panel==="search"&&(searchQ?searchedMsgs.length===0?<EmptyPanel icon={Search} text={t("chat.noResults")}/>:searchedMsgs.map(m=><PanelMsg key={m.id} msg={m} userInitial={userInitial}/>):<div style={{textAlign:"center",paddingTop:40,color:"var(--dp-text-tertiary)",fontSize:14}}>{t("chat.typeToSearch")}</div>)}
             </div>
           </div>
         </div>
@@ -667,10 +673,10 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
   const actionBar=(
     <div className="dp-actions" style={{
       display:"flex",gap:4,padding:"4px 6px",
-      background:isLight?"rgba(255,255,255,0.95)":"rgba(20,16,35,0.95)",
+      background:"var(--dp-card-solid)",
       backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)",
       borderRadius:14,
-      border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.08)",
+      border:"1px solid var(--dp-glass-border)",
       boxShadow:"0 4px 16px rgba(0,0,0,0.12)",
       position:"absolute",bottom:"100%",marginBottom:6,
       ...(msg.isUser?{right:0}:{left:0}),
@@ -681,18 +687,18 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
       transition:"all 0.2s cubic-bezier(0.16,1,0.3,1)",
     }}>
       {[
-        {icon:Pin,active:msg.pinned,activeColor:isLight?"#7C3AED":"#C4B5FD",action:onPin,tip:"Pin"},
-        {icon:Heart,active:msg.liked,activeColor:isLight?"#DC2626":"#F69A9A",action:onLike,tip:"Like"},
-        {icon:isCopied?Check:Copy,active:isCopied,activeColor:isLight?"#059669":"#5DE5A8",action:onCopy,tip:"Copy"},
+        {icon:Pin,active:msg.pinned,activeColor:"var(--dp-accent)",action:onPin,tip:"Pin"},
+        {icon:Heart,active:msg.liked,activeColor:"var(--dp-danger)",action:onLike,tip:"Like"},
+        {icon:isCopied?Check:Copy,active:isCopied,activeColor:"var(--dp-success)",action:onCopy,tip:"Copy"},
       ].map(({icon:I,active,activeColor,action,tip},j)=>(
         <button key={j} title={tip} aria-label={tip} onClick={e=>{e.stopPropagation();action();}} style={{
           width:32,height:32,borderRadius:10,border:"none",
-          background:active?(isLight?"rgba(139,92,246,0.12)":"rgba(255,255,255,0.1)"):"transparent",
-          color:active?activeColor:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.6)",
+          background:active?"var(--dp-surface-hover)":"transparent",
+          color:active?activeColor:"var(--dp-text-tertiary)",
           display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",
           transition:"all 0.15s ease",
         }}
-          onMouseEnter={e=>{if(!active)e.currentTarget.style.background=isLight?"rgba(139,92,246,0.08)":"rgba(255,255,255,0.06)";}}
+          onMouseEnter={e=>{if(!active)e.currentTarget.style.background="var(--dp-surface)";}}
           onMouseLeave={e=>{if(!active)e.currentTarget.style.background="transparent";}}
         >
           <I size={15} strokeWidth={2.2} fill={active&&tip!=="Copy"?activeColor:"none"}/>
@@ -708,7 +714,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
           <div style={{
             position:"relative",
             padding:"12px 16px",borderRadius:"18px 18px 6px 18px",
-            background:isLight?"rgba(200,120,200,0.1)":"rgba(200,120,200,0.07)",
+            background:"rgba(200,120,200,0.08)",
             backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",
             border:"1px solid rgba(220,140,220,0.12)",
             boxShadow:"0 2px 12px rgba(200,120,200,0.08),inset 0 1px 0 rgba(255,200,230,0.05)",
@@ -717,10 +723,10 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
             {reactionPicker===msg.id&&(
               <div style={{
                 display:"flex",gap:4,padding:"6px 10px",
-                background:isLight?"rgba(255,255,255,0.9)":"rgba(20,15,40,0.9)",
+                background:"var(--dp-card-solid)",
                 backdropFilter:"blur(20px)",
                 borderRadius:20,
-                border:`1px solid ${isLight?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.1)"}`,
+                border:"1px solid var(--dp-glass-border)",
                 boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
                 animation:"dpFadeScale 0.2s ease-out",
                 position:"absolute",
@@ -741,11 +747,11 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
                 ))}
               </div>
             )}
-            <div style={{fontSize:14,color:isLight?"#1a1535":"#fff",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+            <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
             <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:6,marginTop:6}}>
-              {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
-              {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
-              <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{formatTime(msg.time)}</span>
+              {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
+              {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}
+              <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{formatTime(msg.time)}</span>
             </div>
           </div>
           {msg.reactions&&msg.reactions.length>0&&(
@@ -753,7 +759,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
               {msg.reactions.map((r,i)=>(
                 <span key={i} style={{
                   fontSize:14,padding:"2px 6px",
-                  background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.2)",
+                  background:"var(--dp-accent-soft)",
                   borderRadius:10,cursor:"pointer",
                 }} onClick={()=>handleReaction(msg.id,r.emoji)}>{r.emoji}</span>
               ))}
@@ -761,9 +767,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
           )}
         </div>
         {/* User avatar */}
-        <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"linear-gradient(135deg,rgba(200,120,200,0.2),rgba(160,80,200,0.2))",border:"1px solid rgba(200,140,220,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>
-          {userInitial}
-        </div>
+        <Avatar name={userInitial} size={30} color="rgba(200,120,200,0.8)" style={{borderRadius:10}} />
       </div>
     );
   }
@@ -771,19 +775,19 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
   return(
     <div className="dp-ma dp-bw" style={{display:"flex",gap:8,marginBottom:16,alignItems:"flex-end"}} onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>
       {/* AI Avatar */}
-      <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"rgba(139,92,246,0.12)",border:"1px solid rgba(139,92,246,0.15)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 12px rgba(139,92,246,0.1)"}}>
-        <Bot size={16} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/>
+      <div style={{width:30,height:30,borderRadius:10,flexShrink:0,background:"var(--dp-accent-soft)",border:"1px solid var(--dp-accent-border)",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 0 12px rgba(139,92,246,0.1)"}}>
+        <Bot size={16} color="var(--dp-accent)" strokeWidth={2}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",maxWidth:"75%"}}>
-        <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",boxShadow:"0 2px 12px rgba(0,0,0,0.1),inset 0 1px 0 rgba(255,255,255,0.03)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
+        <div style={{position:"relative",padding:"12px 16px",borderRadius:"18px 18px 18px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid var(--dp-glass-border)",boxShadow:"0 2px 12px rgba(0,0,0,0.1),inset 0 1px 0 rgba(255,255,255,0.03)"}} onDoubleClick={()=>setReactionPicker(reactionPicker===msg.id?null:msg.id)}>
           {actionBar}
           {reactionPicker===msg.id&&(
             <div style={{
               display:"flex",gap:4,padding:"6px 10px",
-              background:isLight?"rgba(255,255,255,0.9)":"rgba(20,15,40,0.9)",
+              background:"var(--dp-card-solid)",
               backdropFilter:"blur(20px)",
               borderRadius:20,
-              border:`1px solid ${isLight?"rgba(139,92,246,0.15)":"rgba(255,255,255,0.1)"}`,
+              border:"1px solid var(--dp-glass-border)",
               boxShadow:"0 4px 20px rgba(0,0,0,0.15)",
               animation:"dpFadeScale 0.2s ease-out",
               position:"absolute",
@@ -804,11 +808,11 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
               ))}
             </div>
           )}
-          <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.9)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(msg.content,isLight))}}/>
+          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}} dangerouslySetInnerHTML={{__html:DOMPurify.sanitize(formatMarkdown(msg.content))}}/>
           <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6}}>
-            {msg.pinned&&<Pin size={10} color={isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"} strokeWidth={2.5}/>}
-            {msg.liked&&<Heart size={10} color={isLight?"#DC2626":"#F69A9A"} strokeWidth={2.5} fill={isLight?"#DC2626":"#F69A9A"}/>}
-            <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{formatTime(msg.time)}</span>
+            {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
+            {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}
+            <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{formatTime(msg.time)}</span>
           </div>
         </div>
         {msg.reactions&&msg.reactions.length>0&&(
@@ -816,7 +820,7 @@ function MsgBubble({msg,userInitial,showActions,copiedId,onPointerDown,onPointer
             {msg.reactions.map((r,i)=>(
               <span key={i} style={{
                 fontSize:14,padding:"2px 6px",
-                background:isLight?"rgba(139,92,246,0.1)":"rgba(139,92,246,0.2)",
+                background:"var(--dp-accent-soft)",
                 borderRadius:10,cursor:"pointer",
               }} onClick={()=>handleReaction(msg.id,r.emoji)}>{r.emoji}</span>
             ))}
@@ -832,18 +836,18 @@ function PanelMsg({msg,userInitial}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   var{t}=useT();
   return(
-    <div style={{padding:12,marginBottom:8,borderRadius:14,background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.06)",backdropFilter:"blur(20px)",WebkitBackdropFilter:"blur(20px)"}}>
+    <GlassCard padding={12} mb={8} radius={14}>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
         {msg.isUser?(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(200,120,200,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,color:isLight?"#1a1535":"#fff"}}>{userInitial}</div>
+          <Avatar name={userInitial} size={22} color="rgba(200,120,200,0.8)" style={{borderRadius:7}} />
         ):(
-          <div style={{width:22,height:22,borderRadius:7,background:"rgba(139,92,246,0.12)",display:"flex",alignItems:"center",justifyContent:"center"}}><Bot size={12} color={isLight?"#7C3AED":"#C4B5FD"} strokeWidth={2}/></div>
+          <div style={{width:22,height:22,borderRadius:7,background:"var(--dp-accent-soft)",display:"flex",alignItems:"center",justifyContent:"center"}}><Bot size={12} color="var(--dp-accent)" strokeWidth={2}/></div>
         )}
-        <span style={{fontSize:12,fontWeight:600,color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.85)"}}>{msg.isUser?t("chat.you"):t("chat.aiCoach")}</span>
-        <span style={{fontSize:12,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
+        <span style={{fontSize:12,fontWeight:600,color:"var(--dp-text-primary)"}}>{msg.isUser?t("chat.you"):t("chat.aiCoach")}</span>
+        <span style={{fontSize:12,color:"var(--dp-text-tertiary)",marginLeft:"auto"}}>{formatTime(msg.time)}</span>
       </div>
-      <div style={{fontSize:13,color:isLight?"rgba(26,21,53,0.9)":"rgba(255,255,255,0.85)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content.replace(/\*\*/g,"")}</div>
-    </div>
+      <div style={{fontSize:13,color:"var(--dp-text-primary)",lineHeight:1.5,display:"-webkit-box",WebkitLineClamp:3,WebkitBoxOrient:"vertical",overflow:"hidden"}}>{msg.content.replace(/\*\*/g,"")}</div>
+    </GlassCard>
   );
 }
 
@@ -852,10 +856,10 @@ function EmptyPanel({icon:I,text}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   return(
     <div style={{textAlign:"center",paddingTop:60}}>
-      <div style={{width:56,height:56,borderRadius:16,margin:"0 auto 16px",background:isLight?"rgba(255,255,255,0.72)":"rgba(255,255,255,0.04)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <I size={24} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={1.5}/>
+      <div style={{width:56,height:56,borderRadius:16,margin:"0 auto 16px",background:"var(--dp-glass-bg)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <I size={24} color="var(--dp-text-muted)" strokeWidth={1.5}/>
       </div>
-      <div style={{fontSize:14,color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)"}}>{text}</div>
+      <div style={{fontSize:14,color:"var(--dp-text-tertiary)"}}>{text}</div>
     </div>
   );
 }

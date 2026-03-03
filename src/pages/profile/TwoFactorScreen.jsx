@@ -11,6 +11,10 @@ import { sanitizeParam } from "../../utils/sanitize";
 import {
   ArrowLeft, Shield, Key, Copy, Check, AlertTriangle, Loader,
 } from "lucide-react";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassModal from "../../components/shared/GlassModal";
 
 /* ═══════════════════════════════════════════════════════════════════
  * DreamPlanner — Two-Factor Authentication Screen
@@ -133,32 +137,10 @@ export default function TwoFactorScreen() {
   }
 
   // ─── Style tokens ─────────────────────────────────────────────
-  var textColor = isLight ? "#1a1535" : "#fff";
-  var textSecondary = isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)";
-  var accentColor = isLight ? "#7C3AED" : "#C4B5FD";
-  var dangerColor = isLight ? "#DC2626" : "#F69A9A";
-
-  var glassCard = {
-    background: "var(--dp-glass-bg)",
-    border: "1px solid var(--dp-glass-border)",
-    borderRadius: 20,
-    backdropFilter: "blur(40px)",
-    WebkitBackdropFilter: "blur(40px)",
-    padding: 20,
-    marginBottom: 16,
-  };
-
-  var inputStyle = {
-    width: "100%",
-    padding: "12px 16px",
-    borderRadius: 14,
-    background: isLight ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.04)",
-    border: "1px solid var(--dp-input-border)",
-    color: "var(--dp-text)",
-    fontSize: 14,
-    fontFamily: "'Inter', sans-serif",
-    outline: "none",
-  };
+  var textColor = "var(--dp-text)";
+  var textSecondary = "var(--dp-text-tertiary)";
+  var accentColor = "var(--dp-accent)";
+  var dangerColor = "var(--dp-danger)";
 
   var primaryBtn = {
     width: "100%",
@@ -169,8 +151,8 @@ export default function TwoFactorScreen() {
     color: accentColor,
     fontSize: 14,
     fontWeight: 600,
+    fontFamily: "inherit",
     cursor: "pointer",
-    fontFamily: "'Inter', sans-serif",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -182,13 +164,13 @@ export default function TwoFactorScreen() {
     width: "100%",
     padding: "14px 0",
     borderRadius: 16,
-    border: isLight ? "1px solid rgba(139,92,246,0.15)" : "1px solid rgba(255,255,255,0.08)",
-    background: isLight ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.04)",
-    color: isLight ? "rgba(26,21,53,0.9)" : "rgba(255,255,255,0.85)",
+    border: "1px solid var(--dp-input-border)",
+    background: "var(--dp-glass-bg)",
+    color: "var(--dp-text-primary)",
     fontSize: 14,
     fontWeight: 600,
+    fontFamily: "inherit",
     cursor: "pointer",
-    fontFamily: "'Inter', sans-serif",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -205,8 +187,8 @@ export default function TwoFactorScreen() {
     color: dangerColor,
     fontSize: 14,
     fontWeight: 600,
+    fontFamily: "inherit",
     cursor: "pointer",
-    fontFamily: "'Inter', sans-serif",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -243,19 +225,15 @@ export default function TwoFactorScreen() {
         transform: mounted ? "translateY(0)" : "translateY(-10px)",
         transition: "all 0.5s cubic-bezier(0.16,1,0.3,1)",
       }}>
-        <button
-          className="dp-ib"
-          aria-label="Go back"
+        <IconButton
+          icon={ArrowLeft}
           onClick={function () { navigate(-1); }}
-          style={{ flexShrink: 0 }}
-        >
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
+          label="Go back"
+        />
         <span style={{
           fontSize: 18,
           fontWeight: 700,
           color: textColor,
-          fontFamily: "'Inter', sans-serif",
           letterSpacing: "-0.3px",
         }}>
           Two-Factor Authentication
@@ -264,8 +242,7 @@ export default function TwoFactorScreen() {
 
       {/* ─── Error state ───────────────────────────────────────── */}
       {statusQuery.isError && (
-        <div style={{
-          ...glassCard,
+        <GlassCard padding={20} mb={16} radius={20} style={{
           display: "flex",
           alignItems: "center",
           gap: 12,
@@ -274,10 +251,10 @@ export default function TwoFactorScreen() {
           transition: "all 0.5s cubic-bezier(0.16,1,0.3,1) 0.1s",
         }}>
           <AlertTriangle size={20} color={dangerColor} strokeWidth={2} />
-          <span style={{ fontSize: 14, color: dangerColor, fontFamily: "'Inter', sans-serif" }}>
+          <span style={{ fontSize: 14, color: dangerColor }}>
             Failed to load 2FA status. Please try again.
           </span>
-        </div>
+        </GlassCard>
       )}
 
       {/* ═══════════════════════════════════════════════════════════
@@ -289,7 +266,7 @@ export default function TwoFactorScreen() {
           transform: mounted ? "translateY(0)" : "translateY(16px)",
           transition: "all 0.5s cubic-bezier(0.16,1,0.3,1) 0.1s",
         }}>
-          <div style={glassCard}>
+          <GlassCard padding={20} mb={16} radius={20}>
             <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 16 }}>
               <div style={{
                 width: 44,
@@ -303,15 +280,15 @@ export default function TwoFactorScreen() {
               }}>
                 <Shield
                   size={22}
-                  color={isEnabled ? (isLight ? "#059669" : "#5DE5A8") : accentColor}
+                  color={isEnabled ? "var(--dp-success)" : accentColor}
                   strokeWidth={2}
                 />
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 15, fontWeight: 600, color: textColor, fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: textColor }}>
                   {isEnabled ? "2FA is Enabled" : "2FA is Disabled"}
                 </div>
-                <div style={{ fontSize: 13, color: textSecondary, marginTop: 2, fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ fontSize: 13, color: textSecondary, marginTop: 2 }}>
                   {isEnabled
                     ? statusData.backupCodesRemaining + " backup code" + (statusData.backupCodesRemaining !== 1 ? "s" : "") + " remaining"
                     : "Add an extra layer of security to your account"
@@ -324,7 +301,7 @@ export default function TwoFactorScreen() {
             <div style={{
               height: 4,
               borderRadius: 2,
-              background: isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.06)",
+              background: "var(--dp-divider)",
               marginBottom: 20,
               overflow: "hidden",
             }}>
@@ -332,18 +309,17 @@ export default function TwoFactorScreen() {
                 width: isEnabled ? "100%" : "0%",
                 height: "100%",
                 borderRadius: 2,
-                background: isEnabled ? (isLight ? "#059669" : "#5DE5A8") : accentColor,
+                background: isEnabled ? "var(--dp-success)" : accentColor,
                 transition: "width 0.6s cubic-bezier(0.16,1,0.3,1)",
               }} />
             </div>
 
             {!isEnabled && (
               <button
+                className="dp-gh"
                 style={primaryBtn}
                 disabled={setupMutation.isPending}
                 onClick={function () { setupMutation.mutate(); }}
-                onMouseEnter={function (e) { e.currentTarget.style.background = "rgba(139,92,246,0.3)"; }}
-                onMouseLeave={function (e) { e.currentTarget.style.background = "rgba(139,92,246,0.2)"; }}
               >
                 {setupMutation.isPending
                   ? <Loader size={16} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
@@ -356,11 +332,10 @@ export default function TwoFactorScreen() {
             {isEnabled && (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 <button
+                  className="dp-gh"
                   style={secondaryBtn}
                   disabled={regenMutation.isPending}
                   onClick={function () { regenMutation.mutate(); }}
-                  onMouseEnter={function (e) { e.currentTarget.style.background = isLight ? "rgba(139,92,246,0.06)" : "rgba(255,255,255,0.08)"; }}
-                  onMouseLeave={function (e) { e.currentTarget.style.background = isLight ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.04)"; }}
                 >
                   {regenMutation.isPending
                     ? <Loader size={16} strokeWidth={2} style={{ animation: "spin 1s linear infinite" }} />
@@ -369,17 +344,16 @@ export default function TwoFactorScreen() {
                   {regenMutation.isPending ? "Generating..." : "Regenerate Backup Codes"}
                 </button>
                 <button
+                  className="dp-gh"
                   style={dangerBtn}
                   onClick={function () { setShowDisable(true); setDisableCode(""); }}
-                  onMouseEnter={function (e) { e.currentTarget.style.background = "rgba(246,154,154,0.12)"; }}
-                  onMouseLeave={function (e) { e.currentTarget.style.background = "rgba(246,154,154,0.06)"; }}
                 >
                   <AlertTriangle size={16} strokeWidth={2} />
                   Disable Two-Factor Authentication
                 </button>
               </div>
             )}
-          </div>
+          </GlassCard>
         </div>
       )}
 
@@ -392,7 +366,7 @@ export default function TwoFactorScreen() {
           transform: mounted ? "translateY(0)" : "translateY(16px)",
           transition: "all 0.5s cubic-bezier(0.16,1,0.3,1) 0.15s",
         }}>
-          <div style={glassCard}>
+          <GlassCard padding={20} mb={16} radius={20}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
               <div style={{
                 width: 40,
@@ -406,10 +380,10 @@ export default function TwoFactorScreen() {
                 <Key size={20} color={accentColor} strokeWidth={2} />
               </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: textColor, fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: textColor }}>
                   Setup Authenticator
                 </div>
-                <div style={{ fontSize: 12, color: textSecondary, fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ fontSize: 12, color: textSecondary }}>
                   Scan the QR code or enter the key manually
                 </div>
               </div>
@@ -442,15 +416,15 @@ export default function TwoFactorScreen() {
 
             {/* Secret key */}
             <div style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 12, color: textSecondary, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
+              <div style={{ fontSize: 12, color: textSecondary, marginBottom: 8 }}>
                 Secret Key
               </div>
               <div style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
-                background: isLight ? "rgba(139,92,246,0.04)" : "rgba(255,255,255,0.03)",
-                border: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.06)",
+                background: "var(--dp-surface)",
+                border: "1px solid var(--dp-glass-border)",
                 borderRadius: 14,
                 padding: "12px 16px",
               }}>
@@ -465,43 +439,34 @@ export default function TwoFactorScreen() {
                 }}>
                   {secret}
                 </span>
-                <button
-                  className="dp-ib"
-                  aria-label="Copy secret"
+                <IconButton
+                  icon={copiedSecret ? Check : Copy}
                   onClick={handleCopySecret}
-                  style={{ flexShrink: 0, width: 36, height: 36 }}
-                >
-                  {copiedSecret
-                    ? <Check size={16} color={isLight ? "#059669" : "#5DE5A8"} strokeWidth={2} />
-                    : <Copy size={16} strokeWidth={2} />
-                  }
-                </button>
+                  label="Copy secret"
+                  color={copiedSecret ? "var(--dp-success)" : undefined}
+                  size="sm"
+                />
               </div>
             </div>
 
             {/* TOTP code input */}
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontSize: 12, color: textSecondary, marginBottom: 8, fontFamily: "'Inter', sans-serif" }}>
-                Enter the 6-digit code from your authenticator app
-              </div>
-              <input
-                type="text"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
+              <GlassInput
+                label="Enter the 6-digit code from your authenticator app"
                 value={totpCode}
                 onChange={function (e) {
                   var val = e.target.value.replace(/[^0-9]/g, "");
                   if (val.length <= 6) setTotpCode(val);
                 }}
-                style={{
-                  ...inputStyle,
+                placeholder="000000"
+                maxLength={6}
+                autoFocus
+                inputStyle={{
                   letterSpacing: "0.3em",
                   textAlign: "center",
                   fontSize: 20,
                   fontWeight: 600,
                 }}
-                autoFocus
               />
             </div>
 
@@ -534,7 +499,7 @@ export default function TwoFactorScreen() {
                 {verifyMutation.isPending ? "Verifying..." : "Verify & Enable"}
               </button>
             </div>
-          </div>
+          </GlassCard>
         </div>
       )}
 
@@ -547,7 +512,7 @@ export default function TwoFactorScreen() {
           transform: mounted ? "translateY(0)" : "translateY(16px)",
           transition: "all 0.5s cubic-bezier(0.16,1,0.3,1) 0.15s",
         }}>
-          <div style={glassCard}>
+          <GlassCard padding={20} mb={16} radius={20}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
               <div style={{
                 width: 40,
@@ -558,13 +523,13 @@ export default function TwoFactorScreen() {
                 alignItems: "center",
                 justifyContent: "center",
               }}>
-                <AlertTriangle size={20} color={isLight ? "#B45309" : "#FCD34D"} strokeWidth={2} />
+                <AlertTriangle size={20} color="var(--dp-warning)" strokeWidth={2} />
               </div>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 600, color: textColor, fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ fontSize: 15, fontWeight: 600, color: textColor }}>
                   Save Your Backup Codes
                 </div>
-                <div style={{ fontSize: 12, color: textSecondary, fontFamily: "'Inter', sans-serif" }}>
+                <div style={{ fontSize: 12, color: textSecondary }}>
                   Store these in a safe place. Each code can only be used once.
                 </div>
               </div>
@@ -572,8 +537,8 @@ export default function TwoFactorScreen() {
 
             {/* Codes block */}
             <div style={{
-              background: isLight ? "rgba(26,21,53,0.03)" : "rgba(255,255,255,0.03)",
-              border: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.06)",
+              background: "var(--dp-surface)",
+              border: "1px solid var(--dp-glass-border)",
               borderRadius: 14,
               padding: 16,
               marginBottom: 16,
@@ -595,7 +560,7 @@ export default function TwoFactorScreen() {
               onClick={handleCopyCodes}
             >
               {copiedCodes
-                ? <Check size={16} color={isLight ? "#059669" : "#5DE5A8"} strokeWidth={2} />
+                ? <Check size={16} color="var(--dp-success)" strokeWidth={2} />
                 : <Copy size={16} strokeWidth={2} />
               }
               {copiedCodes ? "Copied!" : "Copy All Codes"}
@@ -603,6 +568,7 @@ export default function TwoFactorScreen() {
 
             {/* Done */}
             <button
+              className="dp-gh"
               style={primaryBtn}
               onClick={function () {
                 setStep("idle");
@@ -611,145 +577,108 @@ export default function TwoFactorScreen() {
                 setQrUri("");
                 setTotpCode("");
               }}
-              onMouseEnter={function (e) { e.currentTarget.style.background = "rgba(139,92,246,0.3)"; }}
-              onMouseLeave={function (e) { e.currentTarget.style.background = "rgba(139,92,246,0.2)"; }}
             >
               <Check size={16} strokeWidth={2} />
               Done
             </button>
-          </div>
+          </GlassCard>
         </div>
       )}
 
       {/* ═══════════════════════════════════════════════════════════
        *  DISABLE 2FA DIALOG (modal overlay)
        * ═══════════════════════════════════════════════════════════ */}
-      {showDisable && (
-        <div style={{
-          position: "fixed",
-          inset: 0,
-          zIndex: 300,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-        }}>
-          <div
-            onClick={function () { setShowDisable(false); setDisableCode(""); }}
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "rgba(0,0,0,0.6)",
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-            }}
-          />
-          <div style={{
-            position: "relative",
-            width: "90%",
-            maxWidth: 380,
-            background: isLight ? "rgba(255,255,255,0.97)" : "rgba(12,8,26,0.97)",
-            backdropFilter: "blur(40px)",
-            WebkitBackdropFilter: "blur(40px)",
-            borderRadius: 22,
-            border: "1px solid rgba(246,154,154,0.15)",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-            padding: 24,
-            animation: "dpFS 0.25s ease-out",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
-              <div style={{
-                width: 40,
-                height: 40,
-                borderRadius: 12,
-                background: "rgba(239,68,68,0.1)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}>
-                <AlertTriangle size={20} color="rgba(239,68,68,0.8)" strokeWidth={2} />
-              </div>
-              <div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: textColor, fontFamily: "'Inter', sans-serif" }}>
-                  Disable 2FA
-                </div>
-                <div style={{ fontSize: 12, color: textSecondary, fontFamily: "'Inter', sans-serif" }}>
-                  This will remove the extra security layer
-                </div>
-              </div>
-            </div>
-
+      <GlassModal
+        open={showDisable}
+        onClose={function () { setShowDisable(false); setDisableCode(""); }}
+        title="Disable 2FA"
+        maxWidth={380}
+      >
+        <div style={{ padding: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14 }}>
             <div style={{
-              fontSize: 13,
-              color: isLight ? "rgba(26,21,53,0.6)" : "rgba(255,255,255,0.85)",
-              lineHeight: 1.5,
-              marginBottom: 16,
-              fontFamily: "'Inter', sans-serif",
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              background: "rgba(239,68,68,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}>
-              Enter your current authenticator code to confirm disabling two-factor authentication.
+              <AlertTriangle size={20} color="rgba(239,68,68,0.8)" strokeWidth={2} />
             </div>
-
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={6}
-              placeholder="000000"
-              value={disableCode}
-              onChange={function (e) {
-                var val = e.target.value.replace(/[^0-9]/g, "");
-                if (val.length <= 6) setDisableCode(val);
-              }}
-              autoFocus
-              style={{
-                ...inputStyle,
-                letterSpacing: "0.3em",
-                textAlign: "center",
-                fontSize: 20,
-                fontWeight: 600,
-                marginBottom: 14,
-              }}
-            />
-
-            <div style={{ display: "flex", gap: 8 }}>
-              <button
-                onClick={function () { setShowDisable(false); setDisableCode(""); }}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  borderRadius: 12,
-                  border: isLight ? "1px solid rgba(139,92,246,0.15)" : "1px solid rgba(255,255,255,0.08)",
-                  background: isLight ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.04)",
-                  color: isLight ? "rgba(26,21,53,0.9)" : "rgba(255,255,255,0.85)",
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  fontFamily: "'Inter', sans-serif",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                disabled={!disableCode || disableMutation.isPending}
-                onClick={function () { disableMutation.mutate(); }}
-                style={{
-                  flex: 1,
-                  padding: "12px",
-                  borderRadius: 12,
-                  border: "none",
-                  background: disableCode ? "rgba(239,68,68,0.2)" : (isLight ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.03)"),
-                  color: disableCode ? "rgba(239,68,68,0.9)" : (isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.2)"),
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: disableCode ? "pointer" : "not-allowed",
-                  fontFamily: "'Inter', sans-serif",
-                  transition: "all 0.2s",
-                }}
-              >
-                {disableMutation.isPending ? "Disabling..." : "Disable 2FA"}
-              </button>
+            <div style={{ fontSize: 12, color: textSecondary }}>
+              This will remove the extra security layer
             </div>
           </div>
+
+          <div style={{
+            fontSize: 13,
+            color: "var(--dp-text-secondary)",
+            lineHeight: 1.5,
+            marginBottom: 16,
+            }}>
+            Enter your current authenticator code to confirm disabling two-factor authentication.
+          </div>
+
+          <GlassInput
+            value={disableCode}
+            onChange={function (e) {
+              var val = e.target.value.replace(/[^0-9]/g, "");
+              if (val.length <= 6) setDisableCode(val);
+            }}
+            placeholder="000000"
+            maxLength={6}
+            autoFocus
+            inputStyle={{
+              letterSpacing: "0.3em",
+              textAlign: "center",
+              fontSize: 20,
+              fontWeight: 600,
+            }}
+            style={{ marginBottom: 14 }}
+          />
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <button
+              onClick={function () { setShowDisable(false); setDisableCode(""); }}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "1px solid var(--dp-input-border)",
+                background: "var(--dp-glass-bg)",
+                color: "var(--dp-text-primary)",
+                fontSize: 14,
+                fontWeight: 600,
+                fontFamily: "inherit",
+                cursor: "pointer",
+                }}
+            >
+              Cancel
+            </button>
+            <button
+              disabled={!disableCode || disableMutation.isPending}
+              onClick={function () { disableMutation.mutate(); }}
+              style={{
+                flex: 1,
+                padding: "12px",
+                borderRadius: 12,
+                border: "none",
+                background: disableCode ? "rgba(239,68,68,0.2)" : "var(--dp-glass-bg)",
+                color: disableCode ? "rgba(239,68,68,0.9)" : "var(--dp-text-muted)",
+                fontSize: 14,
+                fontWeight: 600,
+                fontFamily: "inherit",
+                cursor: disableCode ? "pointer" : "not-allowed",
+                transition: "all 0.2s",
+              }}
+            >
+              {disableMutation.isPending ? "Disabling..." : "Disable 2FA"}
+            </button>
+          </div>
         </div>
-      )}
+      </GlassModal>
 
       {/* ─── Inline keyframes ──────────────────────────────────── */}
       <style>{"\

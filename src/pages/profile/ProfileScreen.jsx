@@ -7,14 +7,22 @@ import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
 import { useT } from "../../context/I18nContext";
-import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
+import { getAvatarEquipProps } from "../../utils/equippedItems";
 import { SkeletonCard } from "../../components/shared/Skeleton";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import GradientButton from "../../components/shared/GradientButton";
+import GlassModal from "../../components/shared/GlassModal";
+import BottomNav from "../../components/shared/BottomNav";
+import { adaptColor, GRADIENTS, BRAND } from "../../styles/colors";
 import {
   ArrowLeft, Settings, Star, Zap, Flame, ChevronRight,
   MessageCircle, Crown, ShoppingBag, Trophy, Bell, Eye,
   Calendar, LogOut, Heart, Briefcase, Brain, Palette,
-  Edit3, Shield, Award, Target, TrendingUp
+  Edit3, Shield, Award, Target, TrendingUp, Bookmark
 } from "lucide-react";
 
 // ─── Icon map for skill categories returned by API ────────────────
@@ -31,15 +39,15 @@ var SKILL_ICON_MAP = {
 };
 
 var SKILL_COLOR_MAP = {
-  "health": "#5DE5A8",
-  "health & fitness": "#5DE5A8",
-  "career": "#C4B5FD",
-  "career & work": "#C4B5FD",
-  "relationships": "#F69A9A",
-  "personal growth": "#FCD34D",
-  "personal": "#FCD34D",
-  "hobbies": "#5EEAD4",
-  "hobbies & creativity": "#5EEAD4",
+  "health": BRAND.green,
+  "health & fitness": BRAND.green,
+  "career": BRAND.purpleLight,
+  "career & work": BRAND.purpleLight,
+  "relationships": BRAND.red,
+  "personal growth": BRAND.yellow,
+  "personal": BRAND.yellow,
+  "hobbies": BRAND.tealLight,
+  "hobbies & creativity": BRAND.tealLight,
 };
 
 // ─── Icon map for achievement/badge types returned by API ─────────
@@ -52,33 +60,27 @@ var BADGE_ICON_MAP = {
 };
 
 var BADGE_COLOR_MAP = {
-  "streak": "#F69A9A",
-  "level": "#FCD34D",
-  "dream": "#C4B5FD",
-  "task": "#5DE5A8",
-  "social": "#5EEAD4",
+  "streak": BRAND.red,
+  "level": BRAND.yellow,
+  "dream": BRAND.purpleLight,
+  "task": BRAND.green,
+  "social": BRAND.tealLight,
 };
 
 function buildMenu(t) {
   return [
-    { icon: MessageCircle, label: t("profile.conversations"), color: "#C4B5FD", path: "/conversations" },
-    { icon: Crown, label: t("profile.subscription"), color: "#FCD34D", path: "/subscription" },
-    { icon: ShoppingBag, label: t("profile.store"), color: "#5EEAD4", path: "/store" },
-    { icon: Trophy, label: t("profile.leaderboard"), color: "#F69A9A", path: "/leaderboard" },
-    { icon: Bell, label: t("notifications.title"), isNotif: true, color: "#C4B5FD", path: "/notifications" },
-    { icon: Eye, label: t("profile.visionBoard"), color: "#5DE5A8", path: "/vision-board" },
-    { icon: Calendar, label: t("profile.calendarSync"), color: "#93C5FD", path: "/calendar" },
+    { icon: MessageCircle, label: t("profile.conversations"), color: BRAND.purpleLight, path: "/conversations" },
+    { icon: Bookmark, label: t("profile.savedPosts"), color: BRAND.blueLight, path: "/social/saved" },
+    { icon: Crown, label: t("profile.subscription"), color: BRAND.yellow, path: "/subscription" },
+    { icon: ShoppingBag, label: t("profile.store"), color: BRAND.tealLight, path: "/store" },
+    { icon: Trophy, label: t("profile.leaderboard"), color: BRAND.red, path: "/leaderboard" },
+    { icon: Bell, label: t("notifications.title"), isNotif: true, color: BRAND.purpleLight, path: "/notifications" },
+    { icon: Eye, label: t("profile.visionBoard"), color: BRAND.green, path: "/vision-board" },
+    { icon: Calendar, label: t("profile.calendarSync"), color: BRAND.blueLight, path: "/calendar" },
   ];
 }
 
-const LIGHT_MAP = {
-  "#C4B5FD": "#6D28D9", "#FCD34D": "#B45309", "#5DE5A8": "#059669",
-  "#F69A9A": "#DC2626", "#5EEAD4": "#0D9488", "#93C5FD": "#2563EB",
-};
-
-function lc(color, isLight) {
-  return isLight && LIGHT_MAP[color] ? LIGHT_MAP[color] : color;
-}
+var lc = adaptColor;
 
 export default function ProfileScreen() {
   const navigate = useNavigate();
@@ -120,37 +122,39 @@ export default function ProfileScreen() {
   var subscriptionLabel = subscription.toUpperCase();
 
   var gamif = gamifQuery.data || {};
-  var level = gamif.level || 1;
-  var xp = gamif.xp || 0;
-  var xpToNext = gamif.xpToNext || gamif.xpToNextLevel || 1000;
-  var streak = gamif.streak || gamif.currentStreak || 0;
-  var rank = gamif.rank || gamif.leaderboardRank || null;
+  var userStats = statsQuery.data || {};
+
+  // ── Level/XP/Streak from stats API (real data), with user context fallback ──
+  var level = userStats.level || (user && user.level) || 1;
+  var xp = userStats.xp || (user && user.xp) || 0;
+  var xpToNext = userStats.xp_to_next_level || (100 - (xp % 100));
+  var streak = userStats.streak_days || (user && user.streakDays) || 0;
   var renewDate = (user && user.renewDate) || (user && user.subscriptionRenewDate) || "";
 
-  var lvlProgress = xpToNext > 0 ? xp / xpToNext : 0;
+  var lvlProgress = xpToNext > 0 ? (xp % 100) / 100 : 0;
 
-  // ── Derive skills from gamification API response ──
-  var rawSkills = gamif.skills || gamif.categorySkills || [];
+  // ── Derive skills from gamification API response (skill_radar) ──
+  var rawSkills = gamif.skill_radar || gamif.skillRadar || [];
   var skills = rawSkills.map(function (s) {
-    var key = (s.label || s.name || s.category || "").toLowerCase();
+    var key = (s.label || s.category || "").toLowerCase();
     return {
-      label: s.label || s.name || s.category || "Skill",
+      label: s.label || s.category || "Skill",
       level: s.level || 1,
       xp: s.xp || 0,
-      maxXp: s.maxXp || s.xpToNext || 1000,
-      color: SKILL_COLOR_MAP[key] || "#C4B5FD",
+      maxXp: 100,
+      color: SKILL_COLOR_MAP[key] || BRAND.purpleLight,
       Icon: SKILL_ICON_MAP[key] || Star,
     };
   });
 
   // ── Derive achievements/badges from gamification API response ──
   var rawBadges = gamif.badges || gamif.achievements || [];
-  var achievements = rawBadges.slice(0, 5).map(function (b) {
+  var achievements = (Array.isArray(rawBadges) ? rawBadges : []).slice(0, 5).map(function (b) {
     var key = (b.type || b.category || "").toLowerCase();
     return {
       label: b.label || b.name || b.title || "Badge",
       icon: BADGE_ICON_MAP[key] || Award,
-      color: BADGE_COLOR_MAP[key] || "#C4B5FD",
+      color: BADGE_COLOR_MAP[key] || BRAND.purpleLight,
     };
   });
 
@@ -166,14 +170,6 @@ export default function ProfileScreen() {
     });
   };
 
-  const tile = {
-    borderRadius: 20,
-    background: isLight ? "rgba(255,255,255,0.6)" : "rgba(255,255,255,0.03)",
-    border: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.06)",
-    backdropFilter: "blur(20px)",
-    WebkitBackdropFilter: "blur(20px)",
-  };
-
   const stagger = (i) => ({
     opacity: mounted ? 1 : 0,
     transform: mounted ? "translateY(0) scale(1)" : "translateY(16px) scale(0.97)",
@@ -182,7 +178,7 @@ export default function ProfileScreen() {
 
   if (isErrorData) {
     return (
-      <div style={{ width: "100%", height: "100%", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+      <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
             message={(gamifQuery.error && gamifQuery.error.message) || (statsQuery.error && statsQuery.error.message) || t("profile.failedLoad")}
@@ -195,22 +191,14 @@ export default function ProfileScreen() {
   }
 
   return (
-    <div style={{ width: "100%", height: "100%", overflow: "hidden", fontFamily: "'Inter',-apple-system,BlinkMacSystemFont,sans-serif", display: "flex", flexDirection: "column", position: "relative" }}>
+    <div style={{ width: "100%", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", position: "relative" }}>
 
       {/* APPBAR */}
-      <header style={{
-        position: "relative", zIndex: 100, height: 64, flexShrink: 0,
-        display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 16px",
-        background: isLight ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.03)",
-        backdropFilter: "blur(40px) saturate(1.4)", WebkitBackdropFilter: "blur(40px) saturate(1.4)",
-        borderBottom: isLight ? "1px solid rgba(139,92,246,0.1)" : "1px solid rgba(255,255,255,0.05)",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button className="dp-ib" aria-label="Go back" onClick={() => navigate(-1)}><ArrowLeft size={20} strokeWidth={2} /></button>
-          <span style={{ fontSize: 17, fontWeight: 700, color: isLight ? "#1a1535" : "#fff", letterSpacing: "-0.3px" }}>{t("profile.title")}</span>
-        </div>
-        <button className="dp-ib" aria-label="Settings" onClick={() => navigate("/settings")}><Settings size={18} strokeWidth={2} /></button>
-      </header>
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Go back" size="md" />}
+        title={t("profile.title")}
+        right={<IconButton icon={Settings} onClick={() => navigate("/settings")} label="Settings" size="md" />}
+      />
 
       <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "16px 16px 100px", opacity: uiOpacity, transition: "opacity 0.3s ease" }}>
         <div style={{ width: "100%" }}>
@@ -233,9 +221,9 @@ export default function ProfileScreen() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
 
             {/* Avatar Tile (tall, spans 2 rows on left) */}
-            <div style={{
-              ...tile, ...stagger(0),
-              gridRow: "1 / 3", padding: "16px 10px",
+            <GlassCard padding="16px 10px" style={{
+              ...stagger(0),
+              gridRow: "1 / 3",
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
               overflow: "hidden",
             }}>
@@ -245,7 +233,7 @@ export default function ProfileScreen() {
                 <div className="dp-orbit-outer" style={{
                   position: "absolute", inset: -4,
                   borderRadius: "50%",
-                  border: isLight ? "1.5px dashed rgba(139,92,246,0.2)" : "1.5px dashed rgba(196,181,253,0.15)",
+                  border: "1.5px dashed var(--dp-accent-border)",
                 }} />
                 {/* Orbital dots */}
                 <div className="dp-orbit-outer" style={{ position: "absolute", inset: -4, borderRadius: "50%" }}>
@@ -253,8 +241,8 @@ export default function ProfileScreen() {
                     <div key={i} style={{
                       position: "absolute", top: "50%", left: "50%",
                       width: 5, height: 5, borderRadius: "50%",
-                      background: ["#8B5CF6", "#5DE5A8", "#C4B5FD", "#14B8A6"][i],
-                      boxShadow: `0 0 6px ${["#8B5CF6", "#5DE5A8", "#C4B5FD", "#14B8A6"][i]}60`,
+                      background: [BRAND.purple, BRAND.green, BRAND.purpleLight, BRAND.teal][i],
+                      boxShadow: `0 0 6px ${[BRAND.purple, BRAND.green, BRAND.purpleLight, BRAND.teal][i]}60`,
                       transform: `rotate(${deg}deg) translateX(${49}px) translateY(-50%)`,
                     }} />
                   ))}
@@ -264,13 +252,13 @@ export default function ProfileScreen() {
                 <svg width={90} height={90} style={{ position: "absolute", inset: 0, transform: "rotate(-90deg)" }}>
                   <defs>
                     <linearGradient id="orbitGrad" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#8B5CF6" />
-                      <stop offset="50%" stopColor="#C4B5FD" />
-                      <stop offset="100%" stopColor="#5DE5A8" />
+                      <stop offset="0%" stopColor={BRAND.purple} />
+                      <stop offset="50%" stopColor={BRAND.purpleLight} />
+                      <stop offset="100%" stopColor={BRAND.green} />
                     </linearGradient>
                   </defs>
                   <circle cx={45} cy={45} r={39} fill="none"
-                    stroke={isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.06)"}
+                    stroke="var(--dp-glass-border)"
                     strokeWidth={3} />
                   <circle cx={45} cy={45} r={39} fill="none"
                     stroke="url(#orbitGrad)" strokeWidth={3} strokeLinecap="round"
@@ -286,52 +274,56 @@ export default function ProfileScreen() {
                 <div style={{
                   position: "absolute", inset: 12,
                   borderRadius: "50%",
-                  background: isLight
-                    ? "radial-gradient(circle, rgba(139,92,246,0.08) 0%, transparent 70%)"
-                    : "radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)",
+                  background: "radial-gradient(circle, var(--dp-accent-soft) 0%, transparent 70%)",
                   filter: "blur(4px)",
                 }} />
 
                 {/* Circle Avatar */}
-                <div style={{
-                  position: "absolute", inset: 12,
-                  borderRadius: "50%",
-                  background: isLight
-                    ? "linear-gradient(145deg, rgba(139,92,246,0.12), rgba(109,40,217,0.08))"
-                    : "linear-gradient(145deg, rgba(139,92,246,0.2), rgba(20,16,40,0.8))",
-                  border: isLight ? "2.5px solid rgba(139,92,246,0.2)" : "2.5px solid rgba(139,92,246,0.3)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  boxShadow: isLight
-                    ? "inset 0 2px 8px rgba(139,92,246,0.1), 0 4px 20px rgba(139,92,246,0.15)"
-                    : "inset 0 2px 8px rgba(139,92,246,0.15), 0 4px 20px rgba(139,92,246,0.2)",
-                }}>
-                  <span style={{
-                    fontSize: 26, fontWeight: 800, letterSpacing: "-1px",
-                    color: isLight ? "#6D28D9" : "#C4B5FD",
-                    textShadow: isLight ? "none" : "0 0 20px rgba(196,181,253,0.3)",
-                  }}>{initial}</span>
+                <div style={{ position: "absolute", inset: 12 }}>
+                  {(function () {
+                    var ep = getAvatarEquipProps(user);
+                    var frameColor = ep.badgeFrame ? ep.badgeFrame.borderColor : "var(--dp-accent-border)";
+                    var glowStyle = ep.badgeFrame && ep.badgeFrame.glow
+                      ? "inset 0 2px 8px var(--dp-accent-soft), 0 4px 20px " + (ep.badgeFrame.glowColor || "var(--dp-accent-soft)")
+                      : "inset 0 2px 8px var(--dp-accent-soft), 0 4px 20px var(--dp-accent-soft)";
+                    return (
+                      <Avatar
+                        name={displayName}
+                        size={66}
+                        color="var(--dp-accent)"
+                        shape="circle"
+                        decoration={ep.decoration}
+                        style={{
+                          border: "2.5px solid " + frameColor,
+                          boxShadow: glowStyle,
+                          fontSize: 26, fontWeight: 800, letterSpacing: "-1px",
+                        }}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* Level badge */}
                 <div style={{
                   position: "absolute", top: 0, right: -2, zIndex: 2,
                   padding: "2px 7px", borderRadius: 8,
-                  background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-                  fontSize: 10, fontWeight: 700, color: "#fff",
+                  background: GRADIENTS.primaryDark,
+                  fontSize: 10, fontWeight: 700, color: BRAND.white,
                   boxShadow: "0 2px 10px rgba(139,92,246,0.5)",
-                  border: isLight ? "2px solid rgba(255,255,255,0.8)" : "2px solid rgba(20,16,40,0.6)",
+                  border: "2px solid var(--dp-glass-bg)",
                 }}>Lv.{level}</div>
 
                 {/* Edit button */}
                 <button onClick={() => navigate("/edit-profile")} style={{
                   position: "absolute", bottom: 0, right: -2, zIndex: 2,
                   width: 26, height: 26, borderRadius: "50%",
-                  background: isLight ? "rgba(255,255,255,0.9)" : "rgba(30,24,55,0.9)",
-                  border: isLight ? "1.5px solid rgba(139,92,246,0.2)" : "1.5px solid rgba(139,92,246,0.3)",
+                  background: "var(--dp-card-solid)",
+                  border: "1.5px solid var(--dp-accent-border)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   cursor: "pointer", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
-                  color: isLight ? "#6D28D9" : "#C4B5FD",
+                  color: "var(--dp-accent)",
                   boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                  fontFamily: "inherit",
                 }}>
                   <Edit3 size={11} strokeWidth={2.5} />
                 </button>
@@ -340,16 +332,17 @@ export default function ProfileScreen() {
               {/* Name + Badge */}
               <div style={{ textAlign: "center", width: "100%", overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 5, marginBottom: 2 }}>
-                  <span style={{
-                    fontSize: 15, fontWeight: 700, color: isLight ? "#1a1535" : "#fff",
+                  <h1 style={{
+                    fontSize: 15, fontWeight: 700, color: "var(--dp-text)",
                     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
-                  }}>{displayName}</span>
+                    margin: 0,
+                  }}>{displayName}</h1>
                   {isPremium && (
                     <span style={{
                       padding: "1px 6px", borderRadius: 6, flexShrink: 0,
-                      background: isLight ? "linear-gradient(135deg, rgba(180,130,20,0.15), rgba(180,130,20,0.08))" : "linear-gradient(135deg, rgba(252,211,77,0.15), rgba(252,211,77,0.08))",
-                      border: isLight ? "1px solid rgba(180,130,20,0.3)" : "1px solid rgba(252,211,77,0.25)",
-                      fontSize: 9, fontWeight: 700, color: isLight ? "#92400E" : "#FCD34D",
+                      background: "var(--dp-warning-soft)",
+                      border: "1px solid var(--dp-warning-soft)",
+                      fontSize: 9, fontWeight: 700, color: "var(--dp-warning)",
                       display: "flex", alignItems: "center", gap: 2,
                     }}>
                       <Crown size={8} strokeWidth={2.5} />{subscriptionLabel}
@@ -357,75 +350,75 @@ export default function ProfileScreen() {
                   )}
                 </div>
                 <div style={{
-                  fontSize: 11, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)",
+                  fontSize: 11, color: "var(--dp-text-tertiary)",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>{email}</div>
               </div>
-            </div>
+            </GlassCard>
 
             {/* XP + Level Tile */}
-            <div style={{ ...tile, ...stagger(1), padding: 16, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <GlassCard padding={16} style={{ ...stagger(1), display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-                <Zap size={14} color={lc("#5DE5A8", isLight)} strokeWidth={2.5} />
-                <span style={{ fontSize: 12, fontWeight: 600, color: isLight ? "rgba(26,21,53,0.65)" : "rgba(255,255,255,0.6)" }}>{t("profile.level")} {level}</span>
+                <Zap size={14} color={lc(BRAND.green, isLight)} strokeWidth={2.5} />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-text-secondary)" }}>{t("profile.level")} {level}</span>
               </div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: isLight ? "#1a1535" : "#fff", marginBottom: 2 }}>
-                {xp.toLocaleString()}
+              <div style={{ fontSize: 22, fontWeight: 800, color: "var(--dp-text)", marginBottom: 2 }}>
+                {xp.toLocaleString()} XP
               </div>
-              <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.45)", marginBottom: 10 }}>
-                / {xpToNext.toLocaleString()} XP
+              <div style={{ fontSize: 11, color: "var(--dp-text-muted)", marginBottom: 10 }}>
+                {xp % 100} / 100 to next level
               </div>
-              <div style={{ height: 5, borderRadius: 3, background: isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.06)", overflow: "hidden" }}>
+              <div style={{ height: 5, borderRadius: 3, background: "var(--dp-glass-border)", overflow: "hidden" }}>
                 <div style={{
                   height: "100%", borderRadius: 3,
-                  background: "linear-gradient(90deg, #8B5CF6, #5DE5A8)",
+                  background: `linear-gradient(90deg, ${BRAND.purple}, ${BRAND.green})`,
                   width: mounted ? `${lvlProgress * 100}%` : "0%",
                   transition: "width 1.2s cubic-bezier(0.16,1,0.3,1)",
                   boxShadow: "0 0 8px rgba(139,92,246,0.4)",
                 }} />
               </div>
-              <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.45)" : "rgba(255,255,255,0.4)", marginTop: 4 }}>
-                {(xpToNext - xp).toLocaleString()} {t("profile.toNext")}
+              <div style={{ fontSize: 11, color: "var(--dp-text-muted)", marginTop: 4 }}>
+                {xpToNext} XP {t("profile.toNext")}
               </div>
-            </div>
+            </GlassCard>
 
             {/* Streak + Rank Tile */}
-            <div style={{ ...tile, ...stagger(2), padding: 16, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <GlassCard padding={16} style={{ ...stagger(2), display: "flex", flexDirection: "column", justifyContent: "center" }}>
               <div style={{ display: "flex", gap: 12 }}>
                 {/* Streak */}
                 <div style={{ flex: 1 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: 12, marginBottom: 8,
-                    background: "rgba(246,154,154,0.1)", border: "1px solid rgba(246,154,154,0.15)",
+                    background: "var(--dp-danger-soft)", border: "1px solid var(--dp-danger-soft)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    <Flame size={18} color={lc("#F69A9A", isLight)} strokeWidth={2} />
+                    <Flame size={18} color={lc(BRAND.red, isLight)} strokeWidth={2} />
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: isLight ? "#1a1535" : "#fff" }}>{streak}</div>
-                  <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)" }}>{t("profile.streak")}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "var(--dp-text)" }}>{streak}</div>
+                  <div style={{ fontSize: 11, color: "var(--dp-text-tertiary)" }}>{t("profile.streak")}</div>
                 </div>
                 {/* Rank */}
                 <div style={{ flex: 1 }}>
                   <div style={{
                     width: 36, height: 36, borderRadius: 12, marginBottom: 8,
-                    background: "rgba(196,181,253,0.1)", border: "1px solid rgba(196,181,253,0.15)",
+                    background: "var(--dp-accent-soft)", border: "1px solid var(--dp-accent-border)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    <TrendingUp size={18} color={lc("#C4B5FD", isLight)} strokeWidth={2} />
+                    <TrendingUp size={18} color={lc(BRAND.purpleLight, isLight)} strokeWidth={2} />
                   </div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: isLight ? "#1a1535" : "#fff" }}>{rank ? "#" + rank : "—"}</div>
-                  <div style={{ fontSize: 11, color: isLight ? "rgba(26,21,53,0.55)" : "rgba(255,255,255,0.5)" }}>{t("profile.rank")}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "var(--dp-text)" }}>{userStats.total_tasks_completed || 0}</div>
+                  <div style={{ fontSize: 11, color: "var(--dp-text-tertiary)" }}>Tasks done</div>
                 </div>
               </div>
-            </div>
+            </GlassCard>
           </div>
 
           {/* ══ SKILLS TILE ══ */}
           {skills.length > 0 && (
-          <div style={{ ...tile, ...stagger(3), padding: 18, marginBottom: 10 }}>
+          <GlassCard padding={18} mb={10} style={{ ...stagger(3) }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 14 }}>
-              <Shield size={15} color={lc("#C4B5FD", isLight)} strokeWidth={2.5} />
-              <span style={{ fontSize: 14, fontWeight: 700, color: isLight ? "#1a1535" : "#fff" }}>{t("profile.skillRadar")}</span>
+              <Shield size={15} color={lc(BRAND.purpleLight, isLight)} strokeWidth={2.5} />
+              <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)", margin: 0 }}>{t("profile.skillRadar")}</h2>
             </div>
             {skills.map(function (s, i) {
               var prog = s.maxXp > 0 ? s.xp / s.maxXp : 0;
@@ -435,14 +428,14 @@ export default function ProfileScreen() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 5 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <s.Icon size={12} color={sc} strokeWidth={2.5} />
-                      <span style={{ fontSize: 12, fontWeight: 600, color: isLight ? "#1a1535" : "#fff" }}>{s.label}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-text)" }}>{s.label}</span>
                     </div>
                     <span style={{
                       padding: "1px 6px", borderRadius: 5,
                       background: `${s.color}12`, fontSize: 11, fontWeight: 700, color: sc,
                     }}>Lv.{s.level}</span>
                   </div>
-                  <div style={{ height: 4, borderRadius: 2, background: isLight ? "rgba(139,92,246,0.06)" : "rgba(255,255,255,0.04)", overflow: "hidden" }}>
+                  <div style={{ height: 4, borderRadius: 2, background: "var(--dp-surface)", overflow: "hidden" }}>
                     <div style={{
                       height: "100%", borderRadius: 2,
                       background: `linear-gradient(90deg, ${s.color}90, ${s.color})`,
@@ -454,20 +447,20 @@ export default function ProfileScreen() {
                 </div>
               );
             })}
-          </div>
+          </GlassCard>
           )}
 
           {/* ══ ACHIEVEMENTS TILE ══ */}
           {achievements.length > 0 && (
-          <div style={{ ...tile, ...stagger(4), padding: 18, marginBottom: 10 }}>
+          <GlassCard padding={18} mb={10} style={{ ...stagger(4) }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Award size={15} color={lc("#FCD34D", isLight)} strokeWidth={2.5} />
-                <span style={{ fontSize: 14, fontWeight: 700, color: isLight ? "#1a1535" : "#fff" }}>{t("profile.achievements")}</span>
+                <Award size={15} color={lc(BRAND.yellow, isLight)} strokeWidth={2.5} />
+                <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)", margin: 0 }}>{t("profile.achievements")}</h2>
               </div>
               <span
                 onClick={() => navigate("/achievements")}
-                style={{ fontSize: 12, color: isLight ? "#6D28D9" : "#C4B5FD", cursor: "pointer", fontWeight: 500 }}
+                style={{ fontSize: 12, color: "var(--dp-accent)", cursor: "pointer", fontWeight: 500 }}
               >{t("profile.seeAll")}</span>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
@@ -485,31 +478,30 @@ export default function ProfileScreen() {
                     </div>
                     <span style={{
                       fontSize: 10, fontWeight: 500, textAlign: "center", lineHeight: 1.2,
-                      color: isLight ? "rgba(26,21,53,0.65)" : "rgba(255,255,255,0.6)",
+                      color: "var(--dp-text-secondary)",
                     }}>{a.label}</span>
                   </div>
                 );
               })}
             </div>
-          </div>
+          </GlassCard>
           )}
 
           {/* ══ QUICK LINKS ══ */}
-          <div style={{ ...tile, ...stagger(5), overflow: "hidden", marginBottom: 10 }}>
+          <GlassCard mb={10} style={{ ...stagger(5), overflow: "hidden" }}>
             {MENU.map((item, i) => {
               const mc = lc(item.color, isLight);
               return (
                 <div
                   key={i}
+                  className="dp-gh"
                   onClick={() => navigate(item.path)}
                   style={{
                     padding: "13px 18px", cursor: "pointer",
                     display: "flex", alignItems: "center", gap: 14,
-                    borderBottom: i < MENU.length - 1 ? (isLight ? "1px solid rgba(139,92,246,0.06)" : "1px solid rgba(255,255,255,0.04)") : "none",
+                    borderBottom: i < MENU.length - 1 ? "1px solid var(--dp-divider)" : "none",
                     transition: "background 0.15s",
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = isLight ? "rgba(139,92,246,0.04)" : "rgba(255,255,255,0.02)"}
-                  onMouseLeave={e => e.currentTarget.style.background = "transparent"}
                 >
                   <div style={{
                     width: 34, height: 34, borderRadius: 10, flexShrink: 0,
@@ -517,24 +509,24 @@ export default function ProfileScreen() {
                   }}>
                     <item.icon size={16} color={mc} strokeWidth={2} />
                   </div>
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: isLight ? "#1a1535" : "#fff" }}>{item.label}</span>
+                  <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: "var(--dp-text)" }}>{item.label}</span>
                   {item.isNotif && notifUnread > 0 && (
                     <span style={{
                       padding: "2px 8px", borderRadius: 8,
-                      background: "rgba(246,154,154,0.12)",
-                      fontSize: 12, fontWeight: 600, color: isLight ? "#DC2626" : "#F69A9A",
+                      background: "var(--dp-danger-soft)",
+                      fontSize: 12, fontWeight: 600, color: "var(--dp-danger)",
                     }}>{notifUnread}</span>
                   )}
-                  <ChevronRight size={16} color={isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.25)"} strokeWidth={2} />
+                  <ChevronRight size={16} color="var(--dp-text-muted)" strokeWidth={2} />
                 </div>
               );
             })}
-          </div>
+          </GlassCard>
 
           {/* ══ SUBSCRIPTION INFO ══ */}
           {isPremium && renewDate && (
             <div style={{ ...stagger(6), textAlign: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 12, color: isLight ? "rgba(26,21,53,0.45)" : "rgba(255,255,255,0.35)" }}>
+              <span style={{ fontSize: 12, color: "var(--dp-text-muted)" }}>
                 {subscriptionLabel} {t("profile.renews")} {renewDate}
               </span>
             </div>
@@ -544,17 +536,16 @@ export default function ProfileScreen() {
           <div style={stagger(7)}>
             <button
               onClick={handleSignOut}
+              className="dp-gh"
               style={{
                 width: "100%", padding: "14px 0", borderRadius: 16,
-                border: isLight ? "1px solid rgba(246,154,154,0.2)" : "1px solid rgba(246,154,154,0.15)",
-                background: "rgba(246,154,154,0.06)",
-                color: isLight ? "#DC2626" : "#F69A9A",
+                border: "1px solid var(--dp-danger-soft)",
+                background: "var(--dp-danger-soft)",
+                color: "var(--dp-danger)",
                 fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "inherit",
                 display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                 transition: "all 0.2s",
               }}
-              onMouseEnter={e => e.currentTarget.style.background = "rgba(246,154,154,0.12)"}
-              onMouseLeave={e => e.currentTarget.style.background = "rgba(246,154,154,0.06)"}
             >
               <LogOut size={16} strokeWidth={2} />{t("settings.signOut")}
             </button>

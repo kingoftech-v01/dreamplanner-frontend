@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { PhoneOff, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
-import { useTheme } from "../../context/ThemeContext";
+import { GRADIENTS } from "../../styles/colors";
 import { apiGet, apiPost } from "../../services/api";
 import { CONVERSATIONS } from "../../services/endpoints";
 import { createAgoraCallSession } from "../../services/agora";
@@ -17,14 +17,13 @@ export default function VoiceCallScreen() {
   var navigate = useNavigate();
   var { id: callId } = useParams();
   var [searchParams] = useSearchParams();
-  var { resolved } = useTheme();
-  var isLight = resolved === "light";
 
   var answering = searchParams.get("answering") === "true";
   var callerName = searchParams.get("callerName") || "Unknown";
   var buddyName = searchParams.get("buddyName") || callerName;
   var buddyInitial = buddyName.charAt(0).toUpperCase();
-  var buddyColor = searchParams.get("color") || "#8B5CF6";
+  var rawBuddyColor = searchParams.get("color") || "#8B5CF6";
+  var buddyColor = /^#[0-9a-fA-F]{6}$/.test(rawBuddyColor) ? rawBuddyColor : "#8B5CF6";
 
   var [callStatus, setCallStatus] = useState(answering ? "connecting" : "ringing");
   var [seconds, setSeconds] = useState(0);
@@ -172,15 +171,16 @@ export default function VoiceCallScreen() {
           width: 60, height: 60, borderRadius: 20,
           background: active
             ? "rgba(255,255,255,0.15)"
-            : isLight ? "rgba(255,255,255,0.8)" : "rgba(255,255,255,0.08)",
+            : "var(--dp-surface)",
           border: active
             ? "1px solid rgba(255,255,255,0.25)"
-            : isLight ? "1px solid rgba(0,0,0,0.08)" : "1px solid rgba(255,255,255,0.06)",
+            : "1px solid var(--dp-glass-border)",
           display: "flex", alignItems: "center", justifyContent: "center",
           cursor: "pointer", transition: "all 0.2s",
+          fontFamily: "inherit",
         }}
       >
-        <Icon size={24} color={color || (isLight ? "#1a1535" : "#fff")} />
+        <Icon size={24} color={color || "var(--dp-text)"} />
       </button>
     );
   };
@@ -203,7 +203,7 @@ export default function VoiceCallScreen() {
       <div style={{
         minHeight: "100vh", display: "flex", flexDirection: "column",
         alignItems: "center", justifyContent: "center",
-        fontFamily: "Inter, sans-serif", padding: "40px 20px",
+        padding: "40px 20px",
         animation: "vcFadeIn 0.4s ease-out",
       }}>
         {/* Avatar with pulse rings */}
@@ -248,8 +248,8 @@ export default function VoiceCallScreen() {
         {/* Status */}
         <p style={{
           fontSize: 15, color: callStatus === "connected"
-            ? (isLight ? "#059669" : "#5DE5A8")
-            : error ? (isLight ? "#DC2626" : "#F69A9A")
+            ? "var(--dp-success)"
+            : error ? "var(--dp-danger)"
             : "var(--dp-text-tertiary)",
           margin: "0 0 8px", fontWeight: 500,
           transition: "color 0.3s",
@@ -282,10 +282,11 @@ export default function VoiceCallScreen() {
             onClick={callStatus === "ringing" ? cancelCall : endCall}
             style={{
               width: 72, height: 72, borderRadius: 24,
-              background: "linear-gradient(135deg, #EF4444, #DC2626)",
+              background: GRADIENTS.danger,
               border: "none", display: "flex", alignItems: "center", justifyContent: "center",
               cursor: "pointer", boxShadow: "0 4px 20px rgba(239,68,68,0.4)",
               transition: "transform 0.15s",
+              fontFamily: "inherit",
             }}
             onMouseDown={function (e) { e.currentTarget.style.transform = "scale(0.92)"; }}
             onMouseUp={function (e) { e.currentTarget.style.transform = "scale(1)"; }}
@@ -294,7 +295,13 @@ export default function VoiceCallScreen() {
             <PhoneOff size={28} color="#fff" />
           </button>
 
-          {callStatus === "connected" && actionBtn(speaker ? VolumeX : Volume2, speaker, function () { setSpeaker(!speaker); })}
+          {callStatus === "connected" && actionBtn(speaker ? Volume2 : VolumeX, speaker, function () {
+            var next = !speaker;
+            setSpeaker(next);
+            if (sessionRef.current && sessionRef.current.setSpeaker) {
+              sessionRef.current.setSpeaker(next).catch(function () {});
+            }
+          })}
         </div>
       </div>
     </PageLayout>

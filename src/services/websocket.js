@@ -7,7 +7,7 @@
  * - Proper cleanup on close
  */
 
-import { getToken } from "./api";
+import { getAccessTokenForWS } from "./api";
 
 var WS_BASE = import.meta.env.VITE_WS_BASE || "";
 
@@ -20,7 +20,7 @@ var WS_BASE = import.meta.env.VITE_WS_BASE || "";
  */
 export function createWebSocket(path, options) {
   var opts = options || {};
-  var token = opts.token || getToken() || "";
+  var token = opts.token || getAccessTokenForWS() || "";
   var onMessage = opts.onMessage || function () {};
   var onOpen = opts.onOpen || function () {};
   var onClose = opts.onClose || function () {};
@@ -85,8 +85,8 @@ export function createWebSocket(path, options) {
       onClose(event);
       // 4001 = token expired / invalid
       if (event.code === 4001) {
-        // Refresh token from cache in case it was rotated
-        token = getToken() || "";
+        // Refresh token from memory in case it was rotated
+        token = getAccessTokenForWS() || "";
       }
       if (!closed) scheduleReconnect();
     };

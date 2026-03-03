@@ -9,17 +9,13 @@ import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
 import { useToast } from "../../context/ToastContext";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import PillTabs from "../../components/shared/PillTabs";
+import Avatar from "../../components/shared/Avatar";
 
 const AVATAR_COLORS = ["#8B5CF6", "#14B8A6", "#EC4899", "#3B82F6", "#10B981", "#FCD34D", "#6366F1", "#EF4444"];
-
-const glassStyle = {
-  background: "var(--dp-glass-bg)",
-  backdropFilter: "blur(40px)",
-  WebkitBackdropFilter: "blur(40px)",
-  border: "1px solid var(--dp-input-border)",
-  borderRadius: 20,
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
-};
 
 export default function FriendRequestsScreen() {
   const navigate = useNavigate();
@@ -121,7 +117,26 @@ export default function FriendRequestsScreen() {
   }
 
   return (
-    <PageLayout>
+    <PageLayout header={
+      <GlassAppBar
+        left={<IconButton icon={ArrowLeft} onClick={() => navigate(-1)} label="Back" />}
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)" }}>Friend Requests</span>
+            {pendingReceivedCount > 0 && (
+              <span style={{
+                background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
+                color: "#fff", fontSize: 11, fontWeight: 700,
+                padding: "2px 8px", borderRadius: 10,
+                minWidth: 20, textAlign: "center",
+              }}>
+                {pendingReceivedCount}
+              </span>
+            )}
+          </div>
+        }
+      />
+    }>
       <style>{`
         @keyframes acceptPulse {
           0% { transform: scale(1); }
@@ -134,78 +149,16 @@ export default function FriendRequestsScreen() {
         }
       `}</style>
 
-      {/* Header */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 16,
-        paddingTop: 16, paddingBottom: 16,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(-10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
-      }}>
-        <button className="dp-ib" onClick={() => navigate(-1)}>
-          <ArrowLeft size={20} strokeWidth={2} />
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <h1 style={{
-            fontSize: 24, fontWeight: 700, color: "var(--dp-text)",
-            fontFamily: "Inter, sans-serif", margin: 0,
-          }}>
-            Friend Requests
-          </h1>
-          {pendingReceivedCount > 0 && (
-            <span style={{
-              background: "linear-gradient(135deg, #8B5CF6, #6D28D9)",
-              color: "#fff", fontSize: 11, fontWeight: 700,
-              fontFamily: "Inter, sans-serif",
-              padding: "2px 8px", borderRadius: 10,
-              minWidth: 20, textAlign: "center",
-            }}>
-              {pendingReceivedCount}
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Tabs */}
-      <div style={{
-        display: "flex", gap: 4, marginBottom: 20,
-        ...glassStyle, borderRadius: 14, padding: 4,
-        opacity: mounted ? 1 : 0, transform: mounted ? "translateY(0)" : "translateY(10px)",
-        transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
-      }}>
-        {[
-          { id: "received", label: "Received", count: pendingReceivedCount },
-          { id: "sent", label: "Sent", count: activeSentRequests.length },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            style={{
-              flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-              padding: "10px 0", borderRadius: 12, border: "none",
-              background: activeTab === tab.id
-                ? "linear-gradient(135deg, rgba(139,92,246,0.3), rgba(109,40,217,0.2))"
-                : "transparent",
-              color: activeTab === tab.id ? "var(--dp-text)" : "var(--dp-text-tertiary)",
-              fontSize: 14, fontWeight: 600, fontFamily: "Inter, sans-serif",
-              cursor: "pointer", transition: "all 0.25s ease",
-            }}
-          >
-            {tab.label}
-            {tab.count > 0 && (
-              <span style={{
-                fontSize: 10, fontWeight: 700,
-                padding: "1px 6px", borderRadius: 6,
-                background: activeTab === tab.id
-                  ? "rgba(255,255,255,0.15)"
-                  : "var(--dp-surface-hover)",
-                color: activeTab === tab.id ? "var(--dp-text)" : "var(--dp-text-muted)",
-              }}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      <PillTabs
+        tabs={[
+          { key: "received", label: "Received", count: pendingReceivedCount || undefined },
+          { key: "sent", label: "Sent", count: activeSentRequests.length || undefined },
+        ]}
+        active={activeTab}
+        onChange={setActiveTab}
+        style={{ marginBottom: 20 }}
+      />
 
       {/* Received Tab */}
       {activeTab === "received" && (
@@ -218,11 +171,11 @@ export default function FriendRequestsScreen() {
             const avatarColor = getAvatarColor(request.name);
 
             return (
-              <div
+              <GlassCard
                 key={request.id}
+                radius={16}
+                padding={state ? "12px 16px" : "16px"}
                 style={{
-                  ...glassStyle, borderRadius: 16,
-                  padding: state ? "12px 16px" : "16px",
                   transition: "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
                   opacity: mounted ? 1 : 0,
                   transform: mounted ? "translateY(0)" : "translateY(15px)",
@@ -239,17 +192,12 @@ export default function FriendRequestsScreen() {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   {/* Avatar */}
-                  <div style={{
-                    width: 48, height: 48, borderRadius: 16, flexShrink: 0,
-                    background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}88)`,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 18, fontWeight: 700, color: "#fff",
-                    fontFamily: "Inter, sans-serif",
-                    boxShadow: `0 4px 12px ${avatarColor}30`,
-                    ...(state === "declined" ? { opacity: 0.5 } : {}),
-                  }}>
-                    {request.initial}
-                  </div>
+                  <Avatar
+                    name={request.name}
+                    size={48}
+                    color={avatarColor}
+                    style={state === "declined" ? { opacity: 0.5 } : {}}
+                  />
 
                   {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -257,13 +205,11 @@ export default function FriendRequestsScreen() {
                       <span style={{
                         fontSize: 15, fontWeight: 600,
                         color: state === "declined" ? "var(--dp-text-muted)" : "var(--dp-text)",
-                        fontFamily: "Inter, sans-serif",
-                      }}>
+                        }}>
                         {request.name}
                       </span>
                       <span style={{
                         fontSize: 10, fontWeight: 700, color: "#8B5CF6",
-                        fontFamily: "Inter, sans-serif",
                         padding: "2px 6px", borderRadius: 6,
                         background: "rgba(139,92,246,0.15)",
                         border: "1px solid rgba(139,92,246,0.2)",
@@ -274,8 +220,7 @@ export default function FriendRequestsScreen() {
                     <div style={{
                       display: "flex", alignItems: "center", gap: 8,
                       fontSize: 12, color: "var(--dp-text-muted)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
                         <Users size={11} />
                         {request.mutualFriends} mutual
@@ -298,8 +243,8 @@ export default function FriendRequestsScreen() {
                         padding: "10px 0", borderRadius: 12,
                         background: "linear-gradient(135deg, #10B981, #059669)",
                         border: "none",
-                        color: "#fff", fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                        cursor: "pointer", transition: "all 0.25s ease",
+                        color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all 0.25s ease",
+                        fontFamily: "inherit",
                       }}
                     >
                       <Check size={16} />
@@ -313,8 +258,8 @@ export default function FriendRequestsScreen() {
                         background: "transparent",
                         border: "1px solid rgba(239,68,68,0.3)",
                         color: "rgba(239,68,68,0.8)", fontSize: 13, fontWeight: 600,
-                        fontFamily: "Inter, sans-serif",
                         cursor: "pointer", transition: "all 0.25s ease",
+                        fontFamily: "inherit",
                       }}
                     >
                       <X size={16} />
@@ -326,8 +271,7 @@ export default function FriendRequestsScreen() {
                     marginTop: 10,
                     display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
                     padding: "8px 0",
-                    fontSize: 13, fontWeight: 600, fontFamily: "Inter, sans-serif",
-                    color: state === "accepted" ? "#10B981" : "var(--dp-text-muted)",
+                    fontSize: 13, fontWeight: 600, color: state === "accepted" ? "#10B981" : "var(--dp-text-muted)",
                     animation: "acceptPulse 0.4s ease",
                   }}>
                     {state === "accepted" ? (
@@ -343,14 +287,14 @@ export default function FriendRequestsScreen() {
                     )}
                   </div>
                 )}
-              </div>
+              </GlassCard>
             );
           })}
 
           {/* Infinite scroll sentinel for received */}
           <div ref={receivedInf.sentinelRef} />
           {receivedInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
           )}
 
           {/* Empty received state */}
@@ -369,14 +313,13 @@ export default function FriendRequestsScreen() {
               </div>
               <div style={{
                 fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)",
-                fontFamily: "Inter, sans-serif", marginBottom: 6,
+                marginBottom: 6,
               }}>
                 No pending requests
               </div>
               <div style={{
                 fontSize: 13, color: "var(--dp-text-muted)",
-                fontFamily: "Inter, sans-serif",
-              }}>
+                }}>
                 When someone sends you a friend request, it will appear here
               </div>
             </div>
@@ -394,11 +337,11 @@ export default function FriendRequestsScreen() {
             const avatarColor = getAvatarColor(request.name);
 
             return (
-              <div
+              <GlassCard
                 key={request.id}
+                radius={16}
+                padding="16px"
                 style={{
-                  ...glassStyle, borderRadius: 16,
-                  padding: "16px",
                   display: "flex", alignItems: "center", gap: 12,
                   opacity: mounted ? 1 : 0,
                   transform: mounted ? "translateY(0)" : "translateY(15px)",
@@ -406,29 +349,18 @@ export default function FriendRequestsScreen() {
                 }}
               >
                 {/* Avatar */}
-                <div style={{
-                  width: 48, height: 48, borderRadius: 16, flexShrink: 0,
-                  background: `linear-gradient(135deg, ${avatarColor}, ${avatarColor}88)`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 18, fontWeight: 700, color: "#fff",
-                  fontFamily: "Inter, sans-serif",
-                  boxShadow: `0 4px 12px ${avatarColor}30`,
-                }}>
-                  {request.initial}
-                </div>
+                <Avatar name={request.name} size={48} color={avatarColor} />
 
                 {/* Info */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
                     <span style={{
                       fontSize: 15, fontWeight: 600, color: "var(--dp-text)",
-                      fontFamily: "Inter, sans-serif",
-                    }}>
+                      }}>
                       {request.name}
                     </span>
                     <span style={{
                       fontSize: 10, fontWeight: 700, color: "#8B5CF6",
-                      fontFamily: "Inter, sans-serif",
                       padding: "2px 6px", borderRadius: 6,
                       background: "rgba(139,92,246,0.15)",
                       border: "1px solid rgba(139,92,246,0.2)",
@@ -439,8 +371,7 @@ export default function FriendRequestsScreen() {
                   <div style={{
                     display: "flex", alignItems: "center", gap: 6,
                     fontSize: 12, color: "var(--dp-text-muted)",
-                    fontFamily: "Inter, sans-serif",
-                  }}>
+                    }}>
                     <Clock size={11} />
                     Pending - sent {request.time}
                   </div>
@@ -455,22 +386,21 @@ export default function FriendRequestsScreen() {
                     background: "rgba(239,68,68,0.08)",
                     border: "1px solid rgba(239,68,68,0.2)",
                     color: "rgba(239,68,68,0.7)", fontSize: 11, fontWeight: 600,
-                    fontFamily: "Inter, sans-serif",
                     cursor: "pointer", transition: "all 0.25s ease",
-                    flexShrink: 0,
+                    flexShrink: 0, fontFamily: "inherit",
                   }}
                 >
                   <UserX size={13} />
                   Cancel
                 </button>
-              </div>
+              </GlassCard>
             );
           })}
 
           {/* Infinite scroll sentinel for sent */}
           <div ref={sentInf.sentinelRef} />
           {sentInf.loadingMore && (
-            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)", fontFamily: "Inter, sans-serif" }}>Loading more...</div>
+            <div style={{ textAlign: "center", padding: "16px 0", fontSize: 13, color: "var(--dp-text-muted)" }}>Loading more...</div>
           )}
 
           {/* Empty sent state */}
@@ -489,14 +419,13 @@ export default function FriendRequestsScreen() {
               </div>
               <div style={{
                 fontSize: 16, fontWeight: 600, color: "var(--dp-text-tertiary)",
-                fontFamily: "Inter, sans-serif", marginBottom: 6,
+                marginBottom: 6,
               }}>
                 No sent requests
               </div>
               <div style={{
                 fontSize: 13, color: "var(--dp-text-muted)",
-                fontFamily: "Inter, sans-serif",
-              }}>
+                }}>
                 Friend requests you send will appear here
               </div>
             </div>

@@ -10,7 +10,18 @@ import { useToast } from "../../context/ToastContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
 import { ConversationSkeleton } from "../../components/shared/Skeleton";
+import GlassAppBar from "../../components/shared/GlassAppBar";
+import IconButton from "../../components/shared/IconButton";
+import GlassCard from "../../components/shared/GlassCard";
+import Avatar from "../../components/shared/Avatar";
+import GlassInput from "../../components/shared/GlassInput";
+import GlassModal from "../../components/shared/GlassModal";
+import PillTabs from "../../components/shared/PillTabs";
 import { sanitizeSearch } from "../../utils/sanitize";
+import useAgoraPresence from "../../hooks/useAgoraPresence";
+import {
+  CONV_TYPES as CONV_COLORS, CONTACT_COLORS, BRAND, adaptColor,
+} from "../../styles/colors";
 import {
   ArrowLeft, Search, Bot, Sparkles, Flag, Heart, Brain,
   Users, MessageCircle, ChevronRight, Trash2, Plus, X,
@@ -40,13 +51,14 @@ import {
  * ═══════════════════════════════════════════════════════════════════ */
 
 // ─── CONVERSATION TYPE CONFIG ────────────────────────────────────
+// Icons live locally; color / bg / label pulled from centralized CONV_COLORS
 const CONV_TYPES = {
-  general:         { Icon: Bot,      color: "#C4B5FD", bg: "#8B5CF6", label: "AI Coach" },
-  dream_creation:  { Icon: Sparkles, color: "#FCD34D", bg: "#F59E0B", label: "Creation" },
-  planning:        { Icon: Flag,     color: "#5DE5A8", bg: "#10B981", label: "Planning" },
-  motivation:      { Icon: Heart,    color: "#F69A9A", bg: "#EF4444", label: "Motivation" },
-  check_in:        { Icon: Brain,    color: "#93C5FD", bg: "#3B82F6", label: "Check-in" },
-  buddy_chat:      { Icon: Users,    color: "#5EEAD4", bg: "#14B8A6", label: "Buddy" },
+  general:         { Icon: Bot,      ...CONV_COLORS.general },
+  dream_creation:  { Icon: Sparkles, ...CONV_COLORS.dream_creation },
+  planning:        { Icon: Flag,     ...CONV_COLORS.planning },
+  motivation:      { Icon: Heart,    ...CONV_COLORS.motivation },
+  check_in:        { Icon: Brain,    ...CONV_COLORS.check_in },
+  buddy_chat:      { Icon: Users,    ...CONV_COLORS.buddy_chat },
 };
 
 // Only buddy / circle conversations — AI Coach is in its own screen
@@ -54,8 +66,6 @@ const FILTER_TABS = [
   { key: "all", label: "All" },
   { key: "buddy_chat", label: "Buddy" },
 ];
-
-var CONTACT_COLORS = ["#14B8A6", "#EC4899", "#F59E0B", "#6366F1", "#10B981", "#8B5CF6", "#EF4444"];
 
 // ─── HELPERS ─────────────────────────────────────────────────────
 function timeAgo(date) {
@@ -108,18 +118,25 @@ export default function ConversationListScreen() {
   var friendsQuery = useQuery({
     queryKey: ["buddy-contacts"],
     queryFn: function () { return apiGet(SOCIAL.FRIENDS.LIST); },
-    enabled: showNewChat,
   });
-  var buddyContacts = ((friendsQuery.data && friendsQuery.data.results) || friendsQuery.data || []).map(function (f, i) {
+  var allFriendsList = (friendsQuery.data && friendsQuery.data.results) || friendsQuery.data || [];
+  if (!Array.isArray(allFriendsList)) allFriendsList = [];
+  var buddyContacts = allFriendsList.map(function (f, i) {
     return {
       id: f.id,
       name: f.displayName || f.username || "Friend",
+      avatar: f.avatar || f.avatarUrl || null,
       initial: (f.displayName || f.username || "F")[0].toUpperCase(),
       color: CONTACT_COLORS[i % CONTACT_COLORS.length],
       status: f.isOnline ? "online" : "offline",
       dream: f.currentDream || "",
     };
   });
+
+  // Agora presence tracking for friend story bar
+  var friendIdStrings = allFriendsList.map(function (f) { return String(f.id); });
+  var presenceMap = useAgoraPresence(friendIdStrings);
+  var onlineFriends = buddyContacts.filter(function (f) { return presenceMap[String(f.id)]; });
 
   var pinMut = useMutation({
     mutationFn: function (id) { return apiPost(CONVERSATIONS.PIN(id)); },
@@ -138,14 +155,6 @@ export default function ConversationListScreen() {
   });
 
   var loading = convsInf.isLoading;
-
-  const iconBtnStyle = {
-    width:40,height:40,borderRadius:12,
-    border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",
-    background:isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.05)",
-    color:isLight?"#1a1535":"#fff",display:"flex",alignItems:"center",justifyContent:"center",
-    cursor:"pointer",transition:"all 0.2s",
-  };
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
@@ -172,7 +181,7 @@ export default function ConversationListScreen() {
 
   if (loading) return (
       <div style={{ width: "100%", padding: "60px 16px 0" }}>
-        {[1,2,3,4].map(i => <ConversationSkeleton key={i} isLight={isLight} style={{ marginBottom: 12 }} />)}
+        {[1,2,3,4].map(i => <ConversationSkeleton key={i} style={{ marginBottom: 12 }} />)}
       </div>
   );
 
@@ -183,96 +192,111 @@ export default function ConversationListScreen() {
   );
 
   return (
-    <div style={{ position:"fixed", inset:0, overflow:"hidden", fontFamily:"'Inter',-apple-system,BlinkMacSystemFont,sans-serif" }}>
+    <div style={{ position:"fixed", inset:0, overflow:"hidden" }}>
 
       {/* ═══ APP BAR ═══ */}
-      <header style={{
-        position:"fixed",top:0,left:0,right:0,zIndex:100,
-        background:isLight?"rgba(255,255,255,0.85)":"rgba(255,255,255,0.03)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",
-        borderBottom:isLight?"1px solid rgba(139,92,246,0.1)":"1px solid rgba(255,255,255,0.05)",
-      }}>
-        {/* Top row */}
-        <div style={{ height:64, display:"flex", alignItems:"center", justifyContent:"space-between", padding:"0 16px" }}>
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button className="dp-icon-btn" style={iconBtnStyle} onClick={()=>navigate(-1)} aria-label="Go back"><ArrowLeft size={20} strokeWidth={2} /></button>
+      <div style={{ position:"fixed", top:0, left:0, right:0, zIndex:100 }}>
+        <GlassAppBar
+          left={
+            <IconButton icon={ArrowLeft} onClick={()=>navigate(-1)} label="Go back" />
+          }
+          title={
             <div>
-              <div style={{ fontSize:17, fontWeight:700, color:isLight?"#1a1535":"#fff", letterSpacing:"-0.3px" }}>Messages</div>
-              {totalUnread > 0 && <div style={{ fontSize:12, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)" }}>{totalUnread} unread</div>}
+              <div style={{ fontSize:17, fontWeight:700, color:"var(--dp-text)", letterSpacing:"-0.3px" }}>Messages</div>
+              {totalUnread > 0 && <div style={{ fontSize:12, color:"var(--dp-text-secondary)" }}>{totalUnread} unread</div>}
             </div>
-          </div>
-          <div style={{ display:"flex", gap:8 }}>
-            <button className="dp-icon-btn" style={{...iconBtnStyle, position:"relative"}} onClick={()=>navigate("/calls/history")} aria-label="Call history">
-              <Phone size={18} strokeWidth={2} />
-              {missedCallCount > 0 && (
-                <div style={{
-                  position:"absolute", top:-2, right:-2, minWidth:16, height:16, borderRadius:8,
-                  background:"#EF4444", display:"flex", alignItems:"center", justifyContent:"center",
-                  fontSize:10, fontWeight:700, color:"#fff", padding:"0 4px",
-                  boxShadow:"0 0 6px rgba(239,68,68,0.5)",
-                }}>{missedCallCount > 9 ? "9+" : missedCallCount}</div>
-              )}
-            </button>
-            <button className="dp-icon-btn" style={iconBtnStyle} onClick={()=>{setSearchOpen(!searchOpen);setSearchQuery("");}} aria-label={searchOpen ? "Close search" : "Search"}>
-              {searchOpen ? <X size={18} strokeWidth={2}/> : <Search size={18} strokeWidth={2}/>}
-            </button>
-            <button className="dp-icon-btn" style={{...iconBtnStyle, background:"linear-gradient(135deg,rgba(139,92,246,0.2),rgba(109,40,217,0.2))", borderColor:"rgba(139,92,246,0.25)"}} aria-label="New conversation" onClick={()=>{setShowNewChat(true);setContactSearch("");}}>
-              <Plus size={18} strokeWidth={2.5} color={isLight ? "#6D28D9" : "#C4B5FD"} />
-            </button>
-          </div>
-        </div>
+          }
+          right={
+            <div style={{ display:"flex", gap:8 }}>
+              <IconButton icon={Phone} onClick={()=>navigate("/calls/history")} label="Call history" badge={missedCallCount > 0 ? (missedCallCount > 9 ? "9+" : missedCallCount) : undefined} />
+              <IconButton icon={searchOpen ? X : Search} onClick={()=>{setSearchOpen(!searchOpen);setSearchQuery("");}} label={searchOpen ? "Close search" : "Search"} />
+              <IconButton icon={Plus} onClick={()=>{setShowNewChat(true);setContactSearch("");}} label="New conversation" variant="accent" />
+            </div>
+          }
+        />
 
         {/* Search bar (collapsible) */}
         <div style={{
           overflow:"hidden", transition:"all 0.3s cubic-bezier(0.16,1,0.3,1)",
           maxHeight: searchOpen ? 56 : 0, opacity: searchOpen ? 1 : 0,
           padding: searchOpen ? "0 16px 12px" : "0 16px 0",
+          background:"var(--dp-header-bg)", backdropFilter:"blur(40px) saturate(1.4)", WebkitBackdropFilter:"blur(40px) saturate(1.4)",
         }}>
-          <div style={{
-            display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
-            borderRadius:14, background:"var(--dp-surface)",
-            border:"1px solid var(--dp-input-border)",
-          }}>
-            <Search size={16} color={isLight?"rgba(26,21,53,0.45)":"rgba(255,255,255,0.4)"} strokeWidth={2} />
-            <input
-              value={searchQuery}
-              onChange={e=>setSearchQuery(e.target.value)}
-              placeholder="Search conversations..."
-              style={{
-                flex:1, background:"none", border:"none", outline:"none",
-                color:isLight?"#1a1535":"#fff", fontSize:14, fontFamily:"inherit",
-              }}
-            />
-          </div>
+          <GlassInput
+            value={searchQuery}
+            onChange={e=>setSearchQuery(e.target.value)}
+            placeholder="Search conversations..."
+            icon={Search}
+          />
         </div>
 
         {/* Filter tabs */}
         <div style={{
-          display:"flex", gap:6, padding:"0 16px 12px", overflowX:"auto",
+          padding:"0 16px 12px",
+          background:"var(--dp-header-bg)", backdropFilter:"blur(40px) saturate(1.4)", WebkitBackdropFilter:"blur(40px) saturate(1.4)",
+          borderBottom: onlineFriends.length > 0 ? "none" : "1px solid var(--dp-header-border)",
         }}>
-          {FILTER_TABS.map(tab => {
-            const active = activeFilter === tab.key;
-            return (
-              <button
-                key={tab.key}
-                onClick={()=>setActiveFilter(tab.key)}
-                style={{
-                  padding:"6px 14px", borderRadius:20, border:"none", cursor:"pointer",
-                  fontSize:12, fontWeight:active ? 600 : 500, whiteSpace:"nowrap",
-                  background: active ? (isLight ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.18)") : isLight?"rgba(139,92,246,0.05)":"rgba(255,255,255,0.04)",
-                  color: active ? (isLight ? "#7C3AED" : "#C4B5FD") : isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)",
-                  transition:"all 0.25s",
-                  outline: active ? "1px solid rgba(139,92,246,0.25)" : "1px solid transparent",
-                }}
-              >
-                {tab.label}
-              </button>
-            );
-          })}
+          <PillTabs tabs={FILTER_TABS} active={activeFilter} onChange={setActiveFilter} size="sm" />
         </div>
-      </header>
+
+        {/* ── Online Friends Story Bar ── */}
+        {onlineFriends.length > 0 && (
+          <div style={{
+            padding:"10px 16px 12px",
+            background:"var(--dp-header-bg)", backdropFilter:"blur(40px) saturate(1.4)", WebkitBackdropFilter:"blur(40px) saturate(1.4)",
+            borderBottom:"1px solid var(--dp-header-border)",
+          }}>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+                <div style={{ width:7, height:7, borderRadius:"50%", background:"#22C55E", boxShadow:"0 0 6px rgba(34,197,94,0.5)" }} />
+                <span style={{ fontSize:12, fontWeight:600, color:"var(--dp-text-secondary)", textTransform:"uppercase", letterSpacing:"0.5px" }}>
+                  Online ({onlineFriends.length})
+                </span>
+              </div>
+              <button onClick={function(){navigate("/online-friends");}} style={{
+                background:"none", border:"none", cursor:"pointer", padding:"2px 0",
+                fontSize:12, fontWeight:600, color:"var(--dp-accent)",
+                fontFamily:"inherit",
+              }}>
+                See All
+              </button>
+            </div>
+            <div style={{
+              display:"flex", gap:14, overflowX:"auto", scrollbarWidth:"none",
+              WebkitOverflowScrolling:"touch", paddingBottom:2,
+            }}>
+              {onlineFriends.map(function(friend) {
+                return (
+                  <div key={friend.id} onClick={function(){navigate("/buddy-chat/" + friend.id);}} style={{
+                    display:"flex", flexDirection:"column", alignItems:"center", gap:4,
+                    cursor:"pointer", flexShrink:0, width:60,
+                  }}>
+                    <div style={{ position:"relative" }}>
+                      <Avatar name={friend.name} src={friend.avatar} size={48} color={friend.color} />
+                      <div style={{
+                        position:"absolute", bottom:1, right:1,
+                        width:12, height:12, borderRadius:"50%",
+                        background:"#22C55E", border:"2px solid var(--dp-bg)",
+                        boxShadow:"0 0 6px rgba(34,197,94,0.4)",
+                      }} />
+                    </div>
+                    <span style={{
+                      fontSize:11, fontWeight:500, color:"var(--dp-text-secondary)",
+                      maxWidth:58, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
+                      textAlign:"center",
+                    }}>
+                      {friend.name.split(" ")[0]}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ═══ CONTENT ═══ */}
-      <main style={{ position:"absolute", inset:0, overflowY:"auto", overflowX:"hidden", zIndex:10, paddingTop: searchOpen ? 170 : 128, paddingBottom:100, transition:"padding-top 0.3s, opacity 0.3s ease",opacity:uiOpacity}}>
+      <main style={{ position:"absolute", inset:0, overflowY:"auto", overflowX:"hidden", zIndex:10, paddingTop: (searchOpen ? 170 : 128) + (onlineFriends.length > 0 ? 100 : 0), paddingBottom:100, transition:"padding-top 0.3s, opacity 0.3s ease",opacity:uiOpacity}}>
         <div style={{ width:"100%", padding:"0 16px" }}>
 
           {filtered.length === 0 ? (
@@ -282,10 +306,10 @@ export default function ConversationListScreen() {
                 width:80, height:80, borderRadius:"50%", margin:"0 auto 20px",
                 background:"rgba(139,92,246,0.08)", display:"flex", alignItems:"center", justifyContent:"center",
               }}>
-                <MessageCircle size={36} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} strokeWidth={1.5} />
+                <MessageCircle size={36} color="var(--dp-text-secondary)" strokeWidth={1.5} />
               </div>
-              <div style={{ fontSize:17, fontWeight:600, color:isLight?"#1a1535":"#fff", marginBottom:8 }}>No messages yet</div>
-              <div style={{ fontSize:14, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)", lineHeight:1.5, maxWidth:280, margin:"0 auto" }}>
+              <div style={{ fontSize:17, fontWeight:600, color:"var(--dp-text)", marginBottom:8 }}>No messages yet</div>
+              <div style={{ fontSize:14, color:"var(--dp-text-secondary)", lineHeight:1.5, maxWidth:280, margin:"0 auto" }}>
                 Connect with a buddy or join a circle to start chatting
               </div>
             </div>
@@ -296,8 +320,8 @@ export default function ConversationListScreen() {
                 <>
                   <div className={`dp-a ${mounted?"dp-s":""}`} style={{ animationDelay:"0ms" }}>
                     <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-                      <Pin size={13} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} strokeWidth={2.5} />
-                      <span style={{ fontSize:12, fontWeight:600, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)", textTransform:"uppercase", letterSpacing:"0.5px" }}>Pinned</span>
+                      <Pin size={13} color="var(--dp-text-secondary)" strokeWidth={2.5} />
+                      <span style={{ fontSize:12, fontWeight:600, color:"var(--dp-text-secondary)", textTransform:"uppercase", letterSpacing:"0.5px" }}>Pinned</span>
                     </div>
                   </div>
                   {pinned.map((conv, i) => (
@@ -313,8 +337,8 @@ export default function ConversationListScreen() {
                   {pinned.length > 0 && (
                     <div className={`dp-a ${mounted?"dp-s":""}`} style={{ animationDelay:`${80+pinned.length*70+50}ms` }}>
                       <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:10 }}>
-                        <Clock size={13} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} strokeWidth={2.5} />
-                        <span style={{ fontSize:12, fontWeight:600, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)", textTransform:"uppercase", letterSpacing:"0.5px" }}>Recent</span>
+                        <Clock size={13} color="var(--dp-text-secondary)" strokeWidth={2.5} />
+                        <span style={{ fontSize:12, fontWeight:600, color:"var(--dp-text-secondary)", textTransform:"uppercase", letterSpacing:"0.5px" }}>Recent</span>
                       </div>
                     </div>
                   )}
@@ -326,7 +350,7 @@ export default function ConversationListScreen() {
             </>
           )}
           <div ref={convsInf.sentinelRef} style={{height:1}} />
-          {convsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)",fontSize:13}}>Loading more…</div>}
+          {convsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:"var(--dp-text-muted)",fontSize:13}}>Loading more…</div>}
         </div>
       </main>
 
@@ -337,30 +361,27 @@ export default function ConversationListScreen() {
       {contextMenu && (
         <div style={{
           position:"fixed", left:contextMenu.x, top:contextMenu.y, zIndex:200,
-          background:isLight?"rgba(255,255,255,0.97)":"rgba(20,16,35,0.95)", backdropFilter:"blur(30px)", WebkitBackdropFilter:"blur(30px)",
-          borderRadius:14, border:isLight?"1px solid rgba(139,92,246,0.15)":"1px solid rgba(255,255,255,0.08)",
-          boxShadow:"0 12px 40px rgba(0,0,0,0.5)", padding:6, minWidth:160,
+          background:"var(--dp-modal-bg)", backdropFilter:"blur(30px)", WebkitBackdropFilter:"blur(30px)",
+          borderRadius:14, border:"1px solid var(--dp-glass-border)",
+          boxShadow:"var(--dp-shadow)", padding:6, minWidth:160,
           animation:"dpFadeScale 0.15s ease-out",
         }}>
           {[
-            { Icon: Pin, label:"Pin conversation", color:isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)", action: function () {
+            { Icon: Pin, label:"Pin conversation", color:"var(--dp-text-primary)", action: function () {
               pinMut.mutate(contextMenu.id);
             }},
-            { Icon: Archive, label:"Archive", color:isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)", action: function () {
+            { Icon: Archive, label:"Archive", color:"var(--dp-text-primary)", action: function () {
               archiveMut.mutate(contextMenu.id);
             }},
-            { Icon: Trash2, label:"Delete", color:isLight?"#DC2626":"#F69A9A", action: function () {
+            { Icon: Trash2, label:"Delete", color:"var(--dp-danger)", action: function () {
               deleteMut.mutate(contextMenu.id);
             }},
           ].map(({Icon:I, label, color, action}, i) => (
-            <button key={i} onClick={()=>{action();setContextMenu(null);}} style={{
+            <button key={i} onClick={()=>{action();setContextMenu(null);}} className="dp-gh" style={{
               display:"flex", alignItems:"center", gap:10, width:"100%", padding:"10px 14px",
               background:"none", border:"none", borderRadius:10, cursor:"pointer", color,
               fontSize:13, fontWeight:500, fontFamily:"inherit", transition:"background 0.15s",
-            }}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.06)"}
-              onMouseLeave={e=>e.currentTarget.style.background="none"}
-            >
+            }}>
               <I size={16} strokeWidth={2} /> {label}
             </button>
           ))}
@@ -368,137 +389,64 @@ export default function ConversationListScreen() {
       )}
 
       {/* ═══ NEW CHAT — CONTACT PICKER ═══ */}
-      {showNewChat && (
-        <div
-          onClick={()=>setShowNewChat(false)}
-          style={{
-            position:"fixed", inset:0, zIndex:300,
-            background:"rgba(0,0,0,0.5)", backdropFilter:"blur(8px)", WebkitBackdropFilter:"blur(8px)",
-            display:"flex", alignItems:"flex-end", justifyContent:"center",
-            animation:"dpFadeIn 0.2s ease-out",
-          }}
-        >
-          <div
-            onClick={e=>e.stopPropagation()}
-            style={{
-              width:"100%",
-              maxHeight:"70vh",
-              borderRadius:"24px 24px 0 0",
-              background:isLight?"rgba(255,255,255,0.97)":"rgba(20,16,40,0.97)",
-              backdropFilter:"blur(40px)", WebkitBackdropFilter:"blur(40px)",
-              border:isLight?"1px solid rgba(139,92,246,0.12)":"1px solid rgba(255,255,255,0.08)",
-              borderBottom:"none",
-              boxShadow:"0 -8px 40px rgba(0,0,0,0.3)",
-              display:"flex", flexDirection:"column",
-              animation:"dpSlideUp 0.3s cubic-bezier(0.16,1,0.3,1)",
-            }}
-          >
-            {/* Handle bar */}
-            <div style={{ display:"flex", justifyContent:"center", padding:"12px 0 4px" }}>
-              <div style={{ width:36, height:4, borderRadius:2, background:isLight?"rgba(0,0,0,0.15)":"rgba(255,255,255,0.15)" }} />
-            </div>
-
-            {/* Header */}
-            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"8px 20px 16px" }}>
-              <span style={{ fontSize:17, fontWeight:700, color:isLight?"#1a1535":"#fff", letterSpacing:"-0.3px" }}>New Conversation</span>
-              <button onClick={()=>setShowNewChat(false)} style={{
-                width:32, height:32, borderRadius:10,
-                background:isLight?"rgba(0,0,0,0.05)":"rgba(255,255,255,0.08)",
-                border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center",
-                color:isLight?"rgba(26,21,53,0.6)":"rgba(255,255,255,0.5)",
-              }}>
-                <X size={16} strokeWidth={2.5} />
-              </button>
-            </div>
-
-            {/* Search */}
-            <div style={{ padding:"0 20px 12px" }}>
-              <div style={{
-                display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
-                borderRadius:14, background:"var(--dp-surface)",
-                border:"1px solid var(--dp-input-border)",
-              }}>
-                <Search size={16} color={isLight?"rgba(26,21,53,0.4)":"rgba(255,255,255,0.4)"} strokeWidth={2} />
-                <input
-                  value={contactSearch}
-                  onChange={e=>setContactSearch(e.target.value)}
-                  placeholder="Search contacts..."
-                  autoFocus
-                  style={{
-                    flex:1, background:"none", border:"none", outline:"none",
-                    color:isLight?"#1a1535":"#fff", fontSize:14, fontFamily:"inherit",
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Contact list */}
-            <div style={{ flex:1, overflowY:"auto", padding:"0 12px 20px" }}>
-              {buddyContacts
-                .filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase()))
-                .map(contact => (
-                <button
-                  key={contact.id}
-                  onClick={()=>{setShowNewChat(false);navigate(`/buddy-chat/${contact.id}`);}}
-                  style={{
-                    display:"flex", alignItems:"center", gap:14, width:"100%",
-                    padding:"12px 12px", borderRadius:14, border:"none",
-                    background:"none", cursor:"pointer", transition:"background 0.15s",
-                    fontFamily:"inherit", textAlign:"left",
-                  }}
-                  onMouseEnter={e=>e.currentTarget.style.background=isLight?"rgba(139,92,246,0.06)":"rgba(255,255,255,0.05)"}
-                  onMouseLeave={e=>e.currentTarget.style.background="none"}
-                >
-                  {/* Avatar */}
-                  <div style={{ position:"relative", flexShrink:0 }}>
-                    <div style={{
-                      width:44, height:44, borderRadius:14,
-                      background:`${contact.color}18`, border:`1.5px solid ${contact.color}30`,
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:16, fontWeight:700, color:contact.color,
-                    }}>
-                      {contact.initial}
-                    </div>
-                    {/* Online dot */}
-                    {contact.status === "online" && (
-                      <div style={{
-                        position:"absolute", bottom:-1, right:-1,
-                        width:12, height:12, borderRadius:"50%",
-                        background:"#22C55E",
-                        border:isLight?"2.5px solid #fff":"2.5px solid #141028",
-                      }} />
-                    )}
-                  </div>
-
-                  {/* Info */}
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontSize:14, fontWeight:600, color:isLight?"#1a1535":"#fff", marginBottom:2 }}>
-                      {contact.name}
-                    </div>
-                    <div style={{ fontSize:12, color:isLight?"rgba(26,21,53,0.55)":"rgba(255,255,255,0.5)" }}>
-                      {contact.dream}
-                    </div>
-                  </div>
-
-                  {/* Status text */}
-                  <span style={{
-                    fontSize:11, fontWeight:500, flexShrink:0,
-                    color: contact.status === "online" ? "#22C55E" : (isLight?"rgba(26,21,53,0.4)":"rgba(255,255,255,0.3)"),
-                  }}>
-                    {contact.status === "online" ? "Online" : "Offline"}
-                  </span>
-                </button>
-              ))}
-
-              {buddyContacts.filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase())).length === 0 && (
-                <div style={{ textAlign:"center", padding:"32px 0", color:isLight?"rgba(26,21,53,0.5)":"rgba(255,255,255,0.4)", fontSize:14 }}>
-                  No contacts found
-                </div>
-              )}
-            </div>
-          </div>
+      <GlassModal open={showNewChat} onClose={()=>setShowNewChat(false)} variant="bottom" title="New Conversation">
+        {/* Search */}
+        <div style={{ padding:"12px 20px" }}>
+          <GlassInput
+            value={contactSearch}
+            onChange={e=>setContactSearch(e.target.value)}
+            placeholder="Search contacts..."
+            icon={Search}
+            autoFocus
+          />
         </div>
-      )}
+
+        {/* Contact list */}
+        <div style={{ flex:1, overflowY:"auto", padding:"0 12px 20px" }}>
+          {buddyContacts
+            .filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase()))
+            .map(contact => (
+            <button
+              key={contact.id}
+              onClick={()=>{setShowNewChat(false);navigate(`/buddy-chat/${contact.id}`);}}
+              className="dp-gh"
+              style={{
+                display:"flex", alignItems:"center", gap:14, width:"100%",
+                padding:"12px 12px", borderRadius:14, border:"none",
+                background:"none", cursor:"pointer", transition:"background 0.15s",
+                fontFamily:"inherit", textAlign:"left",
+              }}
+            >
+              {/* Avatar */}
+              <Avatar name={contact.name} size={44} color={contact.color} online={contact.status === "online"} />
+
+              {/* Info */}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:14, fontWeight:600, color:"var(--dp-text)", marginBottom:2 }}>
+                  {contact.name}
+                </div>
+                <div style={{ fontSize:12, color:"var(--dp-text-muted)" }}>
+                  {contact.dream}
+                </div>
+              </div>
+
+              {/* Status text */}
+              <span style={{
+                fontSize:11, fontWeight:500, flexShrink:0,
+                color: contact.status === "online" ? "var(--dp-online)" : "var(--dp-text-muted)",
+              }}>
+                {contact.status === "online" ? "Online" : "Offline"}
+              </span>
+            </button>
+          ))}
+
+          {buddyContacts.filter(c=>c.name.toLowerCase().includes(contactSearch.toLowerCase())).length === 0 && (
+            <div style={{ textAlign:"center", padding:"32px 0", color:"var(--dp-text-muted)", fontSize:14 }}>
+              No contacts found
+            </div>
+          )}
+        </div>
+      </GlassModal>
 
       {/* ═══ STYLES ═══ */}
       <style>{`
@@ -531,11 +479,13 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
 
   return (
     <div className={`dp-a ${mounted?"dp-s":""}`} style={{ animationDelay:`${delay}ms` }}>
-      <div
-        className="dp-g dp-gh"
-        style={{ padding:14, marginBottom:10, cursor:"pointer", position:"relative" }}
+      <div onContextMenu={onContext}>
+      <GlassCard
+        hover
+        padding={14}
+        mb={10}
+        style={{ cursor:"pointer", position:"relative" }}
         onClick={onClick}
-        onContextMenu={onContext}
       >
         <div style={{ display:"flex", gap:12 }}>
           {/* Type icon */}
@@ -544,26 +494,26 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
             display:"flex", alignItems:"center", justifyContent:"center",
             background:`${type.bg}15`, border:`1px solid ${type.bg}20`,
           }}>
-            <TypeIcon size={20} color={isLight ? ({"#C4B5FD":"#6D28D9","#FCD34D":"#B45309","#5DE5A8":"#059669","#F69A9A":"#DC2626","#5EEAD4":"#0D9488"}[type.color] || type.color) : type.color} strokeWidth={2} />
+            <TypeIcon size={20} color={adaptColor(type.color, isLight)} strokeWidth={2} />
           </div>
 
           {/* Content */}
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:4 }}>
               <div style={{
-                fontSize:14, fontWeight:600, color:isLight?"#1a1535":"#fff",
+                fontSize:14, fontWeight:600, color:"var(--dp-text)",
                 overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
                 flex:1, marginRight:8,
               }}>
-                {conv.title}
+                {(conv.title || "").replace(/^Chat with\s+/i, "")}
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:6, flexShrink:0 }}>
-                <span style={{ fontSize:12, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)" }}>{timeAgo(conv.updatedAt)}</span>
+                <span style={{ fontSize:12, color:"var(--dp-text-secondary)" }}>{timeAgo(conv.updatedAt)}</span>
                 {conv.unread > 0 && (
                   <div className="dp-unread-dot" style={{
                     minWidth:18, height:18, borderRadius:9, padding:"0 5px",
-                    background:"#8B5CF6", display:"flex", alignItems:"center", justifyContent:"center",
-                    fontSize:12, fontWeight:700, color:"#fff",
+                    background:BRAND.purple, display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:12, fontWeight:700, color:BRAND.white,
                   }}>{conv.unread}</div>
                 )}
               </div>
@@ -571,7 +521,7 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
 
             {/* Last message preview */}
             <div style={{
-              fontSize:13, color: conv.unread > 0 ? (isLight?"rgba(26,21,53,0.85)":"rgba(255,255,255,0.85)") : (isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"),
+              fontSize:13, color: conv.unread > 0 ? "var(--dp-text-primary)" : "var(--dp-text-secondary)",
               fontWeight: conv.unread > 0 ? 500 : 400,
               overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap",
               marginBottom:6, lineHeight:1.4,
@@ -582,14 +532,14 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
             {/* Meta row */}
             <div style={{ display:"flex", alignItems:"center", gap:8 }}>
               <span style={{
-                fontSize:12, fontWeight:500, color:isLight ? ({"#C4B5FD":"#6D28D9","#FCD34D":"#B45309","#5DE5A8":"#059669","#F69A9A":"#DC2626","#5EEAD4":"#0D9488"}[type.color] || type.color) : type.color,
+                fontSize:12, fontWeight:500, color:adaptColor(type.color, isLight),
                 padding:"2px 8px", borderRadius:8,
                 background:`${type.bg}10`,
               }}>
                 {type.label}
               </span>
               {conv.dreamTitle && (
-                <span style={{ fontSize:12, color:isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
+                <span style={{ fontSize:12, color:"var(--dp-text-secondary)", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>
                   {conv.dreamTitle}
                 </span>
               )}
@@ -598,16 +548,17 @@ function ConvCard({ conv, index, mounted, delay, isLight, onContext, onClick }) 
 
           {/* Chevron */}
           <div style={{ display:"flex", alignItems:"center", flexShrink:0 }}>
-            <ChevronRight size={16} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} />
+            <ChevronRight size={16} color="var(--dp-text-secondary)" />
           </div>
         </div>
 
         {/* Pin indicator */}
         {conv.isPinned && (
           <div style={{ position:"absolute", top:6, right:6 }}>
-            <Pin size={11} color={isLight?"rgba(26,21,53,0.72)":"rgba(255,255,255,0.85)"} strokeWidth={2.5} style={{ transform:"rotate(45deg)" }} />
+            <Pin size={11} color="var(--dp-text-secondary)" strokeWidth={2.5} style={{ transform:"rotate(45deg)" }} />
           </div>
         )}
+      </GlassCard>
       </div>
     </div>
   );

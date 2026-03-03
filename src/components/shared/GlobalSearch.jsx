@@ -1,18 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, X, Target, MessageCircle, Users, Clock, ArrowRight, Loader } from "lucide-react";
-import { useTheme } from "../../context/ThemeContext";
 import { apiGet } from "../../services/api";
 import { SEARCH } from "../../services/endpoints";
 import { sanitizeSearch } from "../../utils/sanitize";
+import { BRAND } from "../../styles/colors";
 
 const CATEGORY_ICONS = { dreams: Target, messages: MessageCircle, users: Users, goals: Target, tasks: Target, calendar: Clock };
 const CATEGORY_LABELS = { dreams: "Dreams", messages: "Messages", users: "People", goals: "Goals", tasks: "Tasks", calendar: "Calendar" };
 
 export default function GlobalSearch({ isOpen, onClose }) {
   const navigate = useNavigate();
-  const { resolved } = useTheme();
-  const isLight = resolved === "light";
   const inputRef = useRef(null);
   const [query, setQuery] = useState("");
   const [recentSearches, setRecentSearches] = useState(() => {
@@ -112,7 +110,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 500,
-      background: isLight ? "rgba(240,236,255,0.95)" : "rgba(3,1,10,0.95)",
+      background: "var(--dp-overlay)",
       backdropFilter: "blur(20px)",
       display: "flex", flexDirection: "column",
       animation: "dpFadeScale 0.2s ease-out",
@@ -128,7 +126,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
           border: "1px solid var(--dp-input-border)",
           borderRadius: 14, padding: "10px 14px",
         }}>
-          <Search size={18} style={{ color: isLight ? "rgba(26,21,53,0.4)" : "rgba(255,255,255,0.4)", flexShrink: 0 }} />
+          <Search size={18} style={{ color: "var(--dp-text-muted)", flexShrink: 0 }} />
           <input
             ref={inputRef}
             value={query}
@@ -136,22 +134,21 @@ export default function GlobalSearch({ isOpen, onClose }) {
             placeholder="Search dreams, chats, people..."
             style={{
               flex: 1, background: "none", border: "none", outline: "none",
-              fontSize: 14, color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)",
-              fontFamily: "Inter, sans-serif",
+              fontSize: 14, color: "var(--dp-text)",
             }}
           />
           {query && (
             <button onClick={() => setQuery("")} style={{
               background: "none", border: "none", cursor: "pointer", padding: 2,
             }}>
-              <X size={16} style={{ color: isLight ? "rgba(26,21,53,0.4)" : "rgba(255,255,255,0.4)" }} />
+              <X size={16} style={{ color: "var(--dp-text-muted)" }} />
             </button>
           )}
         </div>
         <button onClick={onClose} style={{
           background: "none", border: "none", cursor: "pointer",
-          color: isLight ? "rgba(26,21,53,0.6)" : "rgba(255,255,255,0.6)",
-          fontSize: 14, fontWeight: 500, fontFamily: "Inter, sans-serif",
+          color: "var(--dp-text-secondary)",
+          fontSize: 14, fontWeight: 500,
         }}>Cancel</button>
       </div>
 
@@ -164,7 +161,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
           <div>
             <div style={{
               fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px",
-              color: isLight ? "rgba(26,21,53,0.4)" : "rgba(255,255,255,0.3)",
+              color: "var(--dp-text-muted)",
               marginBottom: 8, marginTop: 8,
             }}>Recent</div>
             {recentSearches.map((s, i) => (
@@ -173,8 +170,8 @@ export default function GlobalSearch({ isOpen, onClose }) {
                 padding: "10px 12px", background: "none", border: "none", cursor: "pointer",
                 borderRadius: 10, textAlign: "left",
               }}>
-                <Clock size={15} style={{ color: isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.3)" }} />
-                <span style={{ fontSize: 14, color: isLight ? "rgba(26,21,53,0.7)" : "rgba(255,255,255,0.6)" }}>{s}</span>
+                <Clock size={15} style={{ color: "var(--dp-text-muted)" }} />
+                <span style={{ fontSize: 14, color: "var(--dp-text-secondary)" }}>{s}</span>
               </button>
             ))}
           </div>
@@ -182,15 +179,15 @@ export default function GlobalSearch({ isOpen, onClose }) {
 
         {query.trim().length >= 2 && searching && (
           <div style={{ textAlign: "center", marginTop: 60 }}>
-            <Loader size={24} style={{ color: "#8B5CF6", animation: "spin 1s linear infinite" }} />
+            <Loader size={24} style={{ color: BRAND.purple, animation: "spin 1s linear infinite" }} />
             <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
           </div>
         )}
 
         {query.trim().length >= 2 && !searching && !hasResults && (
           <div style={{ textAlign: "center", marginTop: 60 }}>
-            <Search size={36} style={{ color: isLight ? "rgba(26,21,53,0.15)" : "rgba(255,255,255,0.15)", marginBottom: 12 }} />
-            <p style={{ fontSize: 15, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>
+            <Search size={36} style={{ color: "var(--dp-text-muted)", marginBottom: 12 }} />
+            <p style={{ fontSize: 15, color: "var(--dp-text-tertiary)" }}>
               No results for "{query}"
             </p>
           </div>
@@ -203,32 +200,32 @@ export default function GlobalSearch({ isOpen, onClose }) {
               <div style={{
                 display: "flex", alignItems: "center", gap: 6, marginBottom: 8,
               }}>
-                <CategoryIcon size={14} style={{ color: "#8B5CF6" }} />
+                <CategoryIcon size={14} style={{ color: BRAND.purple }} />
                 <span style={{
                   fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.5px",
-                  color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)",
+                  color: "var(--dp-text-tertiary)",
                 }}>{CATEGORY_LABELS[category]}</span>
               </div>
               {items.map(item => (
                 <button key={item.id} onClick={() => handleSelect(item)} style={{
                   display: "flex", alignItems: "center", gap: 12, width: "100%",
                   padding: "12px 14px",
-                  background: isLight ? "rgba(255,255,255,0.5)" : "rgba(255,255,255,0.04)",
-                  border: `1px solid ${isLight ? "rgba(139,92,246,0.08)" : "rgba(255,255,255,0.05)"}`,
+                  background: "var(--dp-glass-bg)",
+                  border: "1px solid var(--dp-glass-border)",
                   borderRadius: 14, cursor: "pointer", marginBottom: 8, textAlign: "left",
                   transition: "background 0.2s",
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{
                       fontSize: 14, fontWeight: 600,
-                      color: isLight ? "#1A1535" : "rgba(255,255,255,0.95)",
+                      color: "var(--dp-text)",
                     }}>{item.title}</div>
                     <div style={{
                       fontSize: 12, marginTop: 2,
-                      color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)",
+                      color: "var(--dp-text-tertiary)",
                     }}>{item.desc}</div>
                   </div>
-                  <ArrowRight size={16} style={{ color: isLight ? "rgba(26,21,53,0.3)" : "rgba(255,255,255,0.2)", flexShrink: 0 }} />
+                  <ArrowRight size={16} style={{ color: "var(--dp-text-muted)", flexShrink: 0 }} />
                 </button>
               ))}
             </div>
@@ -238,7 +235,7 @@ export default function GlobalSearch({ isOpen, onClose }) {
         {query.trim().length < 2 && recentSearches.length === 0 && (
           <div style={{ textAlign: "center", marginTop: 60 }}>
             <div style={{ fontSize: 36, marginBottom: 12 }}>🔍</div>
-            <p style={{ fontSize: 15, color: isLight ? "rgba(26,21,53,0.5)" : "rgba(255,255,255,0.4)" }}>
+            <p style={{ fontSize: 15, color: "var(--dp-text-tertiary)" }}>
               Search dreams, conversations, and friends
             </p>
           </div>

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { apiGet, apiPost, apiDelete, setToken, getToken, clearAuth } from "../services/api";
+import { Capacitor } from "@capacitor/core";
+import { apiGet, apiPost, apiDelete, setToken, getToken, clearAuth, initToken, refreshAccessToken } from "../services/api";
 import { AUTH, USERS } from "../services/endpoints";
 import { subscribeToPush } from "../services/pushNotifications";
 
@@ -30,23 +31,42 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
-  // ─── On mount: check for existing token ───────────────────────
+  // ─── On mount: restore session ─────────────────────────────────
   useEffect(function () {
-    var token = getToken();
-    if (!token) {
-      setIsLoading(false);
-      return;
-    }
-    fetchUser()
-      .catch(function () {
-        // Token invalid/expired
-        clearAuth();
+    if (Capacitor.isNativePlatform()) {
+      // Native: load access token from Preferences, then fetch user
+      initToken().then(function (token) {
+        if (token) return fetchUser();
+        throw new Error("No token");
+      }).catch(function () {
+        // Try refreshing with stored refresh token
+        return refreshAccessToken().then(function () {
+          return fetchUser();
+        });
+      }).catch(function () {
         setIsAuthenticated(false);
         setUser(null);
-      })
-      .finally(function () {
+      }).finally(function () {
         setIsLoading(false);
       });
+    } else {
+      // Web: access token is memory-only, attempt silent refresh via httpOnly cookie
+      initToken().then(function (legacyToken) {
+        if (legacyToken) {
+          // Legacy token found during migration — try using it directly
+          return fetchUser();
+        }
+        // No legacy token — try silent refresh via httpOnly refresh cookie
+        return refreshAccessToken().then(function () {
+          return fetchUser();
+        });
+      }).catch(function () {
+        setIsAuthenticated(false);
+        setUser(null);
+      }).finally(function () {
+        setIsLoading(false);
+      });
+    }
   }, [fetchUser]);
 
   // ─── Login ────────────────────────────────────────────────────
@@ -57,10 +77,12 @@ export function AuthProvider({ children }) {
         if (data.tfaRequired) {
           return { tfaRequired: true, email: email };
         }
-        // Backend returns { key: "token_value" } from dj-rest-auth
-        var token = data.key || data.token;
-        if (!token) throw new Error("No token received");
-        setToken(token);
+        // JWT mode: backend returns { access: "...", refresh?: "..." }
+        // Refresh token is also set as httpOnly cookie on web
+        // Legacy fallback: { key: "..." } from DRF Token auth
+        var access = data.access || data.accessToken || data.key || data.token;
+        if (!access) throw new Error("No token received");
+        setToken(access, data.refresh);
         return fetchUser();
       });
   }, [fetchUser]);
@@ -71,11 +93,11 @@ export function AuthProvider({ children }) {
       email: email,
       password1: password1,
       password2: password2,
-      displayName: displayName,
+      display_name: displayName,
     }).then(function (data) {
-      var token = data.key || data.token;
-      if (token) {
-        setToken(token);
+      var access = data.access || data.accessToken || data.key || data.token;
+      if (access) {
+        setToken(access, data.refresh);
         return fetchUser();
       }
       return data;
@@ -85,11 +107,11 @@ export function AuthProvider({ children }) {
   // ─── Social login (Google / Apple) ────────────────────────────
   var socialLogin = useCallback(function (provider, accessToken) {
     var url = provider === "apple" ? AUTH.APPLE : AUTH.GOOGLE;
-    return apiPost(url, { accessToken: accessToken })
+    return apiPost(url, { access_token: accessToken })
       .then(function (data) {
-        var token = data.key || data.token;
-        if (!token) throw new Error("No token received");
-        setToken(token);
+        var access = data.access || data.accessToken || data.key || data.token;
+        if (!access) throw new Error("No token received");
+        setToken(access, data.refresh);
         return fetchUser();
       });
   }, [fetchUser]);
@@ -138,7 +160,7 @@ export function AuthProvider({ children }) {
 
   // ─── Change email ─────────────────────────────────────────────
   var changeEmail = useCallback(function (newEmail, password) {
-    return apiPost(USERS.CHANGE_EMAIL, { newEmail: newEmail, password: password });
+    return apiPost(USERS.CHANGE_EMAIL, { new_email: newEmail, password: password });
   }, []);
 
   // ─── Delete account (GDPR) ────────────────────────────────────

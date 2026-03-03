@@ -44,7 +44,7 @@ export default function useInfiniteList(opts) {
   // Sync first-page results into local state
   useEffect(function () {
     if (!firstPage.data) return;
-    var results = firstPage.data.results || firstPage.data;
+    var results = firstPage.data.results || firstPage.data.activities || firstPage.data;
     if (!Array.isArray(results)) results = [];
     setItems(results);
     offsetRef.current = results.length;
@@ -62,7 +62,7 @@ export default function useInfiniteList(opts) {
     var joiner = url.includes("?") ? "&" : "?";
     apiGet(url + joiner + "limit=" + limit + "&offset=" + offsetRef.current)
       .then(function (data) {
-        var results = data.results || data;
+        var results = data.results || data.activities || data;
         if (!Array.isArray(results)) results = [];
         if (results.length > 0) {
           setItems(function (prev) { return prev.concat(results); });

@@ -126,5 +126,25 @@ export var GRADIENT_SHADOWS = {
   modal:       "0 20px 60px rgba(0,0,0,0.5)",
 };
 
+// ─── Dream Calendar Palette (12 vibrant, distinct colors) ────────
+// Used for auto-assigning dream colors on the calendar.
+// Each entry: { dark, light } for theme adaptation.
+export var DREAM_PALETTE = [
+  { dark: "#8B5CF6", light: "#7C3AED" },   // Purple
+  { dark: "#14B8A6", light: "#0D9488" },   // Teal
+  { dark: "#F59E0B", light: "#D97706" },   // Amber
+  { dark: "#EC4899", light: "#BE185D" },   // Pink
+  { dark: "#3B82F6", light: "#2563EB" },   // Blue
+  { dark: "#10B981", light: "#059669" },   // Emerald
+  { dark: "#EF4444", light: "#DC2626" },   // Red
+  { dark: "#6366F1", light: "#4338CA" },   // Indigo
+  { dark: "#F97316", light: "#EA580C" },   // Orange
+  { dark: "#06B6D4", light: "#0891B2" },   // Cyan
+  { dark: "#A855F7", light: "#9333EA" },   // Violet
+  { dark: "#84CC16", light: "#65A30D" },   // Lime
+  { dark: "#E879F9", light: "#C026D3" },   // Fuchsia
+  { dark: "#FB923C", light: "#C2410C" },   // Tangerine
+];
+
 // ─── Contact / Avatar color cycle ───────────────────────────────
 export var CONTACT_COLORS = ["#14B8A6", "#EC4899", "#F59E0B", "#6366F1", "#10B981", "#8B5CF6", "#EF4444"];

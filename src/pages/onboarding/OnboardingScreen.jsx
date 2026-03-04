@@ -304,16 +304,29 @@ export default function OnboardingScreen() {
           )}
           <div style={{ flex: 1 }}>
             {isLastSlide ? (
-              <GradientButton
-                gradient="primary"
-                onClick={completeOnboarding}
-                fullWidth
-                size="lg"
-                icon={Rocket}
-                style={{ height: 56, borderRadius: 28, fontSize: 17, letterSpacing: "-0.2px" }}
-              >
-                {t("onboarding.getStarted")}
-              </GradientButton>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <GradientButton
+                  gradient="primary"
+                  onClick={function () { navigate("/onboarding/quiz"); }}
+                  fullWidth
+                  size="lg"
+                  icon={Sparkles}
+                  style={{ height: 56, borderRadius: 28, fontSize: 17, letterSpacing: "-0.2px" }}
+                >
+                  {t("onboarding.discoverType") || "Discover Your Dreamer Type"}
+                </GradientButton>
+                <button
+                  onClick={completeOnboarding}
+                  style={{
+                    background: "transparent", border: "none",
+                    color: "var(--dp-text-muted)", fontSize: 14, fontWeight: 600,
+                    cursor: "pointer", fontFamily: "inherit", padding: "10px 0",
+                    textAlign: "center", minHeight: 44,
+                  }}
+                >
+                  {t("onboarding.skipQuiz") || "Skip for now"}
+                </button>
+              </div>
             ) : (
               <GradientButton
                 gradient="primary"

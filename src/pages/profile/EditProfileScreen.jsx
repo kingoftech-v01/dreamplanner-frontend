@@ -145,10 +145,11 @@ export default function EditProfileScreen(){
   );
 
   return(
-    <div style={{width:"100%",height:"100%",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+    <div className="dp-desktop-main" style={{position:"absolute",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* APPBAR */}
       <GlassAppBar
+        className="dp-desktop-header"
         left={<IconButton icon={ArrowLeft} onClick={() => navigate("/profile")} label="Go back" />}
         title="Edit Profile"
         right={

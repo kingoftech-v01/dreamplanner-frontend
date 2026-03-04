@@ -1,8 +1,9 @@
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import EmailVerificationGate from "./EmailVerificationGate";
 
 export default function ProtectedRoute({ children }) {
-  var { isAuthenticated, isLoading } = useAuth();
+  var { isAuthenticated, isLoading, user } = useAuth();
 
   if (isLoading) {
     return (
@@ -21,6 +22,11 @@ export default function ProtectedRoute({ children }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Gate: email must be verified to use the platform
+  if (user && user.emailVerified === false) {
+    return <EmailVerificationGate email={user.email} />;
   }
 
   return children;

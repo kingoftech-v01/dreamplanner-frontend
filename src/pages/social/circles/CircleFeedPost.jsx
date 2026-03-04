@@ -3,6 +3,7 @@ import Avatar from "../../../components/shared/Avatar";
 import { getAvatarEquipProps } from "../../../utils/equippedItems";
 import GlassCard from "../../../components/shared/GlassCard";
 import ExpandableText from "../../../components/shared/ExpandableText";
+import PollCard from "../../../components/shared/PollCard";
 import { Heart, Flame, Star, MoreVertical, Edit3, Trash2 } from "lucide-react";
 import { sanitizeText } from "../../../utils/sanitize";
 
@@ -23,7 +24,7 @@ function timeAgo(ds) {
   return Math.floor(s / 86400) + "d";
 }
 
-export default function CircleFeedPost({ post, userId, onReact, onEdit, onDelete }) {
+export default function CircleFeedPost({ post, userId, onReact, onEdit, onDelete, onVote, votingPostId }) {
   var [showMenu, setShowMenu] = useState(false);
   var author = post.author || post.user || {};
   var authorName = author.username || author.displayName || author.name || "Member";
@@ -75,6 +76,15 @@ export default function CircleFeedPost({ post, userId, onReact, onEdit, onDelete
 
       {post.content && (
         <ExpandableText text={sanitizeText(post.content)} maxLines={5} style={{ fontSize: 14, lineHeight: 1.55, color: "var(--dp-text)", marginBottom: 8 }} />
+      )}
+
+      {/* Poll (if attached) */}
+      {post.poll && (
+        <PollCard
+          poll={post.poll}
+          onVote={function (optionIds) { onVote && onVote(post.id, optionIds); }}
+          isSubmitting={votingPostId === post.id}
+        />
       )}
 
       {/* Reaction buttons — all 4 types */}

@@ -231,8 +231,11 @@ export default function RegisterScreen() {
 
     setSubmitting(true);
     register(email, password, confirmPassword, sanitizeText(displayName, 50))
-      .then(function () {
-        navigate("/onboarding");
+      .then(function (result) {
+        // User is logged in (token issued), but email may not be verified yet.
+        // The platform will be gated until email is verified.
+        // Navigate to home — the app will show the email verification gate.
+        navigate("/");
       })
       .catch(function (err) {
         if (err.fieldErrors) {

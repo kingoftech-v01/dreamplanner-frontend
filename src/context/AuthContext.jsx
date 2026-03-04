@@ -95,12 +95,15 @@ export function AuthProvider({ children }) {
       password2: password2,
       display_name: displayName,
     }).then(function (data) {
+      // 204 No Content or no data — email verification required, no tokens issued
+      if (!data) return { emailVerificationRequired: true };
       var access = data.access || data.accessToken || data.key || data.token;
       if (access) {
         setToken(access, data.refresh);
         return fetchUser();
       }
-      return data;
+      // Server responded but no tokens — email verification required
+      return { emailVerificationRequired: true };
     });
   }, [fetchUser]);
 

@@ -23,10 +23,11 @@ import Avatar from "../../components/shared/Avatar";
 import ExpandableText from "../../components/shared/ExpandableText";
 import CircleFeedPost from "./circles/CircleFeedPost";
 import CircleInviteSheet from "./circles/CircleInviteSheet";
+import { PollCreateForm } from "../../components/shared/PollCard";
 import {
   ArrowLeft, MessageCircle, Users, Send, Flame, Trash2,
   LogOut, Crown, Shield, Star, Target, UserPlus,
-  ArrowUp, ArrowDown, UserMinus
+  ArrowUp, ArrowDown, UserMinus, ChevronRight, BarChart3
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
@@ -68,6 +69,9 @@ export default function CircleDetailScreen() {
   var [editingPost, setEditingPost] = useState(null);
   var [editContent, setEditContent] = useState("");
   var [deletePostTarget, setDeletePostTarget] = useState(null);
+  var [showPollForm, setShowPollForm] = useState(false);
+  var [pollData, setPollData] = useState({ question: "", options: ["", ""], allowsMultiple: false, endsAt: "" });
+  var [votingPostId, setVotingPostId] = useState(null);
 
   useEffect(function () { setTimeout(function () { setMounted(true); }, 100); }, []);
 
@@ -104,9 +108,23 @@ export default function CircleDetailScreen() {
 
   // ── Mutations ──
   var createPostMut = useMutation({
-    mutationFn: function (content) { return apiPost(CIRCLES.POSTS(id), { content: content }); },
-    onSuccess: function () { qc.invalidateQueries({ queryKey: ["circle-feed", id] }); setNewPost(""); showToast("Post shared!", "success"); },
+    mutationFn: function (payload) { return apiPost(CIRCLES.POSTS(id), payload); },
+    onSuccess: function () {
+      qc.invalidateQueries({ queryKey: ["circle-feed", id] });
+      setNewPost("");
+      setShowPollForm(false);
+      setPollData({ question: "", options: ["", ""], allowsMultiple: false, endsAt: "" });
+      showToast("Post shared!", "success");
+    },
     onError: function (err) { showToast(err.userMessage || err.message || "Failed to post", "error"); },
+  });
+
+  var voteMut = useMutation({
+    mutationFn: function (data) { return apiPost(CIRCLES.POST_VOTE(id, data.postId), { option_ids: data.optionIds }); },
+    onMutate: function (data) { setVotingPostId(data.postId); },
+    onSuccess: function () { qc.invalidateQueries({ queryKey: ["circle-feed", id] }); },
+    onSettled: function () { setVotingPostId(null); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to vote", "error"); },
   });
 
   var reactMut = useMutation({
@@ -154,7 +172,22 @@ export default function CircleDetailScreen() {
   function handlePost() {
     var text = sanitizeText(newPost, 5000);
     if (!text) return;
-    createPostMut.mutate(text);
+    var payload = { content: text };
+    if (showPollForm && pollData.question.trim() && pollData.options.filter(function (o) { return o.trim(); }).length >= 2) {
+      payload.poll = {
+        question: pollData.question,
+        options: pollData.options.filter(function (o) { return o.trim(); }).map(function (o) { return { text: o }; }),
+        allowsMultiple: pollData.allowsMultiple,
+      };
+      if (pollData.endsAt) {
+        payload.poll.endsAt = new Date(pollData.endsAt).toISOString();
+      }
+    }
+    createPostMut.mutate(payload);
+  }
+
+  function handleVote(postId, optionIds) {
+    voteMut.mutate({ postId: postId, optionIds: optionIds });
   }
 
   function handleSaveEdit() {
@@ -244,22 +277,50 @@ export default function CircleDetailScreen() {
                   <GlassInput
                     value={newPost}
                     onChange={function (e) { setNewPost(e.target.value); }}
-                    placeholder="Share an update..."
+                    placeholder={showPollForm ? "Add context for your poll..." : "Share an update..."}
                     multiline
                     style={{ flex: 1 }}
                     onKeyDown={function (e) { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handlePost(); } }}
                   />
-                  <button onClick={handlePost} disabled={!newPost.trim() || createPostMut.isPending} style={{
-                    width: 38, height: 38, borderRadius: 12, border: "none", flexShrink: 0,
-                    background: newPost.trim() ? "var(--dp-accent)" : "var(--dp-surface)",
-                    color: newPost.trim() ? "#fff" : "var(--dp-text-muted)",
-                    cursor: newPost.trim() ? "pointer" : "default",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    transition: "all 0.2s", fontFamily: "inherit",
-                  }}>
-                    <Send size={16} strokeWidth={2} />
-                  </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                    <button
+                      onClick={function () { setShowPollForm(!showPollForm); }}
+                      title={showPollForm ? "Remove poll" : "Add poll"}
+                      style={{
+                        width: 38, height: 38, borderRadius: 12, border: "none",
+                        background: showPollForm ? "var(--dp-accent)" + "18" : "var(--dp-surface)",
+                        color: showPollForm ? "var(--dp-accent)" : "var(--dp-text-muted)",
+                        cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.2s", fontFamily: "inherit",
+                      }}
+                    >
+                      <BarChart3 size={16} strokeWidth={2} />
+                    </button>
+                    <button onClick={handlePost} disabled={!newPost.trim() || createPostMut.isPending} style={{
+                      width: 38, height: 38, borderRadius: 12, border: "none",
+                      background: newPost.trim() ? "var(--dp-accent)" : "var(--dp-surface)",
+                      color: newPost.trim() ? "#fff" : "var(--dp-text-muted)",
+                      cursor: newPost.trim() ? "pointer" : "default",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      transition: "all 0.2s", fontFamily: "inherit",
+                    }}>
+                      <Send size={16} strokeWidth={2} />
+                    </button>
+                  </div>
                 </div>
+
+                {/* Poll creation form */}
+                {showPollForm && (
+                  <PollCreateForm
+                    pollData={pollData}
+                    onChange={setPollData}
+                    onRemove={function () {
+                      setShowPollForm(false);
+                      setPollData({ question: "", options: ["", ""], allowsMultiple: false, endsAt: "" });
+                    }}
+                  />
+                )}
               </GlassCard>
             )}
 
@@ -284,6 +345,8 @@ export default function CircleDetailScreen() {
                   onReact={function (postId, type) { reactMut.mutate({ postId: postId, type: type }); }}
                   onEdit={function (p) { setEditingPost(p); setEditContent(p.content || ""); }}
                   onDelete={function (p) { setDeletePostTarget(p); }}
+                  onVote={handleVote}
+                  votingPostId={votingPostId}
                 />
               );
             })}
@@ -296,6 +359,26 @@ export default function CircleDetailScreen() {
         {/* ═══ CHALLENGES TAB ═══ */}
         {activeTab === "challenges" && (
           <>
+            {/* View All / Create header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+              <button onClick={function () { navigate("/circle/" + id + "/challenges"); }} style={{
+                display: "flex", alignItems: "center", gap: 4, background: "none", border: "none",
+                cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
+                color: "var(--dp-accent)",
+              }}>
+                View All Challenges <ChevronRight size={14} />
+              </button>
+              {isAdmin && (
+                <button onClick={function () { navigate("/circle/" + id + "/challenges"); }} style={{
+                  display: "flex", alignItems: "center", gap: 4, background: "none", border: "none",
+                  cursor: "pointer", fontFamily: "inherit", fontSize: 12, fontWeight: 600,
+                  color: "var(--dp-accent)",
+                }}>
+                  + Create
+                </button>
+              )}
+            </div>
+
             {challengesQuery.isLoading && (
               <div style={{ textAlign: "center", padding: 32, color: "var(--dp-text-muted)", fontSize: 13 }}>Loading challenges...</div>
             )}
@@ -319,7 +402,7 @@ export default function CircleDetailScreen() {
               }
 
               return (
-                <GlassCard key={ch.id} padding={16} mb={10}>
+                <GlassCard key={ch.id} padding={16} mb={10} hover onClick={function () { navigate("/circle/" + id + "/challenges"); }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                     <div style={{
                       width: 40, height: 40, borderRadius: 12, flexShrink: 0,
@@ -351,7 +434,7 @@ export default function CircleDetailScreen() {
                         gradient="primaryDark"
                         size="sm"
                         disabled={challengeJoinMut.isPending}
-                        onClick={function () { challengeJoinMut.mutate(ch.id); }}
+                        onClick={function (e) { e.stopPropagation(); challengeJoinMut.mutate(ch.id); }}
                       >
                         Join
                       </GradientButton>

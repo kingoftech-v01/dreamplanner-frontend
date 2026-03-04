@@ -8,12 +8,15 @@ import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { clipboardWrite } from "../../services/native";
+import { playSound } from "../../services/sounds";
 import { sanitizeText } from "../../utils/sanitize";
 import ErrorState from "../../components/shared/ErrorState";
 import GlassAppBar from "../../components/shared/GlassAppBar";
 import IconButton from "../../components/shared/IconButton";
 import Avatar from "../../components/shared/Avatar";
 import { GRADIENTS } from "../../styles/colors";
+import EmojiGifPicker, { isGifUrl, GifMessage } from "../../components/shared/EmojiGifPicker";
+import PreCallScreen from "../../components/shared/PreCallScreen";
 import {
   ArrowLeft, Users, Send, ChevronDown, MoreVertical,
   Copy, Check, Search, X, Phone, Video,
@@ -43,6 +46,9 @@ export default function CircleChatScreen(){
   var{showToast}=useToast();
   var queryClient=useQueryClient();
   var userInitial=(user?.displayName||user?.username||"?")[0].toUpperCase();
+
+  // ─── Pre-call screen state ───────────────────────────────────
+  var [preCall, setPreCall] = useState(null); // null | { type: "voice"|"video" }
 
   // ─── Circle info ─────────────────────────────────────────────
   var circleQuery=useQuery({
@@ -240,15 +246,9 @@ export default function CircleChatScreen(){
   useEffect(()=>{endRef.current?.scrollIntoView({behavior:"smooth"});},[messages]);
   const handleScroll=()=>{if(!scrollRef.current)return;const{scrollTop,scrollHeight,clientHeight}=scrollRef.current;setShowScroll(scrollHeight-scrollTop-clientHeight>100);};
 
-  useEffect(()=>{
-    if(!emojiOpen)return;
-    const handler=()=>setEmojiOpen(false);
-    const t=setTimeout(()=>document.addEventListener("click",handler),0);
-    return()=>{clearTimeout(t);document.removeEventListener("click",handler);};
-  },[emojiOpen]);
-
   var handleSend=function(){
     var text=sanitizeText(input,5000);if(!text||!id)return;
+    playSound("send");
     var displayName=(user?.displayName||user?.username)||"You";
     // Optimistic update
     setMessages(function(prev){return[...prev,{
@@ -279,7 +279,27 @@ export default function CircleChatScreen(){
   };
 
   var handleCopy=function(msgId,c){clipboardWrite(c);setCopiedId(msgId);setTimeout(function(){setCopiedId(null);},2000);};
-  const insertEmoji=(emoji)=>{setInput(prev=>prev+emoji);setEmojiOpen(false);inputRef.current?.focus();};
+  const insertEmoji=(emoji)=>{setInput(prev=>prev+emoji);inputRef.current?.focus();};
+  var handleGifSend=function(gifUrl){
+    if(!gifUrl||!id)return;
+    playSound("send");
+    var displayName=(user?.displayName||user?.username)||"You";
+    setMessages(function(prev){return[...prev,{
+      id:Date.now()+"u",content:gifUrl,
+      senderId:String(user?.id),senderName:displayName,
+      senderInitial:displayName[0].toUpperCase(),
+      senderColor:getMemberColor(user?.id),
+      isUser:true,time:new Date(),
+    }];});
+    setEmojiOpen(false);
+    if(rtmChannelRef.current){
+      rtmChannelRef.current.sendMessage(gifUrl,{
+        senderId:String(user?.id),senderName:displayName,
+      }).catch(function(){});
+    }
+    apiPost(CIRCLES.CHAT_SEND(id),{content:gifUrl})
+      .catch(function(err){showToast(err.userMessage||err.message||"Failed to send","error");});
+  };
 
   // Typing text
   var typingText="";
@@ -293,10 +313,11 @@ export default function CircleChatScreen(){
   }
 
   return(
-    <div style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+    <div className="dp-desktop-main" style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* ═══ APP BAR ═══ */}
       <GlassAppBar
+        className="dp-desktop-header"
         left={
           <>
             <IconButton icon={ArrowLeft} onClick={()=>navigate("/circle/"+id)} label="Go back" />
@@ -314,14 +335,10 @@ export default function CircleChatScreen(){
         right={
           <div style={{display:"flex",gap:6}}>
             <IconButton icon={Phone} label="Voice call" onClick={function(){
-              apiPost(CIRCLES.CALL.START(id)).then(function(data){
-                navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(circleName));
-              }).catch(function(err){showToast(err.userMessage || err.message ||"Failed to start call","error");});
+              setPreCall({ type: "voice" });
             }} />
             <IconButton icon={Video} label="Video call" onClick={function(){
-              apiPost(CIRCLES.CALL.START(id),{call_type:"video"}).then(function(data){
-                navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(circleName));
-              }).catch(function(err){showToast(err.userMessage || err.message ||"Failed to start call","error");});
+              setPreCall({ type: "video" });
             }} />
           </div>
         }
@@ -380,19 +397,7 @@ export default function CircleChatScreen(){
       {/* ═══ INPUT ═══ */}
       <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:"var(--dp-header-bg)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:"1px solid var(--dp-header-border)"}}>
         <div style={{maxWidth:560,margin:"0 auto",display:"flex",alignItems:"flex-end",gap:8}}>
-          <div style={{position:"relative"}}>
-            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-accent-soft)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
-            {emojiOpen&&(
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:"var(--dp-modal-bg)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:"1px solid var(--dp-glass-border)",boxShadow:"0 8px 32px var(--dp-shadow)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
-                {['😀','😂','🥹','😍','🤩','😎','🥳','🤔','😅','😢','😤','🔥','💪','👏','❤️','💜','⭐','✨','🎯','🏆','🚀','💡','📝','🌟','👍','👎','🙏','🎉','💯','🌈','🍀','☕','🧠','💭','🎵','✅','🤝','💫','🌙','☀️','🦋','🌻'].map(emoji=>(
-                  <button key={emoji} onClick={()=>insertEmoji(emoji)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:6,borderRadius:8,transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background="var(--dp-glass-hover)";e.currentTarget.style.transform="scale(1.2)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.transform="scale(1)";}}
-                  >{emoji}</button>
-                ))}
-              </div>
-            )}
-          </div>
+          <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-accent-soft)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji & GIF"><Smile size={18} strokeWidth={2}/></button>
           <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:"var(--dp-surface)",border:"1px solid var(--dp-glass-border)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInput}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
@@ -404,6 +409,14 @@ export default function CircleChatScreen(){
           </button>
         </div>
       </div>
+
+      {/* ═══ EMOJI & GIF PICKER ═══ */}
+      <EmojiGifPicker
+        open={emojiOpen}
+        onClose={function(){setEmojiOpen(false);}}
+        onEmojiSelect={insertEmoji}
+        onGifSelect={handleGifSend}
+      />
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -424,6 +437,30 @@ export default function CircleChatScreen(){
         .dp-spin{animation:dpSpin 1s linear infinite;}
         @keyframes dpSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
       `}</style>
+
+      {/* Pre-call lobby screen */}
+      {preCall && (
+        <PreCallScreen
+          isVideo={preCall.type === "video"}
+          buddyName={circleName}
+          buddyColor="#8B5CF6"
+          isGroup={true}
+          onJoin={function (preCallSettings) {
+            var callType = preCall.type;
+            setPreCall(null);
+            var payload = callType === "video" ? { call_type: "video" } : {};
+            apiPost(CIRCLES.CALL.START(id), payload).then(function (data) {
+              var route = callType === "video"
+                ? "/video-call/" + (data.callId || data.id) + "?buddyName=" + encodeURIComponent(circleName)
+                : "/voice-call/" + (data.callId || data.id) + "?buddyName=" + encodeURIComponent(circleName);
+              navigate(route, { state: { preCallSettings: preCallSettings } });
+            }).catch(function (err) {
+              showToast(err.userMessage || err.message || "Failed to start call", "error");
+            });
+          }}
+          onCancel={function () { setPreCall(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -437,9 +474,13 @@ function CircleBubble({msg,showSender,copiedId,onCopy,meInitial}){
     return(
       <div className="dp-mu" style={{display:"flex",justifyContent:"flex-end",marginBottom:showSender?12:4,gap:8,alignItems:"flex-end"}}>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",maxWidth:"75%"}}>
-          <div style={{position:"relative",padding:"10px 14px",borderRadius:"16px 16px 6px 16px",background:isLight?"rgba(200,120,200,0.1)":"rgba(200,120,200,0.07)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(220,140,220,0.12)",boxShadow:"0 2px 12px rgba(200,120,200,0.08),inset 0 1px 0 rgba(255,200,230,0.05)"}}>
-            <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:4}}>
+          <div style={{position:"relative",padding:isGifUrl(msg.content)?"4px":"10px 14px",borderRadius:"16px 16px 6px 16px",background:isLight?"rgba(200,120,200,0.1)":"rgba(200,120,200,0.07)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid rgba(220,140,220,0.12)",boxShadow:"0 2px 12px rgba(200,120,200,0.08),inset 0 1px 0 rgba(255,200,230,0.05)"}}>
+            {isGifUrl(msg.content)?(
+              <GifMessage url={msg.content}/>
+            ):(
+              <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+            )}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:4,padding:isGifUrl(msg.content)?"0 10px 6px":undefined}}>
               <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{formatTime(msg.time)}</span>
             </div>
           </div>
@@ -460,9 +501,13 @@ function CircleBubble({msg,showSender,copiedId,onCopy,meInitial}){
         {showSender&&(
           <div style={{fontSize:12,fontWeight:600,color:msg.senderColor,marginBottom:3,paddingLeft:2}}>{msg.senderName}</div>
         )}
-        <div style={{position:"relative",padding:"10px 14px",borderRadius:"16px 16px 16px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid "+msg.senderColor+"18",boxShadow:"0 2px 12px "+msg.senderColor+"08,inset 0 1px 0 rgba(255,255,255,0.04)"}}>
-          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
-          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4}}>
+        <div style={{position:"relative",padding:isGifUrl(msg.content)?"4px":"10px 14px",borderRadius:"16px 16px 16px 6px",background:"var(--dp-glass-bg)",backdropFilter:"blur(40px) saturate(1.3)",WebkitBackdropFilter:"blur(40px) saturate(1.3)",border:"1px solid "+msg.senderColor+"18",boxShadow:"0 2px 12px "+msg.senderColor+"08,inset 0 1px 0 rgba(255,255,255,0.04)"}}>
+          {isGifUrl(msg.content)?(
+            <GifMessage url={msg.content}/>
+          ):(
+            <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.55,whiteSpace:"pre-wrap"}}>{msg.content}</div>
+          )}
+          <div style={{display:"flex",alignItems:"center",gap:5,marginTop:4,padding:isGifUrl(msg.content)?"0 10px 6px":undefined}}>
             <span style={{fontSize:11,color:"var(--dp-text-muted)"}}>{formatTime(msg.time)}</span>
             {isCopied?<Check size={11} color="var(--dp-success)" strokeWidth={2.5}/>:
             <button onClick={e=>{e.stopPropagation();onCopy();}} style={{background:"none",border:"none",cursor:"pointer",padding:0,display:"flex"}}><Copy size={11} color="var(--dp-text-muted)" strokeWidth={2}/></button>}

@@ -12,6 +12,8 @@ services:
       - "127.0.0.1:3080:80"
     restart: unless-stopped
     read_only: true
+    volumes:
+      - ./dist/downloads:/usr/share/nginx/html/downloads:ro
     tmpfs:
       - /var/cache/nginx
       - /var/run

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import useInfiniteList from "../../hooks/useInfiniteList";
-import { ArrowLeft, Zap, Heart, Check, X, Star, ShoppingBag, Package, RotateCcw, Clock, Gift } from "lucide-react";
+import { ArrowLeft, Zap, Heart, Check, X, Star, ShoppingBag, Package, RotateCcw, Clock, Gift, Eye } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import ErrorState from "../../components/shared/ErrorState";
 import { SkeletonCard } from "../../components/shared/Skeleton";
@@ -13,6 +13,7 @@ import PillTabs from "../../components/shared/PillTabs";
 import GradientButton from "../../components/shared/GradientButton";
 import GlassModal from "../../components/shared/GlassModal";
 import GlassInput from "../../components/shared/GlassInput";
+import ItemPreview from "../../components/shared/ItemPreview";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
@@ -52,6 +53,7 @@ export default function StoreScreen() {
   var [showSkeletons, setShowSkeletons] = useState(true);
   var [refundModal, setRefundModal] = useState(null);
   var [refundReason, setRefundReason] = useState("");
+  var [previewItem, setPreviewItem] = useState(null);
 
   var userXp = (user && user.xp) || 0;
 
@@ -385,22 +387,43 @@ export default function StoreScreen() {
                 position: "relative", overflow: "hidden",
               }}
             >
-              {/* Wishlist heart */}
-              <button
-                onClick={function (e) { e.stopPropagation(); toggleWishlist(item.id); }}
-                style={{
-                  position: "absolute", top: 10, right: 10, zIndex: 2,
-                  background: "none", border: "none", cursor: "pointer",
-                  padding: 4, transition: "all 0.25s ease", fontFamily: "inherit",
-                }}
-              >
-                <Heart
-                  size={16}
-                  color={wishlistSet.has(item.id) ? BRAND.pink : "var(--dp-text-muted)"}
-                  fill={wishlistSet.has(item.id) ? BRAND.pink : "none"}
-                  style={{ transition: "all 0.25s ease" }}
-                />
-              </button>
+              {/* Preview eye + Wishlist heart */}
+              <div style={{
+                position: "absolute", top: 8, right: 8, zIndex: 2,
+                display: "flex", flexDirection: "column", gap: 2,
+              }}>
+                {item.preview_type && (
+                  <button
+                    onClick={function (e) { e.stopPropagation(); setPreviewItem(item); }}
+                    aria-label="Preview item"
+                    style={{
+                      background: "none", border: "none", cursor: "pointer",
+                      padding: 4, transition: "all 0.25s ease", fontFamily: "inherit",
+                    }}
+                  >
+                    <Eye
+                      size={16}
+                      color={adaptColor(BRAND.purple, isLight)}
+                      style={{ transition: "all 0.25s ease" }}
+                    />
+                  </button>
+                )}
+                <button
+                  onClick={function (e) { e.stopPropagation(); toggleWishlist(item.id); }}
+                  aria-label="Toggle wishlist"
+                  style={{
+                    background: "none", border: "none", cursor: "pointer",
+                    padding: 4, transition: "all 0.25s ease", fontFamily: "inherit",
+                  }}
+                >
+                  <Heart
+                    size={16}
+                    color={wishlistSet.has(item.id) ? BRAND.pink : "var(--dp-text-muted)"}
+                    fill={wishlistSet.has(item.id) ? BRAND.pink : "none"}
+                    style={{ transition: "all 0.25s ease" }}
+                  />
+                </button>
+              </div>
 
               {/* Item emoji */}
               <div style={{
@@ -798,6 +821,19 @@ export default function StoreScreen() {
           </div>
         </div>
       </GlassModal>
+
+      {/* Item Preview / Try-Before-Buy Modal */}
+      <ItemPreview
+        open={!!previewItem}
+        onClose={function () { setPreviewItem(null); }}
+        item={previewItem}
+        onBuy={function (itemId) {
+          handleBuy(itemId);
+          setPreviewItem(null);
+        }}
+        buyLoading={purchaseMut.isPending}
+        userXp={userXp}
+      />
     </PageLayout>
   );
 }

@@ -212,7 +212,9 @@ async function request(url, options) {
   var response;
   try {
     response = await fetch(fullUrl, {
-      credentials: API_BASE ? "include" : "same-origin",
+      // Web: "include" sends httpOnly refresh cookie cross-origin.
+      // Native: "omit" — tokens are stored in Capacitor Preferences, not cookies.
+      credentials: _isNative ? "omit" : (API_BASE ? "include" : "same-origin"),
       ...options,
       method: method,
       headers: headers,
@@ -222,23 +224,26 @@ async function request(url, options) {
     if (fetchError && fetchError.name === "AbortError") {
       throw fetchError;
     }
-    // Network error — enqueue mutation if it's a write operation
-    // Skip enqueue if caller provided a signal (long-running requests like plan generation)
+    // Network error — surface the actual error so users can report it
+    var networkMsg = "Network error: " + (fetchError && fetchError.message ? fetchError.message : String(fetchError));
     if (method !== "GET" && method !== "HEAD") {
       if (options.signal) {
-        // Caller manages this request — don't enqueue, just surface the error
-        var longRunError = new Error("The server took too long to respond. Please try again.");
+        var longRunError = new Error(networkMsg);
         longRunError.status = 0;
         longRunError.offline = true;
         throw longRunError;
       }
+      // Don't enqueue sensitive endpoints
       enqueueOfflineMutation(url, { method: method, body: options.body ? options.body : null });
-      var offlineError = new Error("You're offline. Your change has been saved and will sync when you reconnect.");
+      var offlineError = new Error(networkMsg);
       offlineError.status = 0;
       offlineError.offline = true;
       throw offlineError;
     }
-    throw fetchError;
+    var getError = new Error(networkMsg);
+    getError.status = 0;
+    getError.offline = true;
+    throw getError;
   }
 
   // ─── Handle blob responses (PDF, file downloads) ────────────
@@ -289,11 +294,17 @@ async function request(url, options) {
         }
       }
     }
+    // Pick the cleanest error message available.
+    // Skip errorBody.error if it contains Python repr (ErrorDetail, non_field_errors).
+    var _cleanError = errorBody?.error;
+    if (_cleanError && /ErrorDetail|non_field_errors|password1|password2/.test(_cleanError)) {
+      _cleanError = null;
+    }
     var error = new Error(
       errorBody?.detail ||
-      errorBody?.error ||
-      errorBody?.message ||
       errorBody?.non_field_errors?.[0] ||
+      _cleanError ||
+      errorBody?.message ||
       _firstFieldMsg ||
       "Request failed: " + response.status
     );
@@ -312,16 +323,22 @@ async function request(url, options) {
   }
 
   // ─── Parse response ─────────────────────────────────────────
+  // 204 No Content
+  if (response.status === 204) return null;
+
   var contentType = response.headers.get("content-type");
   if (contentType && contentType.includes("application/json")) {
     var data = await response.json();
     return snakeToCamel(data);
   }
 
-  // 204 No Content
-  if (response.status === 204) return null;
-
-  return response.text();
+  // Fallback: CapacitorHttp may not forward Content-Type header correctly.
+  // Try JSON parse on the raw text before returning a plain string.
+  var text = await response.text();
+  if (text && (text.charAt(0) === "{" || text.charAt(0) === "[")) {
+    try { return snakeToCamel(JSON.parse(text)); } catch (_e) { /* not JSON */ }
+  }
+  return text;
 }
 
 // ─── Convenience methods ────────────────────────────────────────────

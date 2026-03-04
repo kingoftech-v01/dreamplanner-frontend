@@ -22,29 +22,21 @@ import {
   ArrowLeft, Target, Heart, MessageCircle, Users, Star,
   Zap, ChevronRight, UserPlus, RefreshCw, Sparkles,
   Send, X, Check, Flame, Trophy, Brain, Briefcase,
-  Palette, Wallet, Search
+  Palette, Wallet, Search, AlertTriangle, ChevronDown, ChevronUp
 } from "lucide-react";
 
-/* ═══════════════════════════════════════════════════════════════════
- * DreamPlanner — Find My Buddy Screen v1
- * 
- * From Flutter:
- * - Current buddy card (if paired)
- * - Find match CTA (if not paired)
- * - Suggested buddies list
- * - Compatibility score, shared categories
- * - Request buddy, encourage dialog
+/* ===================================================================
+ * DreamPlanner -- Find My Buddy Screen v2
  *
- * UX Upgrades:
- * - Animated compatibility ring (SVG)
- * - Card-based suggested buddies (not list)
- * - Shared dreams displayed with category icons
- * - Match animation when requesting
- * - Encourage modal with preset messages
- * - Stats comparison between you and buddy
- * - "How matching works" section
- * - All 9:1+ contrast
- * ═══════════════════════════════════════════════════════════════════ */
+ * v2 Additions:
+ * - AI-Powered Matches tab with compatibility scoring
+ * - Color-coded compatibility ring (green > 70%, yellow > 50%, red)
+ * - "Why you'd match" reasons
+ * - Shared Interests chips
+ * - Potential Challenges collapsible
+ * - Suggested Icebreaker with send action
+ * - Matchmaking loading animation
+ * =================================================================== */
 
 var SUGGESTION_COLORS = ["#EC4899","#3B82F6","#F59E0B","#8B5CF6","#14B8A6","#10B981","#6366F1","#EF4444"];
 
@@ -59,8 +51,23 @@ const ENCOURAGE_PRESETS = [
   "Proud of your progress this week! ⭐",
 ];
 
+/* ---- Helper: score-to-color for compatibility ring ---- */
+var getScoreColor = function (score) {
+  if (score >= 0.7) return "#10B981";
+  if (score >= 0.5) return "#F59E0B";
+  return "#EF4444";
+};
 
-// ═══════════════════════════════════════════════════════════════════
+var getScoreLabel = function (score) {
+  if (score >= 0.85) return "Excellent";
+  if (score >= 0.7) return "Great";
+  if (score >= 0.5) return "Good";
+  if (score >= 0.3) return "Fair";
+  return "Low";
+};
+
+
+// ===================================================================
 export default function FindBuddyScreen(){
   const navigate=useNavigate();
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
@@ -73,6 +80,8 @@ export default function FindBuddyScreen(){
   const[sent,setSent]=useState({});
   const[sentEncourage,setSentEncourage]=useState(false);
   const[selectedProfile,setSelectedProfile]=useState(null);
+  const[activeTab,setActiveTab]=useState("ai");
+  const[expandedChallenges,setExpandedChallenges]=useState({});
 
   var ME = {
     name: user?.displayName || user?.username || "You",
@@ -89,9 +98,15 @@ export default function FindBuddyScreen(){
     enabled: buddyQuery.isSuccess && !hasBuddy,
   });
 
+  var aiMatchesQuery = useQuery({
+    queryKey: ["buddy-ai-matches"],
+    queryFn: function () { return apiGet(BUDDIES.AI_MATCHES); },
+    enabled: buddyQuery.isSuccess && !hasBuddy,
+  });
+
   var CURRENT_BUDDY = (buddyQuery.data && buddyQuery.data.buddy) || null;
   var rawSuggestions = suggestionsQuery.data;
-  // Backend returns {match: {...}} for a single match — normalize to array
+  // Backend returns {match: {...}} for a single match -- normalize to array
   var suggestionsList = [];
   if (rawSuggestions) {
     if (Array.isArray(rawSuggestions.results)) suggestionsList = rawSuggestions.results;
@@ -111,6 +126,31 @@ export default function FindBuddyScreen(){
     });
   }).filter(Boolean);
 
+  // AI matches
+  var rawAiMatches = aiMatchesQuery.data;
+  var AI_MATCHES = [];
+  if (rawAiMatches && Array.isArray(rawAiMatches.results)) {
+    AI_MATCHES = rawAiMatches.results.map(function (m, i) {
+      return Object.assign({}, m, {
+        id: m.userId,
+        name: m.username || "User",
+        initial: (m.username || "U")[0].toUpperCase(),
+        color: SUGGESTION_COLORS[i % SUGGESTION_COLORS.length],
+        compatibility: Math.round((m.compatibilityScore || 0) * 100),
+        compatibilityRaw: m.compatibilityScore || 0,
+        reasons: m.reasons || [],
+        sharedInterests: m.sharedInterests || [],
+        potentialChallenges: m.potentialChallenges || [],
+        suggestedIcebreaker: m.suggestedIcebreaker || "",
+        dreams: m.dreams || [],
+        categories: m.categories || [],
+        sharedDreams: m.sharedInterests || [],
+        sharedCategories: m.categories || [],
+        achievements: [],
+      });
+    });
+  }
+
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
 
   var sendRequest=function(id){
@@ -119,6 +159,7 @@ export default function FindBuddyScreen(){
       showToast("Buddy request sent!","success");
       queryClient.invalidateQueries({queryKey:["buddy-current"]});
       queryClient.invalidateQueries({queryKey:["buddy-suggestions"]});
+      queryClient.invalidateQueries({queryKey:["buddy-ai-matches"]});
     }).catch(function(err){
       showToast(err.userMessage || err.message ||"Failed to send request","error");
       setSent(function(p){var n=Object.assign({},p);delete n[id];return n;});
@@ -133,6 +174,14 @@ export default function FindBuddyScreen(){
       showToast(err.userMessage || err.message ||"Failed to send","error");
     }).finally(function(){
       setTimeout(function(){setEncourage(false);setSentEncourage(false);},1500);
+    });
+  };
+
+  var toggleChallenges = function (id) {
+    setExpandedChallenges(function (p) {
+      var n = Object.assign({}, p);
+      n[id] = !n[id];
+      return n;
     });
   };
 
@@ -161,7 +210,7 @@ export default function FindBuddyScreen(){
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <ErrorState
             message={(buddyQuery.error && (buddyQuery.error.userMessage || buddyQuery.error.message)) || (suggestionsQuery.error && (suggestionsQuery.error.userMessage || suggestionsQuery.error.message)) || "Failed to load buddy data"}
-            onRetry={function () { buddyQuery.refetch(); suggestionsQuery.refetch(); }}
+            onRetry={function () { buddyQuery.refetch(); suggestionsQuery.refetch(); aiMatchesQuery.refetch(); }}
           />
         </div>
         <BottomNav />
@@ -174,6 +223,7 @@ export default function FindBuddyScreen(){
 
       {/* APPBAR */}
       <GlassAppBar
+        className="dp-desktop-header"
         left={
           <>
             <IconButton icon={ArrowLeft} onClick={()=>navigate("/social")} label="Go back" />
@@ -181,7 +231,7 @@ export default function FindBuddyScreen(){
           </>
         }
         title="Dream Buddy"
-        right={<IconButton icon={RefreshCw} onClick={function(){suggestionsQuery.refetch();buddyQuery.refetch();}} label="Refresh suggestions" />}
+        right={<IconButton icon={RefreshCw} onClick={function(){suggestionsQuery.refetch();buddyQuery.refetch();aiMatchesQuery.refetch();}} label="Refresh suggestions" />}
       />
 
       {/* CONTENT */}
@@ -189,7 +239,7 @@ export default function FindBuddyScreen(){
        <SubscriptionGate required="pro" feature="Dream Buddy">
         <div className="dp-content-area" style={{padding:"0 16px"}}>
 
-          {/* ── What is Dream Buddy? ── */}
+          {/* -- What is Dream Buddy? -- */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"0ms"}}>
             <GlassCard padding={16} mb={14} style={{background:"linear-gradient(135deg,rgba(20,184,166,0.06),rgba(139,92,246,0.06))",border:"1px solid rgba(20,184,166,0.1)"}}>
               <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
@@ -206,7 +256,7 @@ export default function FindBuddyScreen(){
             </GlassCard>
           </div>
 
-          {/* ── Current Buddy Card ── */}
+          {/* -- Current Buddy Card -- */}
           {CURRENT_BUDDY && (()=>{
           var ringR=40,ringC=2*Math.PI*ringR,ringOff=ringC*(1-(b.compatibility||0)/100);
           return(
@@ -297,72 +347,296 @@ export default function FindBuddyScreen(){
           </div>
           );})()}
 
-          {/* ── Suggested Buddies ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <Sparkles size={15} color={"var(--dp-accent)"} strokeWidth={2.5}/>
-                <span style={{fontSize:15,fontWeight:700,color:"var(--dp-text)"}}>Suggested Matches</span>
+          {/* -- Tab Switcher (only when not paired) -- */}
+          {!CURRENT_BUDDY && (
+            <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"80ms"}}>
+              <div style={{display:"flex",gap:4,padding:4,borderRadius:14,background:"var(--dp-header-bg)",border:"1px solid var(--dp-header-border)",marginBottom:16}}>
+                {[
+                  {key:"ai",label:"AI-Powered",icon:Brain},
+                  {key:"regular",label:"Suggested",icon:Sparkles},
+                ].map(function(tab){
+                  var isActive = activeTab === tab.key;
+                  var TabIcon = tab.icon;
+                  return(
+                    <button key={tab.key} onClick={function(){setActiveTab(tab.key);}} style={{flex:1,padding:"10px 0",borderRadius:11,border:"none",background:isActive?"linear-gradient(135deg,rgba(139,92,246,0.15),rgba(20,184,166,0.15))":"transparent",color:isActive?"var(--dp-text)":"var(--dp-text-tertiary)",fontSize:13,fontWeight:isActive?700:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all 0.25s ease"}}>
+                      <TabIcon size={14} strokeWidth={isActive?2.5:2} color={isActive?"var(--dp-accent)":"var(--dp-text-tertiary)"}/>
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
-              <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{SUGGESTIONS.length} found</span>
             </div>
-          </div>
+          )}
 
-          {SUGGESTIONS.map((s,i)=>{
-            if(!s) return null;
-            const isSent=sent[s.id];
-            return(
-              <div key={s.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+i*80}ms`}}>
-                <GlassCard hover padding={16} mb={10} onClick={()=>setSelectedProfile(s)}>
-                  <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
-                    {/* Avatar + score */}
-                    <div style={{position:"relative",flexShrink:0}}>
-                      <Avatar name={s.name} size={50} color={s.color} />
-                      <div style={{position:"absolute",bottom:-4,left:"50%",transform:"translateX(-50%)",padding:"1px 6px",borderRadius:6,background:"rgba(12,8,26,0.9)",border:"1px solid rgba(93,229,168,0.25)",fontSize:12,fontWeight:700,color:"#5DE5A8",whiteSpace:"nowrap"}}>{s.compatibility||0}%</div>
+          {/* ================================================================
+           *  AI-POWERED MATCHES TAB
+           * ================================================================ */}
+          {activeTab === "ai" && !CURRENT_BUDDY && (
+            <>
+              {/* Loading state with animation */}
+              {aiMatchesQuery.isLoading && (
+                <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
+                  <GlassCard padding={40} mb={16} style={{textAlign:"center",background:"linear-gradient(135deg,rgba(139,92,246,0.04),rgba(20,184,166,0.04))"}}>
+                    <div className="dp-matchmaking-pulse" style={{width:72,height:72,borderRadius:"50%",margin:"0 auto 20px",background:"linear-gradient(135deg,rgba(139,92,246,0.12),rgba(20,184,166,0.12))",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <Brain size={32} color="var(--dp-accent)" strokeWidth={1.5}/>
                     </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                        <span style={{fontSize:15,fontWeight:600,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"40%"}}>{s.name}</span>
-                        <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>Lv.{s.level}</span>
-                        {isSent&&<span style={{padding:"2px 7px",borderRadius:6,background:"rgba(93,229,168,0.1)",fontSize:12,fontWeight:600,color:"var(--dp-success)"}}>Sent ✓</span>}
+                    <div style={{fontSize:16,fontWeight:700,color:"var(--dp-text)",marginBottom:6}}>Finding Your Perfect Match</div>
+                    <div style={{fontSize:13,color:"var(--dp-text-secondary)",lineHeight:1.5}}>Our AI is analyzing dreams, interests, and compatibility to find your ideal accountability buddy...</div>
+                    <div style={{display:"flex",justifyContent:"center",gap:6,marginTop:16}}>
+                      {[0,1,2].map(function(d){
+                        return <div key={d} className="dp-match-dot" style={{width:8,height:8,borderRadius:"50%",background:"var(--dp-accent)",animationDelay:(d*200)+"ms"}}/>;
+                      })}
+                    </div>
+                  </GlassCard>
+                </div>
+              )}
+
+              {/* AI error state */}
+              {aiMatchesQuery.isError && (
+                <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
+                  <GlassCard padding={24} mb={16} style={{textAlign:"center"}}>
+                    <AlertTriangle size={28} color="var(--dp-warning)" strokeWidth={2} style={{marginBottom:10}}/>
+                    <div style={{fontSize:14,fontWeight:600,color:"var(--dp-text)",marginBottom:4}}>AI Matching Unavailable</div>
+                    <div style={{fontSize:12,color:"var(--dp-text-secondary)",marginBottom:12}}>
+                      {(aiMatchesQuery.error && (aiMatchesQuery.error.userMessage || aiMatchesQuery.error.message)) || "Could not load AI matches right now. Try the Suggested tab or refresh."}
+                    </div>
+                    <GradientButton gradient="primary" onClick={function(){aiMatchesQuery.refetch();}} icon={RefreshCw} style={{margin:"0 auto"}}>Retry</GradientButton>
+                  </GlassCard>
+                </div>
+              )}
+
+              {/* AI match results */}
+              {aiMatchesQuery.isSuccess && AI_MATCHES.length > 0 && (
+                <>
+                  <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <Brain size={15} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                        <span style={{fontSize:15,fontWeight:700,color:"var(--dp-text)"}}>AI-Powered Matches</span>
                       </div>
-                      <ExpandableText text={s.bio} maxLines={2} fontSize={12} color="var(--dp-text-secondary)" style={{marginBottom:8}} />
-                      {/* Shared */}
-                      <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
-                        {s.sharedDreams.map((d,j)=>(
-                          <span key={j} style={{padding:"3px 8px",borderRadius:8,background:"rgba(20,184,166,0.08)",fontSize:12,fontWeight:500,color:"var(--dp-teal)"}}>{d}</span>
-                        ))}
-                        {s.sharedCategories.map((c,j)=>{
-                          const cc=CAT_COLORS[c]||"#C4B5FD";
-                          const ccL=adaptColor(cc,isLight);
-                          return <span key={`c${j}`} style={{padding:"3px 8px",borderRadius:8,background:`${cc}10`,fontSize:12,fontWeight:500,color:ccL}}>{c}</span>;
-                        })}
-                      </div>
-                      {/* Stats row */}
-                      <div style={{display:"flex",alignItems:"center",gap:12,fontSize:12,color:"var(--dp-text-tertiary)"}}>
-                        <span style={{display:"flex",alignItems:"center",gap:3}}><Flame size={12} color={"var(--dp-danger)"} strokeWidth={2}/>{s.streak}d streak</span>
-                        <span style={{display:"flex",alignItems:"center",gap:3}}><Star size={12} color={"var(--dp-warning)"} strokeWidth={2}/>Lv.{s.level}</span>
-                        <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:3,color:"var(--dp-accent)",fontSize:12,fontWeight:500}}>View Profile<ChevronRight size={14} strokeWidth={2}/></span>
-                      </div>
+                      <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{AI_MATCHES.length} scored</span>
                     </div>
                   </div>
-                </GlassCard>
-              </div>
-            );
-          })}
 
-          {/* ── How it works ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+(SUGGESTIONS.length||0)*80+80}ms`}}>
+                  {AI_MATCHES.map(function(m, i){
+                    var isSentM = sent[m.id];
+                    var scoreColor = getScoreColor(m.compatibilityRaw);
+                    var scorePercent = m.compatibility;
+                    var mRingR = 32;
+                    var mRingC = 2 * Math.PI * mRingR;
+                    var mRingOff = mRingC * (1 - m.compatibilityRaw);
+                    var challengesOpen = expandedChallenges[m.id];
+
+                    return(
+                      <div key={m.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(230 + i * 100) + "ms"}}>
+                        <GlassCard padding={0} mb={12} style={{overflow:"hidden",border:"1px solid " + scoreColor + "18"}}>
+                          {/* Card header with avatar + score ring */}
+                          <div style={{padding:"16px 16px 0",display:"flex",gap:14,alignItems:"flex-start"}}>
+                            {/* Score ring + avatar */}
+                            <div style={{position:"relative",width:74,height:74,flexShrink:0}}>
+                              <svg width={74} height={74} style={{transform:"rotate(-90deg)"}}>
+                                <circle cx={37} cy={37} r={mRingR} fill="none" stroke={"var(--dp-divider)"} strokeWidth={4}/>
+                                <circle cx={37} cy={37} r={mRingR} fill="none" stroke={scoreColor} strokeWidth={4} strokeLinecap="round"
+                                  strokeDasharray={mRingC} strokeDashoffset={mounted ? mRingOff : mRingC}
+                                  style={{transition:"stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1)",filter:"drop-shadow(0 0 4px " + scoreColor + "60)"}}/>
+                              </svg>
+                              <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                <Avatar name={m.name} size={44} color={m.color} src={m.avatar} />
+                              </div>
+                            </div>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                                <span style={{fontSize:16,fontWeight:700,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"55%"}}>{m.name}</span>
+                                {m.dreamerType && <span style={{padding:"2px 7px",borderRadius:6,background:"rgba(139,92,246,0.08)",fontSize:11,fontWeight:600,color:"var(--dp-accent)",textTransform:"capitalize"}}>{m.dreamerType}</span>}
+                                {isSentM && <span style={{padding:"2px 7px",borderRadius:6,background:"rgba(93,229,168,0.1)",fontSize:11,fontWeight:600,color:"var(--dp-success)"}}>Sent</span>}
+                              </div>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                                <span style={{fontSize:22,fontWeight:800,color:scoreColor}}>{scorePercent}%</span>
+                                <span style={{fontSize:12,fontWeight:600,color:scoreColor,opacity:0.8}}>{getScoreLabel(m.compatibilityRaw)}</span>
+                              </div>
+                              <div style={{display:"flex",alignItems:"center",gap:10,fontSize:12,color:"var(--dp-text-tertiary)"}}>
+                                <span style={{display:"flex",alignItems:"center",gap:3}}><Star size={11} color={"var(--dp-warning)"} strokeWidth={2}/>Lv.{m.level}</span>
+                                <span style={{display:"flex",alignItems:"center",gap:3}}><Flame size={11} color={"var(--dp-danger)"} strokeWidth={2}/>{m.streak}d</span>
+                                <span style={{display:"flex",alignItems:"center",gap:3}}><Zap size={11} color={"#5DE5A8"} strokeWidth={2}/>{(m.xp||0) > 999 ? ((m.xp / 1000).toFixed(1) + "k") : (m.xp||0)}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Why you'd match */}
+                          {m.reasons.length > 0 && (
+                            <div style={{padding:"12px 16px 0"}}>
+                              <div style={{fontSize:11,fontWeight:700,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Why You'd Match</div>
+                              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                                {m.reasons.map(function(r, ri){
+                                  return(
+                                    <div key={ri} style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                                      <Heart size={11} color={scoreColor} strokeWidth={2.5} style={{marginTop:2,flexShrink:0}}/>
+                                      <span style={{fontSize:12,color:"var(--dp-text-secondary)",lineHeight:1.4}}>{r}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Shared Interests chips */}
+                          {m.sharedInterests.length > 0 && (
+                            <div style={{padding:"10px 16px 0"}}>
+                              <div style={{fontSize:11,fontWeight:700,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Shared Interests</div>
+                              <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                                {m.sharedInterests.map(function(interest, ii){
+                                  var cc = CAT_COLORS[interest] || "#5EEAD4";
+                                  var ccL = adaptColor(cc, isLight);
+                                  var CI = CAT_ICONS[interest] || Target;
+                                  return(
+                                    <span key={ii} style={{padding:"4px 10px",borderRadius:8,background:cc + "10",border:"1px solid " + cc + "18",fontSize:11,fontWeight:600,color:ccL,display:"flex",alignItems:"center",gap:4}}>
+                                      <CI size={10} color={ccL} strokeWidth={2.5}/>{interest.replace(/_/g, " ")}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Potential Challenges (collapsible) */}
+                          {m.potentialChallenges.length > 0 && (
+                            <div style={{padding:"10px 16px 0"}}>
+                              <button onClick={function(e){e.stopPropagation();toggleChallenges(m.id);}} style={{display:"flex",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
+                                <AlertTriangle size={11} color="var(--dp-warning)" strokeWidth={2.5}/>
+                                <span style={{fontSize:11,fontWeight:700,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px"}}>Potential Challenges</span>
+                                {challengesOpen ? <ChevronUp size={13} color="var(--dp-text-tertiary)" strokeWidth={2}/> : <ChevronDown size={13} color="var(--dp-text-tertiary)" strokeWidth={2}/>}
+                              </button>
+                              {challengesOpen && (
+                                <div style={{marginTop:6,padding:"8px 10px",borderRadius:8,background:"rgba(245,158,11,0.04)",border:"1px solid rgba(245,158,11,0.08)"}}>
+                                  {m.potentialChallenges.map(function(c, ci){
+                                    return(
+                                      <div key={ci} style={{display:"flex",alignItems:"flex-start",gap:6,marginBottom:ci < m.potentialChallenges.length - 1 ? 4 : 0}}>
+                                        <span style={{fontSize:12,color:"var(--dp-text-secondary)",lineHeight:1.4}}>{"- " + c}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Suggested Icebreaker */}
+                          {m.suggestedIcebreaker && (
+                            <div style={{padding:"10px 16px 0"}}>
+                              <div style={{fontSize:11,fontWeight:700,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:6}}>Suggested Icebreaker</div>
+                              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                                <div style={{flex:1,padding:"8px 12px",borderRadius:10,background:"var(--dp-header-bg)",border:"1px solid var(--dp-header-border)",fontSize:12,color:"var(--dp-text-secondary)",lineHeight:1.4,fontStyle:"italic"}}>{'"' + m.suggestedIcebreaker + '"'}</div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action buttons */}
+                          <div style={{padding:16,display:"flex",gap:8}}>
+                            <button className="dp-gh" onClick={function(e){e.stopPropagation();setSelectedProfile(m);}} style={{flex:1,padding:"10px 0",borderRadius:12,border:"1px solid var(--dp-glass-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text-primary)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all 0.2s"}}>
+                              <Search size={14} strokeWidth={2}/>Profile
+                            </button>
+                            {isSentM ? (
+                              <div style={{flex:1.2,padding:"10px 0",borderRadius:12,background:"rgba(93,229,168,0.08)",border:"1px solid rgba(93,229,168,0.15)",textAlign:"center",display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                                <Check size={15} color={"var(--dp-success)"} strokeWidth={2.5}/>
+                                <span style={{fontSize:13,fontWeight:600,color:"var(--dp-success)"}}>Sent!</span>
+                              </div>
+                            ) : (
+                              <GradientButton gradient="primary" onClick={function(e){e.stopPropagation();sendRequest(m.id);}} icon={UserPlus} style={{flex:1.2}}>Connect</GradientButton>
+                            )}
+                          </div>
+                        </GlassCard>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* AI matches empty state */}
+              {aiMatchesQuery.isSuccess && AI_MATCHES.length === 0 && (
+                <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
+                  <GlassCard padding={32} mb={16} style={{textAlign:"center"}}>
+                    <Users size={36} color="var(--dp-text-muted)" strokeWidth={1.5} style={{margin:"0 auto 12px"}}/>
+                    <div style={{fontSize:15,fontWeight:600,color:"var(--dp-text)",marginBottom:4}}>No AI Matches Found</div>
+                    <div style={{fontSize:13,color:"var(--dp-text-secondary)"}}>Check back later or try the Suggested tab for basic matching.</div>
+                  </GlassCard>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ================================================================
+           *  REGULAR SUGGESTED MATCHES TAB
+           * ================================================================ */}
+          {activeTab === "regular" && !CURRENT_BUDDY && (
+            <>
+              <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"150ms"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <Sparkles size={15} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                    <span style={{fontSize:15,fontWeight:700,color:"var(--dp-text)"}}>Suggested Matches</span>
+                  </div>
+                  <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>{SUGGESTIONS.length} found</span>
+                </div>
+              </div>
+
+              {SUGGESTIONS.map((s,i)=>{
+                if(!s) return null;
+                const isSent=sent[s.id];
+                return(
+                  <div key={s.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+i*80}ms`}}>
+                    <GlassCard hover padding={16} mb={10} onClick={()=>setSelectedProfile(s)}>
+                      <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
+                        {/* Avatar + score */}
+                        <div style={{position:"relative",flexShrink:0}}>
+                          <Avatar name={s.name} size={50} color={s.color} />
+                          <div style={{position:"absolute",bottom:-4,left:"50%",transform:"translateX(-50%)",padding:"1px 6px",borderRadius:6,background:"rgba(12,8,26,0.9)",border:"1px solid rgba(93,229,168,0.25)",fontSize:12,fontWeight:700,color:"#5DE5A8",whiteSpace:"nowrap"}}>{s.compatibility||0}%</div>
+                        </div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
+                            <span style={{fontSize:15,fontWeight:600,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"40%"}}>{s.name}</span>
+                            <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>Lv.{s.level}</span>
+                            {isSent&&<span style={{padding:"2px 7px",borderRadius:6,background:"rgba(93,229,168,0.1)",fontSize:12,fontWeight:600,color:"var(--dp-success)"}}>Sent</span>}
+                          </div>
+                          <ExpandableText text={s.bio} maxLines={2} fontSize={12} color="var(--dp-text-secondary)" style={{marginBottom:8}} />
+                          {/* Shared */}
+                          <div style={{display:"flex",flexWrap:"wrap",gap:4,marginBottom:10}}>
+                            {s.sharedDreams.map((d,j)=>(
+                              <span key={j} style={{padding:"3px 8px",borderRadius:8,background:"rgba(20,184,166,0.08)",fontSize:12,fontWeight:500,color:"var(--dp-teal)"}}>{d}</span>
+                            ))}
+                            {s.sharedCategories.map((c,j)=>{
+                              const cc=CAT_COLORS[c]||"#C4B5FD";
+                              const ccL=adaptColor(cc,isLight);
+                              return <span key={`c${j}`} style={{padding:"3px 8px",borderRadius:8,background:`${cc}10`,fontSize:12,fontWeight:500,color:ccL}}>{c}</span>;
+                            })}
+                          </div>
+                          {/* Stats row */}
+                          <div style={{display:"flex",alignItems:"center",gap:12,fontSize:12,color:"var(--dp-text-tertiary)"}}>
+                            <span style={{display:"flex",alignItems:"center",gap:3}}><Flame size={12} color={"var(--dp-danger)"} strokeWidth={2}/>{s.streak}d streak</span>
+                            <span style={{display:"flex",alignItems:"center",gap:3}}><Star size={12} color={"var(--dp-warning)"} strokeWidth={2}/>Lv.{s.level}</span>
+                            <span style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:3,color:"var(--dp-accent)",fontSize:12,fontWeight:500}}>View Profile<ChevronRight size={14} strokeWidth={2}/></span>
+                          </div>
+                        </div>
+                      </div>
+                    </GlassCard>
+                  </div>
+                );
+              })}
+            </>
+          )}
+
+          {/* -- How it works -- */}
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:`${230+(Math.max(SUGGESTIONS.length, AI_MATCHES.length)||0)*80+80}ms`}}>
             <GlassCard padding={20} style={{marginTop:8}}>
               <div style={{fontSize:14,fontWeight:600,color:"var(--dp-text)",marginBottom:12}}>How Buddy Matching Works</div>
               {[
+                {icon:Brain,color:"#8B5CF6",title:"AI-Powered Scoring",desc:"Our AI analyzes your dreams, personality, and activity to find deeply compatible partners"},
                 {icon:Target,color:"#5EEAD4",title:"Shared Dreams",desc:"We match you with people who have similar goals and dream categories"},
                 {icon:Star,color:"#FCD34D",title:"Similar Level",desc:"Buddies are close to your experience level for balanced motivation"},
                 {icon:Heart,color:"#F69A9A",title:"Mutual Support",desc:"Send encouragements, share progress, and keep each other accountable"},
               ].map(({icon:I,color,title,desc},i)=>{
                 const ic=adaptColor(color,isLight);
                 return(
-                <div key={i} style={{display:"flex",gap:12,marginBottom:i<2?14:0}}>
+                <div key={i} style={{display:"flex",gap:12,marginBottom:i<3?14:0}}>
                   <div style={{width:36,height:36,borderRadius:12,flexShrink:0,background:`${color}10`,display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <I size={18} color={ic} strokeWidth={2}/>
                   </div>
@@ -379,13 +653,15 @@ export default function FindBuddyScreen(){
        </SubscriptionGate>
       </main>
 
-      {/* ═══ BOTTOM NAV ═══ */}
+      {/* === BOTTOM NAV === */}
       <BottomNav />
 
-      {/* ═══ PROFILE DETAIL PANEL ═══ */}
+      {/* === PROFILE DETAIL PANEL === */}
       {selectedProfile&&(()=>{
         const s=selectedProfile;const isSent=sent[s.id];
-        const sRingR=44,sRingC=2*Math.PI*sRingR,sRingOff=sRingC*(1-(s.compatibility||0)/100);
+        var profileScoreRaw = s.compatibilityRaw || ((s.compatibility || 0) / 100);
+        var profileScoreColor = getScoreColor(profileScoreRaw);
+        const sRingR=44,sRingC=2*Math.PI*sRingR,sRingOff=sRingC*(1-profileScoreRaw);
         return(
           <div style={{position:"fixed",inset:0,zIndex:300,display:"flex",flexDirection:"column"}}>
             <div onClick={()=>setSelectedProfile(null)} style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",WebkitBackdropFilter:"blur(8px)"}}/>
@@ -403,9 +679,9 @@ export default function FindBuddyScreen(){
                 <div style={{position:"relative",width:100,height:100,margin:"0 auto 16px"}}>
                   <svg width={100} height={100} style={{transform:"rotate(-90deg)"}}>
                     <circle cx={50} cy={50} r={sRingR} fill="none" stroke={"var(--dp-divider)"} strokeWidth={5}/>
-                    <circle cx={50} cy={50} r={sRingR} fill="none" stroke="#5EEAD4" strokeWidth={5} strokeLinecap="round"
+                    <circle cx={50} cy={50} r={sRingR} fill="none" stroke={profileScoreColor} strokeWidth={5} strokeLinecap="round"
                       strokeDasharray={sRingC} strokeDashoffset={sRingOff}
-                      style={{transition:"stroke-dashoffset 1s cubic-bezier(0.16,1,0.3,1)",filter:"drop-shadow(0 0 8px rgba(94,234,212,0.4))"}}/>
+                      style={{transition:"stroke-dashoffset 1s cubic-bezier(0.16,1,0.3,1)",filter:"drop-shadow(0 0 8px " + profileScoreColor + "60)"}}/>
                   </svg>
                   <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
                     <Avatar name={s.name} size={62} color={s.color} />
@@ -413,9 +689,10 @@ export default function FindBuddyScreen(){
                 </div>
                 <div style={{fontSize:20,fontWeight:700,color:"var(--dp-text)",marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</div>
                 <ExpandableText text={s.bio} maxLines={3} fontSize={13} color="var(--dp-text-secondary)" style={{marginBottom:6}} />
-                <div style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 12px",borderRadius:10,background:"rgba(94,234,212,0.08)",border:"1px solid rgba(94,234,212,0.12)"}}>
-                  <Heart size={13} color={"var(--dp-teal)"} strokeWidth={2.5}/>
-                  <span style={{fontSize:14,fontWeight:700,color:"var(--dp-teal)"}}>{s.compatibility}% Match</span>
+                <div style={{display:"inline-flex",alignItems:"center",gap:5,padding:"4px 12px",borderRadius:10,background:profileScoreColor + "14",border:"1px solid " + profileScoreColor + "20"}}>
+                  <Heart size={13} color={profileScoreColor} strokeWidth={2.5}/>
+                  <span style={{fontSize:14,fontWeight:700,color:profileScoreColor}}>{s.compatibility || 0}% Match</span>
+                  {s.compatibilityRaw !== undefined && <span style={{fontSize:11,fontWeight:600,color:profileScoreColor,opacity:0.7}}>({getScoreLabel(s.compatibilityRaw)})</span>}
                 </div>
                 <div style={{fontSize:12,color:"var(--dp-text-tertiary)",marginTop:6}}>Joined {s.joined||"recently"}{(s.mutualFriends||0)>0?` · ${s.mutualFriends} mutual friend${s.mutualFriends>1?"s":""}`:""}</div>
               </div>
@@ -437,44 +714,93 @@ export default function FindBuddyScreen(){
                 );})}
               </div>
 
+              {/* AI Match Details (if present) */}
+              {s.reasons && s.reasons.length > 0 && (
+                <div style={{padding:"0 20px",marginBottom:18}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Why You'd Match</div>
+                  <div style={{padding:"10px 12px",borderRadius:12,background:"linear-gradient(135deg,rgba(139,92,246,0.04),rgba(20,184,166,0.04))",border:"1px solid rgba(139,92,246,0.08)"}}>
+                    {s.reasons.map(function(r, ri){
+                      return(
+                        <div key={ri} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:ri < s.reasons.length - 1 ? 6 : 0}}>
+                          <Heart size={12} color={profileScoreColor} strokeWidth={2.5} style={{marginTop:1,flexShrink:0}}/>
+                          <span style={{fontSize:13,color:"var(--dp-text-secondary)",lineHeight:1.4}}>{r}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Suggested Icebreaker (if present) */}
+              {s.suggestedIcebreaker && (
+                <div style={{padding:"0 20px",marginBottom:18}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Suggested Icebreaker</div>
+                  <div style={{padding:"10px 14px",borderRadius:12,background:"var(--dp-header-bg)",border:"1px solid var(--dp-header-border)",fontSize:13,color:"var(--dp-text-secondary)",lineHeight:1.5,fontStyle:"italic"}}>
+                    {'"' + s.suggestedIcebreaker + '"'}
+                  </div>
+                </div>
+              )}
+
+              {/* Potential Challenges (if present) */}
+              {s.potentialChallenges && s.potentialChallenges.length > 0 && (
+                <div style={{padding:"0 20px",marginBottom:18}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Potential Challenges</div>
+                  <div style={{padding:"10px 12px",borderRadius:12,background:"rgba(245,158,11,0.04)",border:"1px solid rgba(245,158,11,0.08)"}}>
+                    {s.potentialChallenges.map(function(c, ci){
+                      return(
+                        <div key={ci} style={{display:"flex",alignItems:"flex-start",gap:8,marginBottom:ci < s.potentialChallenges.length - 1 ? 6 : 0}}>
+                          <AlertTriangle size={12} color="var(--dp-warning)" strokeWidth={2.5} style={{marginTop:1,flexShrink:0}}/>
+                          <span style={{fontSize:13,color:"var(--dp-text-secondary)",lineHeight:1.4}}>{c}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Dreams */}
               <div style={{padding:"0 20px",marginBottom:18}}>
                 <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Dreams</div>
-                {s.dreams.map((d,i)=>{
-                  const isShared=s.sharedDreams.includes(d);
+                {(s.dreams || []).map((d,i)=>{
+                  var dTitle = typeof d === "string" ? d : (d.title || d.name || "");
+                  var isShared = (s.sharedDreams || []).includes(dTitle) || (s.sharedInterests || []).includes(dTitle);
                   return(
                     <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",marginBottom:4,borderRadius:12,background:isShared?"rgba(20,184,166,0.06)":"var(--dp-surface)",border:isShared?"1px solid rgba(20,184,166,0.1)":"1px solid var(--dp-glass-border)"}}>
                       <Target size={14} color={isShared?("var(--dp-teal)"):("var(--dp-text-muted)")} strokeWidth={2}/>
-                      <span style={{fontSize:13,color:isShared?("var(--dp-teal)"):("var(--dp-text-primary)"),fontWeight:isShared?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{d}</span>
+                      <span style={{fontSize:13,color:isShared?("var(--dp-teal)"):("var(--dp-text-primary)"),fontWeight:isShared?600:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",flex:1,minWidth:0}}>{dTitle}</span>
                       {isShared&&<span style={{marginLeft:"auto",fontSize:12,fontWeight:600,color:"var(--dp-teal)",background:"rgba(20,184,166,0.1)",padding:"2px 6px",borderRadius:6}}>Shared!</span>}
                     </div>
                   );
                 })}
               </div>
 
-              {/* Categories */}
-              <div style={{padding:"0 20px",marginBottom:18}}>
-                <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Interests</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {s.sharedCategories.map((c,i)=>{
-                    const CI=CAT_ICONS[c]||Target;const cc=CAT_COLORS[c]||"#C4B5FD";
-                    const ccL=adaptColor(cc,isLight);
-                    return <span key={i} style={{padding:"6px 12px",borderRadius:10,background:`${cc}10`,border:`1px solid ${cc}18`,fontSize:12,fontWeight:500,color:ccL,display:"flex",alignItems:"center",gap:5}}><CI size={13} color={ccL} strokeWidth={2}/>{c[0].toUpperCase()+c.slice(1)}</span>;
-                  })}
+              {/* Categories / Interests */}
+              {((s.sharedCategories && s.sharedCategories.length > 0) || (s.categories && s.categories.length > 0)) && (
+                <div style={{padding:"0 20px",marginBottom:18}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Interests</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {(s.sharedCategories || s.categories || []).map((c,i)=>{
+                      const CI=CAT_ICONS[c]||Target;const cc=CAT_COLORS[c]||"#C4B5FD";
+                      const ccL=adaptColor(cc,isLight);
+                      return <span key={i} style={{padding:"6px 12px",borderRadius:10,background:`${cc}10`,border:`1px solid ${cc}18`,fontSize:12,fontWeight:500,color:ccL,display:"flex",alignItems:"center",gap:5}}><CI size={13} color={ccL} strokeWidth={2}/>{(c||"")[0] ? c[0].toUpperCase()+c.slice(1).replace(/_/g," ") : c}</span>;
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Achievements */}
-              <div style={{padding:"0 20px",marginBottom:24}}>
-                <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Achievements</div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {s.achievements.map((a,i)=>(
-                    <span key={i} style={{padding:"5px 10px",borderRadius:10,background:"rgba(252,211,77,0.06)",border:"1px solid rgba(252,211,77,0.1)",fontSize:12,fontWeight:500,color:"var(--dp-warning)",display:"flex",alignItems:"center",gap:4}}>
-                      <Trophy size={11} strokeWidth={2.5}/>{a}
-                    </span>
-                  ))}
+              {s.achievements && s.achievements.length > 0 && (
+                <div style={{padding:"0 20px",marginBottom:24}}>
+                  <div style={{fontSize:12,fontWeight:600,color:"var(--dp-text-tertiary)",textTransform:"uppercase",letterSpacing:"0.5px",marginBottom:8}}>Achievements</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                    {s.achievements.map((a,i)=>(
+                      <span key={i} style={{padding:"5px 10px",borderRadius:10,background:"rgba(252,211,77,0.06)",border:"1px solid rgba(252,211,77,0.1)",fontSize:12,fontWeight:500,color:"var(--dp-warning)",display:"flex",alignItems:"center",gap:4}}>
+                        <Trophy size={11} strokeWidth={2.5}/>{a}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Action buttons (sticky bottom) */}
               <div style={{padding:"16px 20px",borderTop:"1px solid var(--dp-glass-border)",background:"var(--dp-card-solid)",marginTop:"auto",flexShrink:0}}>
@@ -497,7 +823,7 @@ export default function FindBuddyScreen(){
         );
       })()}
 
-      {/* ═══ ENCOURAGE MODAL ═══ */}
+      {/* === ENCOURAGE MODAL === */}
       <GlassModal open={encourage} onClose={()=>setEncourage(false)} variant="center" title={sentEncourage ? undefined : `Encourage ${b.name||"Buddy"}`} maxWidth={380}>
         <div style={{padding:24}}>
           {sentEncourage?(
@@ -534,6 +860,10 @@ export default function FindBuddyScreen(){
         .dp-a.dp-s{opacity:1;transform:translateY(0);}
         @keyframes dpFS{from{opacity:0;transform:scale(0.95);}to{opacity:1;transform:scale(1);}}
         @keyframes dpSI{from{transform:translateX(100%);}to{transform:translateX(0);}}
+        @keyframes dpPulse{0%,100%{transform:scale(1);opacity:1;}50%{transform:scale(1.08);opacity:0.7;}}
+        @keyframes dpDot{0%,80%,100%{opacity:0.3;transform:scale(0.8);}40%{opacity:1;transform:scale(1.2);}}
+        .dp-matchmaking-pulse{animation:dpPulse 2s ease-in-out infinite;}
+        .dp-match-dot{animation:dpDot 1.4s ease-in-out infinite;}
         [data-theme="light"] .dp-dot{background:rgba(26,21,53,0.4) !important;}
         [data-theme="light"] input::placeholder,
         [data-theme="light"] textarea::placeholder{color:rgba(26,21,53,0.4) !important;}

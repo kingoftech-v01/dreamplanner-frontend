@@ -17,12 +17,17 @@ import GlassAppBar from "../../components/shared/GlassAppBar";
 import GradientButton from "../../components/shared/GradientButton";
 import GlassModal from "../../components/shared/GlassModal";
 import BottomNav from "../../components/shared/BottomNav";
+import ProfileCompleteness from "../../components/shared/ProfileCompleteness";
+import AchievementShowcase from "../../components/shared/AchievementShowcase";
+import WeeklyReportPanel from "../../components/shared/WeeklyReportPanel";
+import ProductivityInsightsPanel from "../../components/shared/ProductivityInsightsPanel";
 import { adaptColor, GRADIENTS, BRAND } from "../../styles/colors";
 import {
   ArrowLeft, Settings, Star, Zap, Flame, ChevronRight,
   MessageCircle, Crown, ShoppingBag, Trophy, Bell, Eye,
   Calendar, LogOut, Heart, Briefcase, Brain, Palette,
-  Edit3, Shield, Award, Target, TrendingUp, Bookmark
+  Edit3, Shield, Award, Target, TrendingUp, Bookmark,
+  BarChart3, Activity
 } from "lucide-react";
 
 // ─── Icon map for skill categories returned by API ────────────────
@@ -90,7 +95,13 @@ export default function ProfileScreen() {
   var { user, logout } = useAuth();
   var { showToast } = useToast();
   var { t } = useT();
+  var [weeklyReportOpen, setWeeklyReportOpen] = useState(false);
+  var [insightsOpen, setInsightsOpen] = useState(false);
   var MENU = buildMenu(t);
+
+  // Add weekly report entry to menu (uses action callback instead of path)
+  MENU.push({ icon: BarChart3, label: "Weekly Report", color: BRAND.purple, action: function () { setWeeklyReportOpen(true); } });
+  MENU.push({ icon: Activity, label: "Productivity Insights", color: BRAND.teal, action: function () { setInsightsOpen(true); } });
 
   useEffect(() => { setTimeout(() => setMounted(true), 100); }, []);
 
@@ -195,6 +206,7 @@ export default function ProfileScreen() {
 
       {/* APPBAR */}
       <GlassAppBar
+        className="dp-desktop-header"
         left={<IconButton icon={ArrowLeft} onClick={() => navigate("/")} label="Go back" size="md" />}
         title={t("profile.title")}
         right={<IconButton icon={Settings} onClick={() => navigate("/settings")} label="Settings" size="md" />}
@@ -413,6 +425,9 @@ export default function ProfileScreen() {
             </GlassCard>
           </div>
 
+          {/* ══ PROFILE COMPLETENESS ══ */}
+          <ProfileCompleteness />
+
           {/* ══ SKILLS TILE ══ */}
           {skills.length > 0 && (
           <GlassCard padding={18} mb={10} style={{ ...stagger(3) }}>
@@ -450,42 +465,10 @@ export default function ProfileScreen() {
           </GlassCard>
           )}
 
-          {/* ══ ACHIEVEMENTS TILE ══ */}
-          {achievements.length > 0 && (
-          <GlassCard padding={18} mb={10} style={{ ...stagger(4) }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <Award size={15} color={lc(BRAND.yellow, isLight)} strokeWidth={2.5} />
-                <h2 style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)", margin: 0 }}>{t("profile.achievements")}</h2>
-              </div>
-              <span
-                onClick={() => navigate("/achievements")}
-                style={{ fontSize: 12, color: "var(--dp-accent)", cursor: "pointer", fontWeight: 500 }}
-              >{t("profile.seeAll")}</span>
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-              {achievements.map(function (a, i) {
-                var ac = lc(a.color, isLight);
-                var BadgeIcon = a.icon;
-                return (
-                  <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-                    <div style={{
-                      width: 46, height: 46, borderRadius: 14,
-                      background: `${a.color}10`, border: `1px solid ${a.color}15`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                    }}>
-                      <BadgeIcon size={20} color={ac} strokeWidth={1.8} />
-                    </div>
-                    <span style={{
-                      fontSize: 10, fontWeight: 500, textAlign: "center", lineHeight: 1.2,
-                      color: "var(--dp-text-secondary)",
-                    }}>{a.label}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </GlassCard>
-          )}
+          {/* ══ ACHIEVEMENTS SHOWCASE ══ */}
+          <div style={stagger(4)}>
+            <AchievementShowcase />
+          </div>
 
           {/* ══ QUICK LINKS ══ */}
           <GlassCard mb={10} style={{ ...stagger(5), overflow: "hidden" }}>
@@ -495,7 +478,7 @@ export default function ProfileScreen() {
                 <div
                   key={i}
                   className="dp-gh"
-                  onClick={() => navigate(item.path)}
+                  onClick={() => item.action ? item.action() : navigate(item.path)}
                   style={{
                     padding: "13px 18px", cursor: "pointer",
                     display: "flex", alignItems: "center", gap: 14,
@@ -557,6 +540,8 @@ export default function ProfileScreen() {
       </main>
 
       <BottomNav />
+      <WeeklyReportPanel open={weeklyReportOpen} onClose={function () { setWeeklyReportOpen(false); }} />
+      <ProductivityInsightsPanel open={insightsOpen} onClose={function () { setInsightsOpen(false); }} />
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');

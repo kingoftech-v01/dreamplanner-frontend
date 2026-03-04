@@ -27,6 +27,7 @@ var LoginScreen = lazy(function () { return import("./pages/auth/LoginScreen"); 
 var RegisterScreen = lazy(function () { return import("./pages/auth/RegisterScreen"); });
 var ForgotPasswordScreen = lazy(function () { return import("./pages/auth/ForgotPasswordScreen"); });
 var ChangePasswordScreen = lazy(function () { return import("./pages/auth/ChangePasswordScreen"); });
+var VerifyEmailScreen = lazy(function () { return import("./pages/auth/VerifyEmailScreen"); });
 
 // Lazy — Chat
 var ConversationList = lazy(function () { return import("./pages/chat/ConversationList"); });
@@ -46,6 +47,8 @@ var CalibrationScreen = lazy(function () { return import("./pages/dreams/Calibra
 var VisionBoardScreen = lazy(function () { return import("./pages/dreams/VisionBoardScreen"); });
 var MicroStartScreen = lazy(function () { return import("./pages/dreams/MicroStartScreen"); });
 var SharedDreamsScreen = lazy(function () { return import("./pages/dreams/SharedDreamsScreen"); });
+var DreamJournal = lazy(function () { return import("./pages/dreams/DreamJournal"); });
+var FocusTimer = lazy(function () { return import("./pages/dreams/FocusTimer"); });
 
 // Lazy — Social
 var SocialHub = lazy(function () { return import("./pages/social/SocialHub"); });
@@ -58,9 +61,11 @@ var UserProfileScreen = lazy(function () { return import("./pages/social/UserPro
 var CirclesScreen = lazy(function () { return import("./pages/social/CirclesScreen"); });
 var CircleDetailScreen = lazy(function () { return import("./pages/social/CircleDetailScreen"); });
 var CircleCreateScreen = lazy(function () { return import("./pages/social/CircleCreateScreen"); });
+var CircleChallenges = lazy(function () { return import("./pages/circles/CircleChallenges"); });
 // CircleInvitationsScreen removed — now integrated as bottom sheet in CircleDetailScreen
 var CircleChatScreen = lazy(function () { return import("./pages/chat/CircleChatScreen"); });
 var BuddyRequestsScreen = lazy(function () { return import("./pages/social/BuddyRequestsScreen"); });
+var AccountabilityContract = lazy(function () { return import("./pages/buddies/AccountabilityContract"); });
 var SavedPostsScreen = lazy(function () { return import("./pages/social/SavedPostsScreen"); });
 var PostDetailScreen = lazy(function () { return import("./pages/social/PostDetailScreen"); });
 
@@ -68,6 +73,9 @@ var PostDetailScreen = lazy(function () { return import("./pages/social/PostDeta
 var CalendarScreen = lazy(function () { return import("./pages/calendar/CalendarScreen"); });
 var GoogleCalendarConnect = lazy(function () { return import("./pages/calendar/GoogleCalendarConnect"); });
 var TimeBlocksScreen = lazy(function () { return import("./pages/calendar/TimeBlocksScreen"); });
+var TimeBlockTemplates = lazy(function () { return import("./pages/calendar/TimeBlockTemplates"); });
+var GoogleSyncSettings = lazy(function () { return import("./pages/calendar/GoogleSyncSettings"); });
+var SharedCalendarView = lazy(function () { return import("./pages/calendar/SharedCalendarView"); });
 
 // Lazy — Profile
 var ProfileScreen = lazy(function () { return import("./pages/profile/ProfileScreen"); });
@@ -86,9 +94,13 @@ var StoreScreen = lazy(function () { return import("./pages/store/StoreScreen");
 var SubscriptionScreen = lazy(function () { return import("./pages/store/SubscriptionScreen"); });
 var GiftingScreen = lazy(function () { return import("./pages/store/GiftingScreen"); });
 
+// Lazy — Leagues
+var SeasonDetail = lazy(function () { return import("./pages/leagues/SeasonDetail"); });
+
 // Lazy — Other
 var NotificationsScreen = lazy(function () { return import("./pages/notifications/NotificationsScreen"); });
 var OnboardingScreen = lazy(function () { return import("./pages/onboarding/OnboardingScreen"); });
+var PersonalityQuiz = lazy(function () { return import("./pages/onboarding/PersonalityQuiz"); });
 
 function LoadingFallback() {
   return (
@@ -223,9 +235,11 @@ export default function App() {
       <Routes>
         {/* Public routes — no auth required */}
         <Route path="/onboarding" element={<OnboardingScreen />} />
+        <Route path="/onboarding/quiz" element={<PersonalityQuiz />} />
         <Route path="/login" element={<GuestRoute><LoginScreen /></GuestRoute>} />
         <Route path="/register" element={<GuestRoute><RegisterScreen /></GuestRoute>} />
         <Route path="/forgot-password" element={<GuestRoute><ForgotPasswordScreen /></GuestRoute>} />
+        <Route path="/verify-email" element={<VerifyEmailScreen />} />
         <Route path="/change-password" element={<P><ChangePasswordScreen /></P>} />
         <Route path="/terms" element={<TermsOfServiceScreen />} />
         <Route path="/privacy" element={<PrivacyPolicyScreen />} />
@@ -248,9 +262,14 @@ export default function App() {
         <Route path="/dream/:id" element={<P><DreamDetail /></P>} />
         <Route path="/dream/:id/edit" element={<P><DreamEditScreen /></P>} />
         <Route path="/dream/:id/calibration" element={<P><CalibrationScreen /></P>} />
+        <Route path="/dream/:id/journal" element={<P><DreamJournal /></P>} />
         <Route path="/vision-board" element={<P><VisionBoardScreen /></P>} />
         <Route path="/micro-start/:dreamId" element={<P><MicroStartScreen /></P>} />
         <Route path="/dreams/shared" element={<P><SharedDreamsScreen /></P>} />
+        <Route path="/focus" element={<P><FocusTimer /></P>} />
+
+        {/* Leagues */}
+        <Route path="/season/:id" element={<P><SeasonDetail /></P>} />
 
         {/* Social */}
         <Route path="/social" element={<P><SocialHub /></P>} />
@@ -262,10 +281,12 @@ export default function App() {
         <Route path="/user/:id" element={<P><UserProfileScreen /></P>} />
         <Route path="/circles" element={<P><CirclesScreen /></P>} />
         <Route path="/circle/:id" element={<P><CircleDetailScreen /></P>} />
+        <Route path="/circle/:id/challenges" element={<P><CircleChallenges /></P>} />
         <Route path="/circles/create" element={<P><CircleCreateScreen /></P>} />
         {/* invitations route removed — now a bottom sheet in CircleDetailScreen */}
         <Route path="/circle-chat/:id" element={<P><CircleChatScreen /></P>} />
         <Route path="/buddy-requests" element={<P><BuddyRequestsScreen /></P>} />
+        <Route path="/buddy-contracts" element={<P><AccountabilityContract /></P>} />
         <Route path="/social/saved" element={<P><SavedPostsScreen /></P>} />
         <Route path="/post/:id" element={<P><PostDetailScreen /></P>} />
 
@@ -273,6 +294,9 @@ export default function App() {
         <Route path="/calendar" element={<P><CalendarScreen /></P>} />
         <Route path="/calendar-connect" element={<P><GoogleCalendarConnect /></P>} />
         <Route path="/calendar/timeblocks" element={<P><TimeBlocksScreen /></P>} />
+        <Route path="/calendar/templates" element={<P><TimeBlockTemplates /></P>} />
+        <Route path="/calendar/sync-settings" element={<P><GoogleSyncSettings /></P>} />
+        <Route path="/calendar/shared/:token" element={<SharedCalendarView />} />
 
         {/* Profile */}
         <Route path="/profile" element={<P><ProfileScreen /></P>} />

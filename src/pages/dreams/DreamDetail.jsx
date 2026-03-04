@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
 import { useToast } from "../../context/ToastContext";
+import { useCelebration } from "../../context/CelebrationContext";
 import { useT } from "../../context/I18nContext";
 import BottomNav from "../../components/shared/BottomNav";
 import ErrorState from "../../components/shared/ErrorState";
@@ -16,17 +17,27 @@ import GlassModal from "../../components/shared/GlassModal";
 import GlassInput from "../../components/shared/GlassInput";
 import GradientButton from "../../components/shared/GradientButton";
 import AchievementShareModal from "../../components/shared/AchievementShareModal";
-import { apiGet, apiPost, apiPatch, apiDelete } from "../../services/api";
+import ObstaclePredictionPanel from "../../components/shared/ObstaclePredictionPanel";
+import GoalRefineWizard from "../../components/shared/GoalRefineWizard";
+import DurationEstimatePanel from "../../components/shared/DurationEstimatePanel";
+import DreamSimilarityPanel from "../../components/shared/DreamSimilarityPanel";
+import DifficultyCalibrationPanel from "../../components/shared/DifficultyCalibrationPanel";
+import ProgressPhotoPanel from "../../components/shared/ProgressPhotoPanel";
+import { apiGet, apiPost, apiPatch, apiDelete, apiUpload } from "../../services/api";
 import { DREAMS, SOCIAL } from "../../services/endpoints";
 import { exportDreamCard } from "../../utils/exportDreamCard";
-import { saveBlobFile, nativeShare, isNative } from "../../services/native";
+import { saveBlobFile, nativeShare, isNative, playHapticPattern } from "../../services/native";
+import { playSound } from "../../services/sounds";
+import useDragReorder from "../../hooks/useDragReorder";
 import {
   ArrowLeft, MoreVertical, MessageCircle, Target, Clock,
   ChevronDown, ChevronUp, Plus, Check, Circle, Trash2,
   Edit3, Share2, FileText, Copy, Zap, Flame, Star,
   X, CheckCircle, AlertTriangle, Sparkles, Flag,
-  Globe, Lock, Tag, UserPlus, TrendingUp, Download, Search, Rocket
+  Globe, Lock, Tag, UserPlus, TrendingUp, Download, Search, Rocket,
+  GripVertical, BookOpen, BarChart2, Link2, Shield, Wand2, Compass, Camera, Image
 } from "lucide-react";
+import ProgressCharts from "../../components/shared/ProgressCharts";
 import { adaptColor, GRADIENTS, STATUS } from "../../styles/colors";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -71,6 +82,59 @@ function SeeMoreBtn({ shown, total, onToggle, isLight, expanded, t }) {
   );
 }
 
+/* ── Draggable task list within a goal ── */
+function DraggableTaskList({ tasks, goalId, onToggleTask, onReorder, showAllTasks, taskLimit, onToggleShowAll, onAddTask, t }) {
+  var visibleTasks = showAllTasks ? tasks : tasks.slice(0, taskLimit);
+
+  var dragReorder = useDragReorder({
+    items: visibleTasks,
+    onReorder: function (newItems) {
+      // Build full reordered list: replace visible portion
+      var fullReordered;
+      if (showAllTasks) {
+        fullReordered = newItems;
+      } else {
+        fullReordered = newItems.concat(tasks.slice(taskLimit));
+      }
+      onReorder(goalId, fullReordered);
+    },
+  });
+
+  return (
+    <div>
+      {dragReorder.orderedItems.map(function (t, ti) {
+        var itemProps = dragReorder.getItemProps(ti);
+        var isBeingDragged = dragReorder.isDragging && dragReorder.dragIndex === ti;
+        return (
+          <div key={t.id} ref={itemProps.ref} style={Object.assign({}, { display: "flex", alignItems: "center", gap: 6, padding: "10px 0", borderBottom: ti < dragReorder.orderedItems.length - 1 ? "1px solid var(--dp-header-border)" : "none", userSelect: "none", touchAction: dragReorder.isDragging ? "none" : "auto", background: isBeingDragged ? "var(--dp-surface)" : "transparent", borderRadius: isBeingDragged ? 8 : 0 }, itemProps.style)} onPointerDown={itemProps.onPointerDown} data-drag-index={itemProps["data-drag-index"]}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 18, flexShrink: 0, cursor: "grab", opacity: 0.35, touchAction: "none" }}>
+              <GripVertical size={14} strokeWidth={2} color={"var(--dp-text-muted)"} />
+            </div>
+            <button aria-label={t.completed ? "Mark task incomplete" : "Mark task complete"} onClick={function () { onToggleTask(goalId, t.id); }} style={{ width: 22, height: 22, borderRadius: 7, border: t.completed ? "none" : "2px solid var(--dp-input-border)", background: t.completed ? "rgba(93,229,168,0.2)" : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s", flexShrink: 0 }}>
+              {t.completed && <Check size={12} color={"var(--dp-success)"} strokeWidth={3} />}
+            </button>
+            <span style={{ flex: 1, fontSize: 13, color: t.completed ? "var(--dp-text-muted)" : "var(--dp-text-primary)", textDecoration: t.completed ? "line-through" : "none", transition: "all 0.2s", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{t.title}</span>
+            {(t.isChain || t.chainNextDelayDays != null) && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 3, padding: "1px 6px", borderRadius: 6, fontSize: 10, fontWeight: 700, textTransform: "uppercase", background: "rgba(139,92,246,0.12)", color: "var(--dp-accent)", flexShrink: 0, marginRight: 4 }}>
+                <Link2 size={9} strokeWidth={2.5} />Chain{t.chainPosition ? " " + t.chainPosition.position + "/" + t.chainPosition.total : ""}
+              </span>
+            )}
+            <span style={{ fontSize: 12, color: t.completed ? "rgba(93,229,168,0.5)" : "rgba(252,211,77,0.6)", fontWeight: 600 }}>+{t.xp}</span>
+          </div>
+        );
+      })}
+      {tasks.length > taskLimit && (
+        <button onClick={function (e) { e.stopPropagation(); onToggleShowAll(); }} style={{ width: "100%", padding: "8px", marginTop: 4, borderRadius: 10, border: "none", background: "transparent", color: "var(--dp-accent)", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "inherit", textAlign: "center" }}>
+          {showAllTasks ? t("dreams.showFewerTasks") : t("dreams.seeAllTasks") + " (" + tasks.length + ")"}
+        </button>
+      )}
+      <button onClick={function () { onAddTask(goalId); }} style={{ width: "100%", marginTop: 4, padding: "8px", borderRadius: 10, border: "1px dashed rgba(139,92,246,0.2)", background: "rgba(139,92,246,0.04)", color: "var(--dp-accent)", fontSize: 12, fontWeight: 500, cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+        <Plus size={13} strokeWidth={2} />Add Task
+      </button>
+    </div>
+  );
+}
+
 export default function DreamDetailScreen(){
   const navigate=useNavigate();
   const { id } = useParams();
@@ -78,6 +142,7 @@ export default function DreamDetailScreen(){
   const{resolved,uiOpacity}=useTheme();const isLight=resolved==="light";
   var { user: currentUser } = useAuth();
   var { showToast } = useToast();
+  var { celebrate } = useCelebration();
   var { t } = useT();
 
   var dreamQuery = useQuery({ queryKey: ["dream", id], queryFn: function () { return apiGet(DREAMS.DETAIL(id)); } });
@@ -114,6 +179,11 @@ export default function DreamDetailScreen(){
     mutationFn: function (data) { return apiPost(DREAMS.TASKS.LIST, data); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
   });
+  var reorderTasksMut = useMutation({
+    mutationFn: function (data) { return apiPost(DREAMS.TASKS.REORDER, data); },
+    onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
+    onError: function (err) { showToast(err.userMessage || err.message || "Failed to reorder tasks", "error"); queryClient.invalidateQueries({ queryKey: ["dream", id] }); },
+  });
   var deleteDreamMut = useMutation({
     mutationFn: function () { return apiDelete(DREAMS.DETAIL(id)); },
     onSuccess: function () { queryClient.invalidateQueries({ queryKey: ["dreams"] }); showToast("Dream deleted", "success"); navigate("/"); },
@@ -131,6 +201,11 @@ export default function DreamDetailScreen(){
       showToast("Milestone completed!", "success");
       var ms = MILESTONES.find(function (m) { return m.id === milestoneId; });
       setAchievementShare({ type: "milestone", title: ms ? ms.label : "Milestone", milestoneId: milestoneId });
+      // Trigger AI celebration for milestone completion
+      celebrate("milestone_reached", {
+        milestone_title: ms ? ms.label : "Milestone",
+        dream_title: DREAM.title || "",
+      });
     },
     onError: function (err) { showToast(err.userMessage || err.message || "Failed to complete milestone", "error"); },
   });
@@ -189,6 +264,46 @@ export default function DreamDetailScreen(){
   });
   var progressHistory = (progressQuery.data && (progressQuery.data.snapshots || progressQuery.data.results)) || progressQuery.data || [];
 
+  // ── Analytics query ──
+  var [analyticsRange, setAnalyticsRange] = useState("all");
+  var [showAnalytics, setShowAnalytics] = useState(false);
+  var analyticsQuery = useQuery({
+    queryKey: ["dream-analytics", id, analyticsRange],
+    queryFn: function () { return apiGet(DREAMS.ANALYTICS(id, analyticsRange)); },
+    enabled: !!isOwner && showAnalytics,
+    staleTime: 60000,
+  });
+
+  // ── Journal entries query (recent 3 for preview) ──
+  var journalQuery = useQuery({
+    queryKey: ["journal", id],
+    queryFn: function () { return apiGet(DREAMS.JOURNAL.LIST + "?dream=" + id); },
+    enabled: !!isOwner,
+  });
+  var journalEntries = (journalQuery.data && journalQuery.data.results) || journalQuery.data || [];
+  var recentJournal = journalEntries.slice(0, 3);
+
+  // ── Conversation starters query (for "Chat about this" section) ──
+  var startersQuery = useQuery({
+    queryKey: ["conversation-starters", id],
+    queryFn: function () { return apiGet(DREAMS.CONVERSATION_STARTERS(id)); },
+    enabled: !!isOwner,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+  var chatStarters = (startersQuery.data && startersQuery.data.starters) || [];
+
+  // ── Progress Photos query & state ──
+  var progressPhotosQuery = useQuery({
+    queryKey: ["progress-photos", id],
+    queryFn: function () { return apiGet(DREAMS.PROGRESS_PHOTOS.LIST(id)); },
+    enabled: !!isOwner,
+  });
+  var progressPhotos = (progressPhotosQuery.data && progressPhotosQuery.data.photos) || progressPhotosQuery.data || [];
+  var [selectedPhoto, setSelectedPhoto] = useState(null);
+  var [analyzingPhotoId, setAnalyzingPhotoId] = useState(null);
+  var [photoUploading, setPhotoUploading] = useState(false);
+
   const[mounted,setMounted]=useState(false);
   const[goals,setGoals]=useState([]);
   const[expanded,setExpanded]=useState({});
@@ -199,7 +314,10 @@ export default function DreamDetailScreen(){
   const[addTask,setAddTask]=useState(null);
   const[newTitle,setNewTitle]=useState("");
   const[newDesc,setNewDesc]=useState("");
-  const[celebration,setCelebration]=useState(null); // null or { milestone: 25|50|75|100, xp }
+  // Chain task fields
+  var [chainEnabled, setChainEnabled] = useState(false);
+  var [chainDelay, setChainDelay] = useState(7);
+  var [chainCustomTitle, setChainCustomTitle] = useState("");
   const[achievementShare,setAchievementShare]=useState(null); // null or { type, title, goalId, milestoneId }
   const [shareModal, setShareModal] = useState(false);
   const [shareImage, setShareImage] = useState(null);
@@ -207,10 +325,114 @@ export default function DreamDetailScreen(){
   const [isPublic, setIsPublic] = useState(false);
   const [privacyConfirm, setPrivacyConfirm] = useState(null); // null or "public" | "private"
 
+  // ── Goal refinement wizard state ──
+  var [refineGoal, setRefineGoal] = useState(null); // null or goal object
+
   // ── Obstacles state ──
   var [showAddObstacle, setShowAddObstacle] = useState(false);
   var [obstacleTitle, setObstacleTitle] = useState("");
   var [obstacleDesc, setObstacleDesc] = useState("");
+
+  // ── Obstacle prediction state ──
+  var [showPredictions, setShowPredictions] = useState(false);
+  var [predictionResults, setPredictionResults] = useState(null);
+  var [predictionLoading, setPredictionLoading] = useState(false);
+  var [predictionError, setPredictionError] = useState(null);
+
+  var handlePredictObstacles = function () {
+    setShowPredictions(true);
+    setPredictionLoading(true);
+    setPredictionError(null);
+    setPredictionResults(null);
+    apiPost(DREAMS.PREDICT_OBSTACLES(id)).then(function (data) {
+      setPredictionResults(data.predictions || []);
+      setPredictionLoading(false);
+    }).catch(function (err) {
+      setPredictionError(err.userMessage || err.message || "Failed to predict obstacles");
+      setPredictionLoading(false);
+    });
+  };
+
+  var handleAddPredictionAsObstacle = function (prediction) {
+    var desc = prediction.obstacle;
+    if (prediction.prevention_strategies && prediction.prevention_strategies.length > 0) {
+      desc = desc + "\n\nPrevention: " + prediction.prevention_strategies.join("; ");
+    }
+    addObstacleMut.mutate({
+      dream: id,
+      title: prediction.obstacle.length > 200 ? prediction.obstacle.slice(0, 200) + "..." : prediction.obstacle,
+      description: desc,
+    });
+  };
+
+  // ── Dream similarity / inspiration state ──
+  var [showSimilarity, setShowSimilarity] = useState(false);
+  var [similarityData, setSimilarityData] = useState(null);
+  var [similarityLoading, setSimilarityLoading] = useState(false);
+  var [similarityError, setSimilarityError] = useState(null);
+
+  var handleFindInspiration = function () {
+    setShowSimilarity(true);
+    setSimilarityLoading(true);
+    setSimilarityError(null);
+    setSimilarityData(null);
+    apiGet(DREAMS.SIMILAR(id)).then(function (data) {
+      setSimilarityData(data);
+      setSimilarityLoading(false);
+    }).catch(function (err) {
+      setSimilarityError(err.userMessage || err.message || "Failed to find similar dreams");
+      setSimilarityLoading(false);
+    });
+  };
+
+  var handleUseTemplate = function (template) {
+    if (template && template.template_id) {
+      navigate("/templates/" + template.template_id);
+    }
+  };
+
+  // ── Progress Photo handlers ──
+  var handlePhotoUpload = function (e) {
+    var file = e.target.files && e.target.files[0];
+    if (!file) return;
+    var ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+    if (ALLOWED.indexOf(file.type) === -1) {
+      showToast("Unsupported format. Use JPEG, PNG, WebP, or GIF.", "error");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      showToast("Image too large. Max 10 MB.", "error");
+      return;
+    }
+    setPhotoUploading(true);
+    var formData = new FormData();
+    formData.append("image", file);
+    formData.append("taken_at", new Date().toISOString());
+    apiUpload(DREAMS.PROGRESS_PHOTOS.UPLOAD(id), formData).then(function () {
+      queryClient.invalidateQueries({ queryKey: ["progress-photos", id] });
+      showToast("Progress photo uploaded!", "success");
+      setPhotoUploading(false);
+    }).catch(function (err) {
+      showToast(err.userMessage || err.message || "Failed to upload photo", "error");
+      setPhotoUploading(false);
+    });
+    e.target.value = "";
+  };
+
+  var handleAnalyzePhoto = function (photoId) {
+    setAnalyzingPhotoId(photoId);
+    apiPost(DREAMS.PROGRESS_PHOTOS.ANALYZE(id, photoId)).then(function (data) {
+      queryClient.invalidateQueries({ queryKey: ["progress-photos", id] });
+      setAnalyzingPhotoId(null);
+      if (data && data.photo) {
+        setSelectedPhoto(data.photo);
+      }
+      showToast("Analysis complete!", "success");
+    }).catch(function (err) {
+      setAnalyzingPhotoId(null);
+      showToast(err.userMessage || err.message || "Analysis failed", "error");
+    });
+  };
 
   // ── Tags state ──
   var [showTagInput, setShowTagInput] = useState(false);
@@ -224,6 +446,12 @@ export default function DreamDetailScreen(){
   var [showAllProgress, setShowAllProgress] = useState(false);
   var [expandedDescs, setExpandedDescs] = useState({});
   var toggleDesc = function (key) { setExpandedDescs(function (p) { var n = {}; n[key] = !p[key]; return Object.assign({}, p, n); }); };
+
+  // ── Duration Estimate state ──
+  var [showDurationEstimate, setShowDurationEstimate] = useState(false);
+
+  // ── Difficulty Calibration state ──
+  var [showDifficultyCalibration, setShowDifficultyCalibration] = useState(false);
 
   // ── Sharing / Collaborators state ──
   var [showShareModal, setShowShareModal] = useState(false);
@@ -285,15 +513,47 @@ export default function DreamDetailScreen(){
         const prevDone=prev.reduce((s,g)=>s+g.tasks.filter(t=>t.completed).length,0);
         const nextDone=next.reduce((s,g)=>s+g.tasks.filter(t=>t.completed).length,0);
         if(nextDone>prevDone){
+          // Task completed — play success sound + haptic
+          playSound("success");
+          playHapticPattern("success");
+          // Find the completed task for context
+          var completedTask = null;
+          var completedGoal = null;
+          for (var gi = 0; gi < next.length; gi++) {
+            if (next[gi].id === gId) {
+              completedGoal = next[gi];
+              for (var ti = 0; ti < next[gi].tasks.length; ti++) {
+                if (next[gi].tasks[ti].id === tId) { completedTask = next[gi].tasks[ti]; break; }
+              }
+              break;
+            }
+          }
           const prevPct=Math.round((prevDone/total)*100);
           const nextPct=Math.round((nextDone/total)*100);
           const milestones=[25,50,75,100];
+          var milestoneHit = false;
           for(const m of milestones){
             if(nextPct>=m&&prevPct<m){
-              setCelebration({milestone:m,xp:m===100?500:m===75?200:m===50?100:50});
-              setTimeout(()=>setCelebration(null),4000);
+              // Progress milestone reached — trigger AI celebration
+              var milestoneType = m === 100 ? "dream_completed" : "milestone_reached";
+              celebrate(milestoneType, {
+                dream_title: DREAM.title || "",
+                progress: m + "%",
+                tasks_completed: nextDone,
+                total_tasks: total,
+              });
+              milestoneHit = true;
               break;
             }
+          }
+          // Regular task completion celebration (only if no milestone was hit)
+          if (!milestoneHit) {
+            celebrate("task_completed", {
+              task_title: completedTask ? completedTask.title : "",
+              goal_title: completedGoal ? completedGoal.title : "",
+              dream_title: DREAM.title || "",
+              progress: nextPct + "%",
+            });
           }
         }
       }
@@ -303,7 +563,29 @@ export default function DreamDetailScreen(){
     apiPost(DREAMS.TASKS.COMPLETE(tId)).catch(function () { queryClient.invalidateQueries({ queryKey: ["dream", id] }); });
   };
   const handleAddGoal=()=>{if(!newTitle.trim())return;var tempId="g"+Date.now();setGoals(p=>[...p,{id:tempId,title:newTitle.trim(),order:p.length,completed:false,tasks:[]}]);apiPost(DREAMS.GOALS.LIST,{dream:id,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to add goal","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddGoal(false);};
-  const handleAddTask=(gId)=>{if(!newTitle.trim())return;var tempId="t"+Date.now();setGoals(p=>p.map(g=>g.id===gId?{...g,tasks:[...g.tasks,{id:tempId,title:newTitle.trim(),completed:false,xp:20}]}:g));apiPost(DREAMS.TASKS.LIST,{goal:gId,title:newTitle.trim(),description:newDesc.trim()}).then(function(){queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to add task","error");queryClient.invalidateQueries({queryKey:["dream",id]});});setNewTitle("");setNewDesc("");setAddTask(null);};
+  var handleAddTask = function (gId) {
+    if (!newTitle.trim()) return;
+    var tempId = "t" + Date.now();
+    setGoals(function (p) { return p.map(function (g) { return g.id === gId ? Object.assign({}, g, { tasks: g.tasks.concat([{ id: tempId, title: newTitle.trim(), completed: false, xp: 20, isChain: chainEnabled, chainNextDelayDays: chainEnabled ? chainDelay : null }]) }) : g; }); });
+    var payload = { goal: gId, title: newTitle.trim(), description: newDesc.trim() };
+    if (chainEnabled) {
+      payload.chainNextDelayDays = chainDelay;
+      payload.chainTemplateTitle = chainCustomTitle.trim();
+      payload.isChain = true;
+    }
+    apiPost(DREAMS.TASKS.LIST, payload).then(function () {
+      queryClient.invalidateQueries({ queryKey: ["dream", id] });
+    }).catch(function (err) {
+      showToast(err.userMessage || err.message || "Failed to add task", "error");
+      queryClient.invalidateQueries({ queryKey: ["dream", id] });
+    });
+    setNewTitle(""); setNewDesc(""); setChainEnabled(false); setChainDelay(7); setChainCustomTitle(""); setAddTask(null);
+  };
+  var handleReorderTasks = function (goalId, newTasks) {
+    setGoals(function (prev) { return prev.map(function (g) { return g.id === goalId ? Object.assign({}, g, { tasks: newTasks }) : g; }); });
+    var taskIds = newTasks.map(function (t) { return t.id; });
+    reorderTasksMut.mutate({ goal_id: goalId, task_ids: taskIds });
+  };
 
   const handleShare = async () => {
     setShareModal(true);
@@ -331,24 +613,61 @@ export default function DreamDetailScreen(){
   const ringR=38,ringC=2*Math.PI*ringR,ringOff=ringC*(1-progress/100);
 
 
-  const Modal=({title,onClose,onSubmit,submitLabel})=>(
-    <GlassModal open={true} onClose={onClose} variant="center" title={title} maxWidth={380}>
-      <div style={{padding:24}}>
-        <div style={{marginBottom:12}}>
-          <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Title</label>
-          <GlassInput value={newTitle} onChange={e=>setNewTitle(e.target.value)} autoFocus placeholder="Enter title..." />
+  var Modal = function (props) {
+    var isTaskModal = props.title === "Add Task";
+    return (
+      <GlassModal open={true} onClose={props.onClose} variant="center" title={props.title} maxWidth={380}>
+        <div style={{padding:24}}>
+          <div style={{marginBottom:12}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Title</label>
+            <GlassInput value={newTitle} onChange={function(e){setNewTitle(e.target.value);}} autoFocus placeholder="Enter title..." />
+          </div>
+          <div style={{marginBottom:16}}>
+            <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Description (optional)</label>
+            <GlassInput value={newDesc} onChange={function(e){setNewDesc(e.target.value);}} multiline placeholder="Add details..." />
+          </div>
+
+          {/* ── Chain Tasks Section (only for Add Task) ── */}
+          {isTaskModal && (
+            <div style={{marginBottom:16,padding:14,borderRadius:12,border:"1px solid var(--dp-glass-border)",background:"var(--dp-pill-bg)"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:chainEnabled?12:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <Link2 size={14} strokeWidth={2} color={"var(--dp-accent)"} />
+                  <span style={{fontSize:13,fontWeight:600,color:"var(--dp-text-secondary)"}}>Chain Tasks</span>
+                </div>
+                <button onClick={function(){setChainEnabled(!chainEnabled);}} style={{width:40,height:22,borderRadius:11,border:"none",background:chainEnabled?"var(--dp-accent)":"var(--dp-input-border)",cursor:"pointer",position:"relative",transition:"all 0.2s",fontFamily:"inherit"}}>
+                  <div style={{width:18,height:18,borderRadius:9,background:"#fff",position:"absolute",top:2,left:chainEnabled?20:2,transition:"all 0.2s",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}} />
+                </button>
+              </div>
+              {chainEnabled && (
+                <div>
+                  <div style={{fontSize:11,color:"var(--dp-text-muted)",marginBottom:10,lineHeight:1.4}}>
+                    Auto-create the next task when this one is completed.
+                  </div>
+                  <div style={{marginBottom:10}}>
+                    <label style={{fontSize:11,fontWeight:600,color:"var(--dp-text-tertiary)",marginBottom:4,display:"block"}}>Schedule next task after</label>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <input type="number" min="1" max="365" value={chainDelay} onChange={function(e){setChainDelay(Math.max(1,parseInt(e.target.value,10)||1));}} style={{width:60,padding:"6px 8px",borderRadius:8,border:"1px solid var(--dp-input-border)",background:"var(--dp-glass-bg)",color:"var(--dp-text)",fontSize:13,fontFamily:"inherit",textAlign:"center"}} />
+                      <span style={{fontSize:12,color:"var(--dp-text-secondary)"}}>days</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,fontWeight:600,color:"var(--dp-text-tertiary)",marginBottom:4,display:"block"}}>Custom title for next task (optional)</label>
+                    <GlassInput value={chainCustomTitle} onChange={function(e){setChainCustomTitle(e.target.value);}} placeholder="Same as current task" />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={props.onClose} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-pill-bg)",color:"var(--dp-text-secondary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+            <GradientButton gradient="primaryDark" onClick={props.onSubmit} disabled={!newTitle.trim()} style={{flex:1}}>{props.submitLabel}</GradientButton>
+          </div>
         </div>
-        <div style={{marginBottom:16}}>
-          <label style={{fontSize:12,fontWeight:600,color:"var(--dp-text-secondary)",marginBottom:6,display:"block"}}>Description (optional)</label>
-          <GlassInput value={newDesc} onChange={e=>setNewDesc(e.target.value)} multiline placeholder="Add details..." />
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <button onClick={onClose} style={{flex:1,padding:"12px",borderRadius:12,border:"1px solid var(--dp-input-border)",background:"var(--dp-pill-bg)",color:"var(--dp-text-secondary)",fontSize:14,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
-          <GradientButton gradient="primaryDark" onClick={onSubmit} disabled={!newTitle.trim()} style={{flex:1}}>{submitLabel}</GradientButton>
-        </div>
-      </div>
-    </GlassModal>
-  );
+      </GlassModal>
+    );
+  };
 
   if (dreamQuery.isLoading) return (
       <div style={{ width: "100%", padding: "60px 16px 0" }}>
@@ -371,6 +690,7 @@ export default function DreamDetailScreen(){
     <div className="dp-desktop-main" style={{position:"absolute",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       <GlassAppBar
+        className="dp-desktop-header"
         left={<IconButton icon={ArrowLeft} onClick={()=>navigate("/")} label="Go back" />}
         title={<h1 style={{ fontSize: 18, fontWeight: 700, color: "var(--dp-text)", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{DREAM.title}</h1>}
         right={
@@ -380,7 +700,7 @@ export default function DreamDetailScreen(){
             {isOwner && <div style={{position:"relative"}}>
               <IconButton icon={MoreVertical} onClick={()=>setMenu(!menu)} label="More options" />
               {menu&&<div style={{position:"absolute",top:44,right:0,width:180,background:"var(--dp-modal-bg)",backdropFilter:"blur(40px)",WebkitBackdropFilter:"blur(40px)",borderRadius:14,border:"1px solid var(--dp-input-border)",boxShadow:"0 12px 40px rgba(0,0,0,0.4)",padding:6,zIndex:200,animation:"dpFS 0.15s ease-out"}}>
-                {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:Rocket,label:t("dreams.microStart")||"Micro Start",action:()=>{setMenu(false);navigate(`/micro-start/${DREAM.id}`);}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
+                {[{icon:Edit3,label:t("dreams.edit"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/edit`);}},{icon:Sparkles,label:t("dreams.generatePlan"),action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/calibration`);}},{icon:Share2,label:t("dreams.shareDream"),action:()=>{setMenu(false);handleShare();}},{icon:Sparkles,label:t("dreams.generateVision"),action:function(){setMenu(false);apiPost(DREAMS.GENERATE_VISION(id)).then(function(data){showToast("Vision image generated!","success");queryClient.invalidateQueries({queryKey:["dream",id]});}).catch(function(err){showToast(err.userMessage || err.message ||"Failed to generate vision","error");});}},{icon:FileText,label:t("dreams.exportPdf"),action:()=>{setMenu(false);apiGet(DREAMS.EXPORT_PDF(id),{responseType:"blob"}).then(function(blob){saveBlobFile(blob,"dream-"+id+".pdf");}).catch(function(){showToast("PDF export failed","error");});}},{icon:BookOpen,label:"Journal",action:()=>{setMenu(false);navigate(`/dream/${DREAM.id}/journal`);}},{icon:Rocket,label:t("dreams.microStart")||"Micro Start",action:()=>{setMenu(false);navigate(`/micro-start/${DREAM.id}`);}},{icon:Copy,label:t("dreams.duplicate"),action:()=>{setMenu(false);duplicateDreamMut.mutate();}},{icon:Trash2,label:t("common.delete"),danger:true,action:()=>{setMenu(false);setShowDeleteConfirm(true);}}].map(({icon:I,label,danger,action},i)=>(
                   <button key={i} onClick={action||(()=>setMenu(false))} className="dp-gh" style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"none",background:"transparent",display:"flex",alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit",fontSize:13,fontWeight:500,color:danger?"rgba(239,68,68,0.8)":("var(--dp-text-primary)"),transition:"background 0.15s"}}>
                     <I size={15} strokeWidth={2}/>{label}
                   </button>
@@ -493,6 +813,25 @@ export default function DreamDetailScreen(){
             </div>
           </div>
 
+          {/* ── Find Inspiration Button ── */}
+          {isOwner && (
+            <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"140ms",marginBottom:16}}>
+              <button onClick={handleFindInspiration} style={{
+                width:"100%",padding:"12px 16px",borderRadius:14,
+                border:"1px solid rgba(139,92,246,0.2)",
+                background:"linear-gradient(135deg, rgba(139,92,246,0.1), rgba(236,72,153,0.06))",
+                color:"var(--dp-accent)",fontSize:13,fontWeight:600,
+                cursor:"pointer",fontFamily:"inherit",
+                display:"flex",alignItems:"center",justifyContent:"center",gap:8,
+                transition:"all 0.25s ease",
+              }}>
+                <Compass size={16} strokeWidth={2.5}/>
+                Find Inspiration
+                <span style={{fontSize:11,fontWeight:500,color:"var(--dp-text-muted)",marginLeft:4}}>AI-powered</span>
+              </button>
+            </div>
+          )}
+
           {/* ── Milestones Timeline ── */}
           <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"160ms"}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
@@ -551,9 +890,17 @@ export default function DreamDetailScreen(){
                 <Star size={14} color={"var(--dp-accent)"} strokeWidth={2.5}/>
                 <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.goals")} ({goals.length})</h2>
               </div>
-              {isOwner && <button onClick={()=>{setNewTitle("");setNewDesc("");setAddGoal(true);}} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
-                <Plus size={13} strokeWidth={2.5}/>Add Goal
-              </button>}
+              {isOwner && <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                <button onClick={function () { setShowDifficultyCalibration(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(236,72,153,0.25)",background:"rgba(236,72,153,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                  <Zap size={13} strokeWidth={2.5}/>Calibrate
+                </button>
+                <button onClick={function () { setShowDurationEstimate(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(251,146,60,0.25)",background:"rgba(251,146,60,0.08)",color:"var(--dp-warning)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                  <Clock size={13} strokeWidth={2.5}/>Estimate Time
+                </button>
+                <button onClick={()=>{setNewTitle("");setNewDesc("");setAddGoal(true);}} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                  <Plus size={13} strokeWidth={2.5}/>Add Goal
+                </button>
+              </div>}
             </div>
           </div>
 
@@ -568,7 +915,6 @@ export default function DreamDetailScreen(){
             var allDone=gDone===gTotal&&gTotal>0;
             var TASK_LIMIT = 5;
             var showAllTasks = expanded["tasks_" + g.id];
-            var visibleTasks = showAllTasks ? g.tasks : g.tasks.slice(0, TASK_LIMIT);
             return(
               <div key={g.id} className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:(320+gi*60)+"ms"}}>
                 <GlassCard mb={8} style={{overflow:"hidden"}}>
@@ -586,6 +932,21 @@ export default function DreamDetailScreen(){
                         </div>
                       </div>
                     </div>
+                    {isOwner && !allDone && (
+                      <button
+                        aria-label="Refine goal with AI"
+                        title="Refine with AI"
+                        onClick={function (e) { e.stopPropagation(); setRefineGoal(g); }}
+                        style={{
+                          width: 28, height: 28, borderRadius: 8, border: "none",
+                          background: "linear-gradient(135deg, rgba(139,92,246,0.12), rgba(99,102,241,0.08))",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          cursor: "pointer", flexShrink: 0, transition: "all 0.2s",
+                        }}
+                      >
+                        <Wand2 size={14} strokeWidth={2.5} color={"var(--dp-accent)"} />
+                      </button>
+                    )}
                     {isExp?<ChevronUp size={18} color={"var(--dp-text-muted)"} strokeWidth={2}/>:<ChevronDown size={18} color={"var(--dp-text-muted)"} strokeWidth={2}/>}
                   </div>
 
@@ -593,23 +954,17 @@ export default function DreamDetailScreen(){
                   {isOwner ? (
                   <div style={{maxHeight:isExp?5000:0,opacity:isExp?1:0,transition:"all 0.35s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden"}}>
                     <div style={{padding:"0 14px 12px",borderTop:"1px solid var(--dp-header-border)"}}>
-                      {visibleTasks.map(function(t,ti){return(
-                        <div key={t.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 0",borderBottom:ti<visibleTasks.length-1?("1px solid var(--dp-header-border)"):"none"}}>
-                          <button aria-label={t.completed ? "Mark task incomplete" : "Mark task complete"} onClick={function(){toggleTask(g.id,t.id);}} style={{width:22,height:22,borderRadius:7,border:t.completed?"none":("2px solid var(--dp-input-border)"),background:t.completed?"rgba(93,229,168,0.2)":"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s",flexShrink:0}}>
-                            {t.completed&&<Check size={12} color={"var(--dp-success)"} strokeWidth={3}/>}
-                          </button>
-                          <span style={{flex:1,fontSize:13,color:t.completed?("var(--dp-text-muted)"):("var(--dp-text-primary)"),textDecoration:t.completed?"line-through":"none",transition:"all 0.2s",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",minWidth:0}}>{t.title}</span>
-                          <span style={{fontSize:12,color:t.completed?"rgba(93,229,168,0.5)":"rgba(252,211,77,0.6)",fontWeight:600}}>+{t.xp}</span>
-                        </div>
-                      );})}
-                      {g.tasks.length > TASK_LIMIT && (
-                        <button onClick={function(e){e.stopPropagation();setExpanded(function(p){var n={};n["tasks_"+g.id]=!p["tasks_"+g.id];return Object.assign({},p,n);});}} style={{width:"100%",padding:"8px",marginTop:4,borderRadius:10,border:"none",background:"transparent",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
-                          {showAllTasks ? t("dreams.showFewerTasks") : t("dreams.seeAllTasks") + " (" + g.tasks.length + ")"}
-                        </button>
-                      )}
-                      <button onClick={function(){setNewTitle("");setNewDesc("");setAddTask(g.id);}} style={{width:"100%",marginTop:4,padding:"8px",borderRadius:10,border:"1px dashed rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.04)",color:"var(--dp-accent)",fontSize:12,fontWeight:500,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                        <Plus size={13} strokeWidth={2}/>Add Task
-                      </button>
+                      <DraggableTaskList
+                        tasks={g.tasks}
+                        goalId={g.id}
+                        onToggleTask={toggleTask}
+                        onReorder={handleReorderTasks}
+                        showAllTasks={showAllTasks}
+                        taskLimit={TASK_LIMIT}
+                        onToggleShowAll={function () { setExpanded(function (p) { var n = {}; n["tasks_" + g.id] = !p["tasks_" + g.id]; return Object.assign({}, p, n); }); }}
+                        onAddTask={function (gId) { setNewTitle(""); setNewDesc(""); setChainEnabled(false); setChainDelay(7); setChainCustomTitle(""); setAddTask(gId); }}
+                        t={t}
+                      />
                     </div>
                   </div>
                   ) : null}
@@ -630,9 +985,14 @@ export default function DreamDetailScreen(){
                 <AlertTriangle size={14} color={"var(--dp-warning)"} strokeWidth={2.5}/>
                 <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>{t("dreams.obstacles")} ({obstacles.length})</h2>
               </div>
-              {isOwner && <button onClick={function () { setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
-                <Plus size={13} strokeWidth={2.5}/>Add
-              </button>}
+              {isOwner && <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <button onClick={handlePredictObstacles} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"linear-gradient(135deg, rgba(139,92,246,0.12), rgba(139,92,246,0.04))",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4,transition:"all 0.2s ease"}}>
+                  <Shield size={13} strokeWidth={2.5}/>Predict
+                </button>
+                <button onClick={function () { setObstacleTitle(""); setObstacleDesc(""); setShowAddObstacle(true); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                  <Plus size={13} strokeWidth={2.5}/>Add
+                </button>
+              </div>}
             </div>
           </div>
 
@@ -781,8 +1141,261 @@ export default function DreamDetailScreen(){
             </GlassCard>
           </div>
 
+          {/* ── Analytics (owner only, collapsible) ── */}
+          {isOwner && (
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"600ms",marginTop:16}}>
+            <button
+              onClick={function () { setShowAnalytics(!showAnalytics); }}
+              style={{
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "12px 16px",
+                borderRadius: 14,
+                border: "1px solid var(--dp-glass-border)",
+                background: "var(--dp-surface)",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                marginBottom: showAnalytics ? 12 : 0,
+                transition: "all 0.25s ease",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <BarChart2 size={16} color={"var(--dp-accent)"} strokeWidth={2.5} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dp-text)" }}>Analytics</span>
+              </div>
+              <ChevronDown
+                size={16}
+                color={"var(--dp-text-muted)"}
+                strokeWidth={2}
+                style={{
+                  transform: showAnalytics ? "rotate(180deg)" : "none",
+                  transition: "transform 0.25s ease",
+                }}
+              />
+            </button>
+            <div style={{
+              maxHeight: showAnalytics ? 3000 : 0,
+              opacity: showAnalytics ? 1 : 0,
+              overflow: "hidden",
+              transition: "max-height 0.5s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.4s ease",
+            }}>
+              <ProgressCharts
+                analytics={analyticsQuery.data}
+                isLoading={analyticsQuery.isLoading}
+                onRangeChange={function (r) { setAnalyticsRange(r); }}
+                activeRange={analyticsRange}
+              />
+            </div>
+          </div>
+          )}
+
+          {/* ── Journal Entries (owner only) ── */}
+          {isOwner && (
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"640ms",marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <BookOpen size={14} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>Journal ({journalEntries.length})</h2>
+              </div>
+              <button onClick={function () { navigate("/dream/" + id + "/journal"); }} style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                {journalEntries.length > 0 ? "View all" : <><Plus size={13} strokeWidth={2.5}/>Write</>}
+              </button>
+            </div>
+            <GlassCard padding={journalEntries.length > 0 ? 14 : 16} mb={16}>
+              {recentJournal.length === 0 ? (
+                <div style={{textAlign:"center",padding:"12px 0"}}>
+                  <span style={{fontSize:13,color:"var(--dp-text-muted)",display:"block",marginBottom:8}}>No journal entries yet</span>
+                  <GradientButton gradient="primaryDark" size="sm" icon={Plus} onClick={function () { navigate("/dream/" + id + "/journal"); }}>
+                    Write first entry
+                  </GradientButton>
+                </div>
+              ) : recentJournal.map(function (entry, ei) {
+                var MOOD_MAP = { excited: "\uD83E\uDD29", happy: "\uD83D\uDE0A", neutral: "\uD83D\uDE10", frustrated: "\uD83D\uDE24", motivated: "\uD83D\uDCAA", reflective: "\uD83E\uDD14" };
+                var preview = (entry.content || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+                return (
+                  <div key={entry.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:ei < recentJournal.length - 1 ? ("1px solid var(--dp-header-border)") : "none"}}>
+                    <span style={{fontSize:18,width:28,textAlign:"center",flexShrink:0}}>{entry.mood ? (MOOD_MAP[entry.mood] || "") : "\uD83D\uDCD6"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:entry.title ? 600 : 400,color:"var(--dp-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{entry.title || preview || "(empty)"}</div>
+                      {entry.title && preview && <div style={{fontSize:11,color:"var(--dp-text-muted)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginTop:2}}>{preview}</div>}
+                      <div style={{fontSize:10,color:"var(--dp-text-muted)",marginTop:2}}>{entry.created_at || entry.createdAt ? new Date(entry.created_at || entry.createdAt).toLocaleDateString(undefined, {month:"short",day:"numeric"}) : ""}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </GlassCard>
+          </div>
+          )}
+
+          {/* ── Progress Photos (owner only) ── */}
+          {isOwner && (
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"680ms",marginTop:16}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <Camera size={14} color={"var(--dp-accent)"} strokeWidth={2.5}/>
+                <h2 style={{fontSize:14,fontWeight:700,color:"var(--dp-text)",margin:0}}>Progress Photos ({progressPhotos.length})</h2>
+              </div>
+              <label style={{padding:"5px 12px",borderRadius:10,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.08)",color:"var(--dp-accent)",fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+                <Camera size={13} strokeWidth={2.5}/>
+                {photoUploading ? "Uploading..." : "Upload"}
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handlePhotoUpload} style={{display:"none"}} disabled={photoUploading} />
+              </label>
+            </div>
+            <GlassCard padding={progressPhotos.length > 0 ? 14 : 16} mb={16}>
+              {progressPhotos.length === 0 ? (
+                <div style={{textAlign:"center",padding:"16px 0"}}>
+                  <div style={{
+                    width:48,height:48,borderRadius:14,margin:"0 auto 12px",
+                    background:"linear-gradient(135deg, rgba(139,92,246,0.15), rgba(99,102,241,0.08))",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                  }}>
+                    <Image size={22} color="var(--dp-accent)" strokeWidth={2}/>
+                  </div>
+                  <span style={{fontSize:13,color:"var(--dp-text-muted)",display:"block",marginBottom:8}}>
+                    Upload progress photos and let AI track your visual progress
+                  </span>
+                  <label style={{
+                    display:"inline-flex",alignItems:"center",gap:6,
+                    padding:"10px 20px",borderRadius:12,cursor:"pointer",fontFamily:"inherit",
+                    background:"linear-gradient(135deg, #8B5CF6, #7C3AED)",color:"#fff",
+                    fontSize:14,fontWeight:600,border:"none",
+                  }}>
+                    <Camera size={15} strokeWidth={2}/>
+                    Upload First Photo
+                    <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" onChange={handlePhotoUpload} style={{display:"none"}} disabled={photoUploading} />
+                  </label>
+                </div>
+              ) : (
+                <div style={{display:"grid",gridTemplateColumns:"repeat(3, 1fr)",gap:8}}>
+                  {progressPhotos.map(function (photo) {
+                    var hasAnalysis = !!(photo.aiAnalysisData && photo.aiAnalysisData.analysis);
+                    var isAnalyzing = analyzingPhotoId === photo.id;
+                    return (
+                      <div key={photo.id} onClick={function () { setSelectedPhoto(photo); }} style={{
+                        position:"relative",borderRadius:12,overflow:"hidden",
+                        cursor:"pointer",aspectRatio:"1",
+                        border:"1px solid var(--dp-glass-border)",
+                        background:"var(--dp-surface)",
+                        transition:"all 0.2s ease",
+                      }}>
+                        <img src={photo.image} alt={photo.caption || "Progress"} style={{
+                          width:"100%",height:"100%",objectFit:"cover",display:"block",
+                        }}/>
+                        {/* Date overlay */}
+                        <div style={{
+                          position:"absolute",bottom:0,left:0,right:0,
+                          padding:"16px 6px 5px",
+                          background:"linear-gradient(transparent, rgba(0,0,0,0.7))",
+                        }}>
+                          <div style={{fontSize:10,fontWeight:600,color:"#fff"}}>
+                            {photo.takenAt ? new Date(photo.takenAt).toLocaleDateString(undefined, {month:"short",day:"numeric"}) : ""}
+                          </div>
+                        </div>
+                        {/* Analysis status badge */}
+                        <div style={{position:"absolute",top:4,right:4}}>
+                          {hasAnalysis ? (
+                            <div style={{
+                              width:20,height:20,borderRadius:6,
+                              background:"rgba(16,185,129,0.9)",
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              boxShadow:"0 1px 4px rgba(0,0,0,0.3)",
+                            }}>
+                              <Sparkles size={11} color="#fff" strokeWidth={2.5}/>
+                            </div>
+                          ) : !isAnalyzing ? (
+                            <button onClick={function (e) { e.stopPropagation(); handleAnalyzePhoto(photo.id); }} style={{
+                              width:20,height:20,borderRadius:6,border:"none",
+                              background:"rgba(139,92,246,0.9)",
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              cursor:"pointer",fontFamily:"inherit",
+                              boxShadow:"0 1px 4px rgba(0,0,0,0.3)",
+                            }}>
+                              <Sparkles size={11} color="#fff" strokeWidth={2.5}/>
+                            </button>
+                          ) : (
+                            <div style={{
+                              width:20,height:20,borderRadius:6,
+                              background:"rgba(139,92,246,0.9)",
+                              display:"flex",alignItems:"center",justifyContent:"center",
+                              boxShadow:"0 1px 4px rgba(0,0,0,0.3)",
+                            }}>
+                              <div className="dp-spin" style={{
+                                width:12,height:12,
+                                border:"2px solid rgba(255,255,255,0.3)",
+                                borderTopColor:"#fff",borderRadius:"50%",
+                              }}/>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </GlassCard>
+          </div>
+          )}
+
+          {/* ── Chat About This Dream ── */}
+          {isOwner && (
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"700ms"}}>
+            <GlassCard padding={16} mb={16}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:28,height:28,borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",background:"linear-gradient(135deg, rgba(139,92,246,0.15), rgba(139,92,246,0.05))",border:"1px solid var(--dp-accent-border)"}}>
+                    <MessageCircle size={14} color="var(--dp-accent)" strokeWidth={2}/>
+                  </div>
+                  <span style={{fontSize:14,fontWeight:700,color:"var(--dp-text)"}}>Chat about this dream</span>
+                </div>
+                <button onClick={function () { navigate("/chat/dream-" + id); }} className="dp-gh" style={{padding:"5px 12px",borderRadius:10,border:"1px solid var(--dp-accent-border)",background:"var(--dp-accent-soft)",color:"var(--dp-accent)",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",transition:"all 0.2s"}}>
+                  Open Chat
+                </button>
+              </div>
+              {startersQuery.isLoading ? (
+                <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center",padding:"12px 0"}}>
+                  <div style={{width:14,height:14,border:"2px solid var(--dp-accent-border)",borderTopColor:"var(--dp-accent)",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+                  <span style={{fontSize:12,color:"var(--dp-text-tertiary)"}}>Loading suggestions...</span>
+                </div>
+              ) : chatStarters.length > 0 ? (
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {chatStarters.slice(0, 3).map(function (s, i) {
+                    return (
+                      <button key={"cs-" + i} onClick={function () { navigate("/chat/dream-" + id, { state: { dreamId: id, initialMessage: s.text } }); }} className="dp-gh" style={{
+                        width: "100%", padding: "10px 14px", borderRadius: 14,
+                        border: "1px solid var(--dp-glass-border)",
+                        background: "linear-gradient(135deg, rgba(139,92,246,0.06), rgba(139,92,246,0.02))",
+                        backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+                        color: "var(--dp-text-primary)", fontSize: 13, fontWeight: 500,
+                        cursor: "pointer", fontFamily: "inherit", transition: "all 0.2s",
+                        display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                      }}>
+                        <span style={{fontSize:16,flexShrink:0}}>{s.icon}</span>
+                        <span style={{flex:1,lineHeight:1.4}}>{s.text}</span>
+                        <span style={{fontSize:10,color:"var(--dp-text-muted)",textTransform:"capitalize",flexShrink:0,padding:"2px 8px",borderRadius:8,background:"var(--dp-pill-bg)",fontWeight:600}}>{(s.category || "").replace("_", " ")}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <button onClick={function () { navigate("/chat/dream-" + id); }} style={{
+                  width: "100%", padding: "12px 0", borderRadius: 12,
+                  border: "1px dashed rgba(139,92,246,0.25)",
+                  background: "rgba(139,92,246,0.03)",
+                  color: "var(--dp-accent)", fontSize: 13, fontWeight: 500,
+                  cursor: "pointer", fontFamily: "inherit",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                }}>
+                  <Sparkles size={14} strokeWidth={2}/> Start a conversation with AI coach
+                </button>
+              )}
+            </GlassCard>
+          </div>
+          )}
+
           {/* ── Export PDF ── */}
-          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"640ms",marginTop:8,marginBottom:16}}>
+          <div className={`dp-a ${mounted?"dp-s":""}`} style={{animationDelay:"720ms",marginTop:8,marginBottom:16}}>
             <button onClick={function () { apiGet(DREAMS.EXPORT_PDF(id), { responseType: "blob" }).then(function (blob) { saveBlobFile(blob, "dream-" + id + ".pdf"); }).catch(function () { showToast("PDF export failed", "error"); }); }} style={{width:"100%",padding:"12px 0",borderRadius:14,border:"1px solid rgba(139,92,246,0.2)",background:"rgba(139,92,246,0.06)",color:"var(--dp-accent)",fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8,transition:"all 0.25s ease"}}>
               <Download size={15} strokeWidth={2}/>Export as PDF
             </button>
@@ -796,6 +1409,31 @@ export default function DreamDetailScreen(){
 
       {addGoal&&<Modal title="Add Goal" onClose={()=>setAddGoal(false)} onSubmit={handleAddGoal} submitLabel="Add Goal"/>}
       {addTask&&<Modal title="Add Task" onClose={()=>setAddTask(null)} onSubmit={()=>handleAddTask(addTask)} submitLabel="Add Task"/>}
+
+      {/* ── Obstacle Prediction Panel ── */}
+      <ObstaclePredictionPanel
+        open={showPredictions}
+        onClose={function () { setShowPredictions(false); }}
+        predictions={predictionResults}
+        loading={predictionLoading}
+        error={predictionError}
+        onAddAsObstacle={handleAddPredictionAsObstacle}
+      />
+
+      {/* ── Duration Estimate Panel ── */}
+      <DurationEstimatePanel
+        open={showDurationEstimate}
+        onClose={function () { setShowDurationEstimate(false); }}
+        dreamId={id}
+        taskIds={goals.reduce(function (acc, g) { return acc.concat(g.tasks.filter(function (t) { return !t.completed && t.status !== "completed"; }).map(function (t) { return t.id; })); }, [])}
+        tasks={goals.reduce(function (acc, g) { return acc.concat(g.tasks.filter(function (t) { return !t.completed && t.status !== "completed"; })); }, [])}
+      />
+
+      {/* ── Difficulty Calibration Panel ── */}
+      <DifficultyCalibrationPanel
+        open={showDifficultyCalibration}
+        onClose={function () { setShowDifficultyCalibration(false); }}
+      />
 
       {/* ── Add Obstacle Modal ── */}
       <GlassModal open={showAddObstacle} onClose={function () { setShowAddObstacle(false); }} variant="center" title="Add Obstacle" maxWidth={380}>
@@ -877,95 +1515,6 @@ export default function DreamDetailScreen(){
           </div>
         </div>
       </GlassModal>
-
-      {celebration && (
-        <div style={{
-          position: "fixed", inset: 0, zIndex: 1000,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          background: "rgba(0,0,0,0.5)", backdropFilter: "blur(8px)",
-        }}
-          onClick={() => setCelebration(null)}
-        >
-          {/* Confetti particles */}
-          {Array.from({ length: 40 }, (_, i) => {
-            const colors = ["#8B5CF6", "#EC4899", "#10B981", "#FCD34D", "#6366F1", "#F59E0B", "#14B8A6", "#EF4444"];
-            const color = colors[i % colors.length];
-            const left = Math.random() * 100;
-            const delay = Math.random() * 2;
-            const size = 6 + Math.random() * 8;
-            const duration = 2 + Math.random() * 2;
-            return (
-              <div key={i} style={{
-                position: "fixed",
-                top: -20,
-                left: `${left}%`,
-                width: size,
-                height: size,
-                borderRadius: Math.random() > 0.5 ? "50%" : "2px",
-                background: color,
-                animation: `dpConfetti ${duration}s ${delay}s ease-in forwards`,
-                zIndex: 1001,
-              }} />
-            );
-          })}
-
-          {/* Modal card */}
-          <div style={{
-            background: "var(--dp-modal-bg)",
-            backdropFilter: "blur(40px)",
-            borderRadius: 24,
-            padding: "40px 32px",
-            textAlign: "center",
-            maxWidth: 320,
-            width: "90%",
-            border: "1px solid var(--dp-input-border)",
-            boxShadow: "0 20px 60px rgba(139,92,246,0.3)",
-            animation: "dpCelebPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1)",
-            zIndex: 1002,
-          }}
-            onClick={e => e.stopPropagation()}
-          >
-            <div style={{ fontSize: 48, marginBottom: 16 }}>&#127881;</div>
-            <h2 style={{
-              fontSize: 24, fontWeight: 800, margin: "0 0 8px",
-              color: "var(--dp-text)",
-            }}>
-              {celebration.milestone === 100 ? t("dreams.dreamComplete") : t("dreams.milestoneReached")}
-            </h2>
-            <p style={{
-              fontSize: 16, margin: "0 0 16px",
-              color: "var(--dp-text-secondary)",
-            }}>
-              {celebration.milestone}% {t("dreams.ofDreamAchieved")}
-            </p>
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 6,
-              background: "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(139,92,246,0.05))",
-              borderRadius: 12, padding: "8px 16px",
-              marginBottom: 16,
-            }}>
-              <span style={{ fontSize: 16 }}>&#9889;</span>
-              <span style={{
-                fontSize: 18, fontWeight: 700,
-                color: "#8B5CF6",
-              }}>+{celebration.xp} XP</span>
-            </div>
-            <div>
-              <button onClick={function (e) {
-                e.stopPropagation();
-                setCelebration(null);
-                setAchievementShare({ type: celebration.milestone === 100 ? "achievement" : "milestone", title: DREAM.title || "" });
-              }} style={{
-                padding: "10px 24px", borderRadius: 14, border: "none", cursor: "pointer",
-                background: "linear-gradient(135deg, #8B5CF6, #7C3AED)", color: "#fff",
-                fontSize: 14, fontWeight: 600, fontFamily: "inherit",
-              }}>
-                Share Achievement
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <GlassModal open={shareModal} onClose={() => { setShareModal(false); if (shareImage) URL.revokeObjectURL(shareImage); setShareImage(null); }} variant="center" title="Share Your Progress" maxWidth={340}>
         <div style={{padding:24}}>
@@ -1057,6 +1606,34 @@ export default function DreamDetailScreen(){
         dreamId={id}
         goalId={achievementShare ? achievementShare.goalId : undefined}
         milestoneId={achievementShare ? achievementShare.milestoneId : undefined}
+      />
+
+      {/* ── Goal Refinement Wizard ── */}
+      <GoalRefineWizard
+        open={!!refineGoal}
+        onClose={function () { setRefineGoal(null); }}
+        goal={refineGoal}
+        dreamId={id}
+        onApplied={function () { setGoalsInitialized(false); }}
+      />
+
+      {/* ── Dream Similarity / Inspiration Panel ── */}
+      <DreamSimilarityPanel
+        open={showSimilarity}
+        onClose={function () { setShowSimilarity(false); }}
+        data={similarityData}
+        loading={similarityLoading}
+        error={similarityError}
+        onUseTemplate={handleUseTemplate}
+      />
+
+      {/* ── Progress Photo Panel ── */}
+      <ProgressPhotoPanel
+        open={!!selectedPhoto}
+        onClose={function () { setSelectedPhoto(null); }}
+        photo={selectedPhoto}
+        analyzing={!!selectedPhoto && analyzingPhotoId === (selectedPhoto && selectedPhoto.id)}
+        onAnalyze={handleAnalyzePhoto}
       />
 
       <style>{`

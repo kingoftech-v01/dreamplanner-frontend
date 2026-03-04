@@ -13,6 +13,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { TaskCallProvider } from './context/TaskCallContext';
 import { ToastProvider } from './context/ToastContext';
 import { NetworkProvider } from './context/NetworkContext';
+import { CelebrationProvider } from './context/CelebrationContext';
 import App from './App';
 import './styles/globals.css';
 
@@ -192,9 +193,11 @@ initToken().then(function () {
               <ThemeProvider>
                 <TaskCallProvider>
                   <ToastProvider>
-                    <NetworkProvider>
-                      <App />
-                    </NetworkProvider>
+                    <CelebrationProvider>
+                      <NetworkProvider>
+                        <App />
+                      </NetworkProvider>
+                    </CelebrationProvider>
                   </ToastProvider>
                 </TaskCallProvider>
               </ThemeProvider>

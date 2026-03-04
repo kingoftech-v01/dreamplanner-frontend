@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { PhoneOff, Mic, MicOff, Volume2, VolumeX } from "lucide-react";
+import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+import { PhoneOff, Mic, MicOff, Volume2, VolumeX, Settings, Sparkles } from "lucide-react";
 import PageLayout from "../../components/shared/PageLayout";
 import { GRADIENTS } from "../../styles/colors";
 import { apiGet, apiPost } from "../../services/api";
 import { CONVERSATIONS } from "../../services/endpoints";
 import { createAgoraCallSession } from "../../services/agora";
+import CallSettings from "../../components/shared/CallSettings";
 
 function formatTime(s) {
   var m = Math.floor(s / 60);
@@ -15,6 +16,7 @@ function formatTime(s) {
 
 export default function VoiceCallScreen() {
   var navigate = useNavigate();
+  var location = useLocation();
   var { id: callId } = useParams();
   var [searchParams] = useSearchParams();
 
@@ -25,11 +27,16 @@ export default function VoiceCallScreen() {
   var rawBuddyColor = searchParams.get("color") || "#8B5CF6";
   var buddyColor = /^#[0-9a-fA-F]{6}$/.test(rawBuddyColor) ? rawBuddyColor : "#8B5CF6";
 
+  // Pre-call settings passed via navigation state
+  var preCallSettings = (location.state && location.state.preCallSettings) || {};
+
   var [callStatus, setCallStatus] = useState(answering ? "connecting" : "ringing");
   var [seconds, setSeconds] = useState(0);
-  var [muted, setMuted] = useState(false);
+  var [muted, setMuted] = useState(!!preCallSettings.muted);
   var [speaker, setSpeaker] = useState(false);
   var [error, setError] = useState(null);
+  var [settingsOpen, setSettingsOpen] = useState(false);
+  var [callSettings, setCallSettings] = useState((preCallSettings && preCallSettings.settings) || {});
   var timerRef = useRef(null);
   var sessionRef = useRef(null);
   var pollRef = useRef(null);
@@ -50,6 +57,7 @@ export default function VoiceCallScreen() {
     if (sessionRef.current) return; // already joined
     var session = createAgoraCallSession(callId, {
       video: false,
+      preCallSettings: preCallSettings,
       onRemoteStream: function () {},
       onRemoteLeft: function () {
         handleCallEnd();
@@ -64,7 +72,7 @@ export default function VoiceCallScreen() {
     session.join().catch(function (err) {
       setError(err.userMessage || err.message || "Could not access microphone");
     });
-  }, [callId, handleCallEnd]);
+  }, [callId, handleCallEnd, preCallSettings]);
 
   // ─── CALLER flow: listen for WS events + poll for acceptance ──
   // Rejection/missed: instant via notification WebSocket (dp-call-status event)
@@ -163,6 +171,13 @@ export default function VoiceCallScreen() {
     }
   };
 
+  var handleSettingsChange = function (newSettings) {
+    setCallSettings(newSettings);
+    if (sessionRef.current && sessionRef.current.applySettings) {
+      sessionRef.current.applySettings(newSettings);
+    }
+  };
+
   var actionBtn = function (Icon, active, toggle, color) {
     return (
       <button
@@ -246,16 +261,29 @@ export default function VoiceCallScreen() {
         </h1>
 
         {/* Status */}
-        <p style={{
-          fontSize: 15, color: callStatus === "connected"
-            ? "var(--dp-success)"
-            : error ? "var(--dp-danger)"
-            : "var(--dp-text-tertiary)",
-          margin: "0 0 8px", fontWeight: 500,
-          transition: "color 0.3s",
-        }}>
-          {statusText}
-        </p>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <p style={{
+            fontSize: 15, color: callStatus === "connected"
+              ? "var(--dp-success)"
+              : error ? "var(--dp-danger)"
+              : "var(--dp-text-tertiary)",
+            margin: 0, fontWeight: 500,
+            transition: "color 0.3s",
+          }}>
+            {statusText}
+          </p>
+          {callSettings.noiseSuppression && callStatus === "connected" && (
+            <span style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "2px 8px", borderRadius: 8,
+              background: "rgba(139,92,246,0.1)",
+              border: "1px solid rgba(139,92,246,0.2)",
+            }}>
+              <Sparkles size={10} color="var(--dp-accent)" />
+              <span style={{ fontSize: 10, fontWeight: 600, color: "var(--dp-accent)" }}>NS</span>
+            </span>
+          )}
+        </div>
 
         {/* Timer */}
         {callStatus === "connected" && (
@@ -302,8 +330,36 @@ export default function VoiceCallScreen() {
               sessionRef.current.setSpeaker(next).catch(function () {});
             }
           })}
+
+          {/* Settings gear */}
+          {callStatus === "connected" && (
+            <button
+              onClick={function () { setSettingsOpen(true); }}
+              aria-label="Call settings"
+              style={{
+                width: 60, height: 60, borderRadius: 20,
+                background: "var(--dp-surface)",
+                border: "1px solid var(--dp-glass-border)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", transition: "all 0.2s",
+                fontFamily: "inherit",
+              }}
+            >
+              <Settings size={24} color="var(--dp-text)" />
+            </button>
+          )}
         </div>
       </div>
+
+      {/* In-call settings panel */}
+      <CallSettings
+        open={settingsOpen}
+        onClose={function () { setSettingsOpen(false); }}
+        isVideo={false}
+        settings={callSettings}
+        onSettingsChange={handleSettingsChange}
+        session={sessionRef.current}
+      />
     </PageLayout>
   );
 }

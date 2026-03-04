@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiUpload } from "../../services/api";
 import { SOCIAL, DREAMS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
+import usePullToRefresh from "../../hooks/usePullToRefresh";
 import useAgoraPresence from "../../hooks/useAgoraPresence";
 import { useTheme } from "../../context/ThemeContext";
 import { useAuth } from "../../context/AuthContext";
@@ -22,6 +23,7 @@ import GlassInput from "../../components/shared/GlassInput";
 import GradientButton from "../../components/shared/GradientButton";
 import GlassModal from "../../components/shared/GlassModal";
 import ExpandableText from "../../components/shared/ExpandableText";
+import FriendSuggestions from "../../components/shared/FriendSuggestions";
 import {
   ArrowLeft, UserPlus, Search, Heart, MessageCircle, Share2,
   Bookmark, Plus, Sparkles, ArrowUpCircle, CheckCircle, Flame,
@@ -75,6 +77,12 @@ export default function SocialHubScreen() {
   var { user } = useAuth();
   var { showToast } = useToast();
   var qc = useQueryClient();
+  var scrollRef = useRef(null);
+  var ptr = usePullToRefresh({
+    onRefresh: function() { return Promise.all([postsFeed.refetch(), activityFeed.refetch(), storiesFeedQ.refetch()]); },
+    scrollRef: scrollRef,
+  });
+
   var [mounted, setMounted] = useState(false);
   var [showSearch, setShowSearch] = useState(false);
   var [searchQ, setSearchQ] = useState("");
@@ -112,7 +120,9 @@ export default function SocialHubScreen() {
   // Story viewer state
   var [storyViewer, setStoryViewer] = useState(null); // { groupIndex, storyIndex }
   var [storyProgress, setStoryProgress] = useState(0);
+  var [storyPaused, setStoryPaused] = useState(false);
   var storyTimerRef = useRef(null);
+  var storyTouchRef = useRef({ startX: 0, startY: 0, swiping: false });
 
   var ME = {
     displayName: user?.displayName || user?.username || "You",
@@ -231,13 +241,23 @@ export default function SocialHubScreen() {
       qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
     }).catch(function () {});
   }
+  function handleReactPost(id, reactionType) {
+    apiPost(SOCIAL.POSTS.REACT(id), { reaction_type: reactionType || "like" }).then(function () {
+      qc.invalidateQueries({ queryKey: ["social-posts-feed"] });
+    }).catch(function () {});
+  }
   function handleLikeEvent(id) {
     apiPost(SOCIAL.FEED.LIKE(id)).catch(function () {});
   }
   function handleSavePost(id) {
+    var prev = savedPosts[id];
+    var optimistic = prev != null ? !prev : true;
+    setSavedPosts(function (p) { var n = Object.assign({}, p); n[id] = optimistic; return n; });
     apiPost(SOCIAL.POSTS.SAVE(id)).then(function (res) {
       setSavedPosts(function (p) { var n = Object.assign({}, p); n[id] = res.saved; return n; });
-    }).catch(function () {});
+    }).catch(function () {
+      setSavedPosts(function (p) { var n = Object.assign({}, p); n[id] = prev != null ? prev : false; return n; });
+    });
   }
   function handleShare(item) {
     var text = item.content || item.data?.dream || item.data?.task || "";
@@ -273,6 +293,7 @@ export default function SocialHubScreen() {
   function closeStoryViewer() {
     setStoryViewer(null);
     setStoryProgress(0);
+    setStoryPaused(false);
     if (storyTimerRef.current) clearInterval(storyTimerRef.current);
   }
   function advanceStory(dir) {
@@ -283,6 +304,7 @@ export default function SocialHubScreen() {
     if (nextIdx >= 0 && nextIdx < g.stories.length) {
       setStoryViewer({ groupIndex: storyViewer.groupIndex, storyIndex: nextIdx });
       setStoryProgress(0);
+      setStoryPaused(false);
       var s = g.stories[nextIdx];
       if (s && !s.hasViewed) markStoryViewed(s.id);
     } else if (dir > 0) {
@@ -291,6 +313,7 @@ export default function SocialHubScreen() {
       if (nextGroup < storyGroups.length) {
         setStoryViewer({ groupIndex: nextGroup, storyIndex: 0 });
         setStoryProgress(0);
+        setStoryPaused(false);
         var s2 = storyGroups[nextGroup] && storyGroups[nextGroup].stories && storyGroups[nextGroup].stories[0];
         if (s2 && !s2.hasViewed) markStoryViewed(s2.id);
       } else {
@@ -303,6 +326,7 @@ export default function SocialHubScreen() {
         var pStories = storyGroups[prevGroup].stories;
         setStoryViewer({ groupIndex: prevGroup, storyIndex: pStories.length - 1 });
         setStoryProgress(0);
+        setStoryPaused(false);
       }
     }
   }
@@ -346,16 +370,90 @@ export default function SocialHubScreen() {
     createStoryMut.mutate(fd);
   }
 
-  // Story auto-advance timer
+  // Story touch handlers for swipe gestures
+  function handleStoryTouchStart(e) {
+    var touch = e.touches[0];
+    storyTouchRef.current = { startX: touch.clientX, startY: touch.clientY, swiping: false, startTime: Date.now() };
+  }
+  function handleStoryTouchMove(e) {
+    var touch = e.touches[0];
+    var dx = touch.clientX - storyTouchRef.current.startX;
+    var dy = touch.clientY - storyTouchRef.current.startY;
+    if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+      storyTouchRef.current.swiping = true;
+    }
+  }
+  function handleStoryTouchEnd(e) {
+    var ref = storyTouchRef.current;
+    if (!ref.swiping) return; // let tap handlers deal with it
+    var touch = e.changedTouches[0];
+    var dx = touch.clientX - ref.startX;
+    var dy = touch.clientY - ref.startY;
+    var elapsed = Date.now() - ref.startTime;
+    // Swipe down to close
+    if (dy > 80 && Math.abs(dy) > Math.abs(dx) && elapsed < 500) {
+      closeStoryViewer();
+      return;
+    }
+    // Swipe left/right to change group
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) && elapsed < 500) {
+      if (dx < 0) {
+        // Swipe left → next group
+        var nextGroup = storyViewer.groupIndex + 1;
+        if (nextGroup < storyGroups.length) {
+          setStoryViewer({ groupIndex: nextGroup, storyIndex: 0 });
+          setStoryProgress(0);
+          setStoryPaused(false);
+          var s = storyGroups[nextGroup] && storyGroups[nextGroup].stories && storyGroups[nextGroup].stories[0];
+          if (s && !s.hasViewed) markStoryViewed(s.id);
+        } else {
+          closeStoryViewer();
+        }
+      } else {
+        // Swipe right → previous group
+        var prevGroup = storyViewer.groupIndex - 1;
+        if (prevGroup >= 0) {
+          setStoryViewer({ groupIndex: prevGroup, storyIndex: 0 });
+          setStoryProgress(0);
+          setStoryPaused(false);
+          var s2 = storyGroups[prevGroup] && storyGroups[prevGroup].stories && storyGroups[prevGroup].stories[0];
+          if (s2 && !s2.hasViewed) markStoryViewed(s2.id);
+        }
+      }
+    }
+  }
+
+  // Tap-and-hold to pause story progress
+  function handleStoryPointerDown() {
+    setStoryPaused(true);
+  }
+  function handleStoryPointerUp(e) {
+    setStoryPaused(false);
+    // If it was a swipe, don't handle tap
+    if (storyTouchRef.current.swiping) return;
+    // Determine left/right tap zone
+    var rect = e.currentTarget.getBoundingClientRect();
+    var x = (e.clientX != null ? e.clientX : (e.changedTouches && e.changedTouches[0] ? e.changedTouches[0].clientX : rect.left));
+    var pct = (x - rect.left) / rect.width;
+    if (pct <= 0.3) {
+      advanceStory(-1);
+    } else {
+      advanceStory(1);
+    }
+  }
+
+  // Story auto-advance timer (pauses when storyPaused is true)
   useEffect(function () {
     if (!storyViewer) return;
     var g = storyGroups[storyViewer.groupIndex];
     if (!g) return;
     var s = g.stories[storyViewer.storyIndex];
     if (!s || s.mediaType === "video") return; // videos control their own duration
+    if (storyPaused) return; // paused — don't advance
     var dur = 5000; // 5s for images
     var interval = 50;
-    var elapsed = 0;
+    var startProgress = storyProgress;
+    var elapsed = startProgress * dur;
     storyTimerRef.current = setInterval(function () {
       elapsed += interval;
       setStoryProgress(elapsed / dur);
@@ -365,7 +463,7 @@ export default function SocialHubScreen() {
       }
     }, interval);
     return function () { if (storyTimerRef.current) clearInterval(storyTimerRef.current); };
-  }, [storyViewer && storyViewer.groupIndex, storyViewer && storyViewer.storyIndex]);
+  }, [storyViewer && storyViewer.groupIndex, storyViewer && storyViewer.storyIndex, storyPaused]);
 
   function handleMediaPick(type) {
     setCreateMediaType(type);
@@ -478,6 +576,7 @@ export default function SocialHubScreen() {
 
       {/* ═══ APP BAR ═══ */}
       <GlassAppBar
+        className="dp-desktop-header"
         style={{ justifyContent: "space-between" }}
         left={
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -494,7 +593,8 @@ export default function SocialHubScreen() {
       />
 
       {/* ═══ CONTENT ═══ */}
-      <main style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "8px 0 100px", opacity: uiOpacity, transition: "opacity 0.3s ease" }}>
+      <main ref={scrollRef} {...ptr.handlers} style={{ flex: 1, overflowY: "auto", overflowX: "hidden", zIndex: 10, padding: "8px 0 100px", opacity: uiOpacity, transition: "opacity 0.3s ease", ...ptr.style }}>
+        {ptr.indicator}
        <div className="dp-content-area">
 
         {/* ── Stories Bar ── */}
@@ -597,6 +697,9 @@ export default function SocialHubScreen() {
           })}
         </div>
 
+        {/* ── Friend Suggestions ── */}
+        <FriendSuggestions />
+
         {/* ── Mixed Feed ── */}
         <div style={{ padding: "0 16px" }}>
           {mixedFeed.length === 0 && !postsFeed.isLoading && !activityFeed.isLoading && (
@@ -610,7 +713,7 @@ export default function SocialHubScreen() {
           )}
 
           {mixedFeed.map(function (item, idx) {
-            if (item._type === "post") return <PostCard key={"p-" + item.id} item={item} idx={idx} mounted={mounted} isLight={isLight} user={user} navigate={navigate} expandedComments={expandedComments} setExpandedComments={setExpandedComments} commentInputs={commentInputs} setCommentInputs={setCommentInputs} savedPosts={savedPosts} handleLikePost={handleLikePost} handleSavePost={handleSavePost} handleShare={handleShare} handleComment={handleComment} handleRegisterEvent={handleRegisterEvent} t={t} />;
+            if (item._type === "post") return <PostCard key={"p-" + item.id} item={item} idx={idx} mounted={mounted} isLight={isLight} user={user} navigate={navigate} expandedComments={expandedComments} setExpandedComments={setExpandedComments} commentInputs={commentInputs} setCommentInputs={setCommentInputs} savedPosts={savedPosts} handleLikePost={handleLikePost} handleReactPost={handleReactPost} handleSavePost={handleSavePost} handleShare={handleShare} handleComment={handleComment} handleRegisterEvent={handleRegisterEvent} t={t} />;
             return <EventCard key={"e-" + item.id} item={item} idx={idx} mounted={mounted} isLight={isLight} navigate={navigate} expandedComments={expandedComments} setExpandedComments={setExpandedComments} commentInputs={commentInputs} setCommentInputs={setCommentInputs} handleLikeEvent={handleLikeEvent} handleShare={handleShare} handleComment={handleComment} t={t} />;
           })}
 
@@ -765,16 +868,60 @@ export default function SocialHubScreen() {
       {/* ═══ STORY CREATION MODAL ═══ */}
       <GlassModal open={showStoryCreate} onClose={function () { setShowStoryCreate(false); setStoryFile(null); if (storyPreview && storyPreview.startsWith("blob:")) { URL.revokeObjectURL(storyPreview); } setStoryPreview(""); setStoryCaption(""); }} variant="bottom" title="New Story" maxWidth={440}>
         <div style={{ padding: 20 }}>
-          {/* Preview */}
+          {/* Story preview — phone-shaped container */}
           {storyPreview && (
-            <div style={{ position: "relative", borderRadius: 16, overflow: "hidden", marginBottom: 16, background: "#000" }}>
+            <div style={{
+              position: "relative", borderRadius: 20, overflow: "hidden",
+              marginBottom: 16, background: "#000",
+              aspectRatio: "9/16", maxHeight: 420, width: "100%",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
               {storyMediaType === "image" ? (
-                <img src={storyPreview} alt="Story preview" style={{ width: "100%", maxHeight: 360, objectFit: "contain", display: "block" }} />
+                <img src={storyPreview} alt="Story preview" style={{
+                  position: "absolute", inset: 0, width: "100%", height: "100%",
+                  objectFit: "cover", display: "block",
+                }} />
               ) : (
-                <video src={storyPreview} controls style={{ width: "100%", maxHeight: 360, display: "block" }} />
+                <video src={storyPreview} controls playsInline style={{
+                  position: "absolute", inset: 0, width: "100%", height: "100%",
+                  objectFit: "cover", display: "block",
+                }} />
               )}
-              <button onClick={function () { if (storyPreview && storyPreview.startsWith("blob:")) { URL.revokeObjectURL(storyPreview); } setStoryFile(null); setStoryPreview(""); }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: "50%", border: "none", background: "rgba(0,0,0,0.6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontFamily: "inherit" }}>
-                <X size={14} />
+              {/* Simulated progress bars preview */}
+              <div style={{
+                position: "absolute", top: 0, left: 0, right: 0,
+                display: "flex", gap: 3, padding: "10px 12px 0", zIndex: 2,
+              }}>
+                <div style={{ flex: 1, height: 2.5, borderRadius: 1.5, background: "rgba(255,255,255,0.9)" }} />
+              </div>
+              {/* Simulated user info header preview */}
+              <div style={{
+                position: "absolute", top: 16, left: 12, right: 12,
+                display: "flex", alignItems: "center", gap: 8, zIndex: 2,
+              }}>
+                <Avatar name={ME.displayName} size={28} shape="circle" color="var(--dp-accent)" />
+                <span style={{ fontSize: 12, fontWeight: 600, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{ME.displayName}</span>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.6)", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>Just now</span>
+              </div>
+              {/* Caption preview overlay */}
+              {storyCaption.trim() && (
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  padding: "40px 16px 20px",
+                  background: "linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)",
+                  zIndex: 2,
+                }}>
+                  <div style={{ fontSize: 13, color: "#fff", lineHeight: 1.4, textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{storyCaption}</div>
+                </div>
+              )}
+              {/* Remove media button */}
+              <button onClick={function () { if (storyPreview && storyPreview.startsWith("blob:")) { URL.revokeObjectURL(storyPreview); } setStoryFile(null); setStoryPreview(""); }} style={{
+                position: "absolute", top: 44, right: 10, width: 30, height: 30, borderRadius: "50%",
+                border: "none", background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)", WebkitBackdropFilter: "blur(6px)",
+                color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", fontFamily: "inherit", zIndex: 3, transition: "background 0.2s",
+              }}>
+                <X size={16} strokeWidth={2.5} />
               </button>
             </div>
           )}
@@ -782,30 +929,60 @@ export default function SocialHubScreen() {
           {/* Pick media if none selected */}
           {!storyPreview && (
             <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-              <button onClick={function () { handleStoryFilePick("image"); }} style={{ flex: 1, padding: "32px 16px", borderRadius: 16, border: "1px dashed var(--dp-input-border)", background: "var(--dp-glass-bg)", color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 500, fontFamily: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <Image size={28} strokeWidth={1.5} />
+              <button onClick={function () { handleStoryFilePick("image"); }} style={{
+                flex: 1, padding: "36px 16px", borderRadius: 20,
+                border: "2px dashed var(--dp-input-border)", background: "var(--dp-glass-bg)",
+                color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 600,
+                fontFamily: "inherit", cursor: "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                transition: "all 0.2s",
+              }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 16,
+                  background: BRAND.purple + "15",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Image size={26} strokeWidth={1.8} color={BRAND.purple} />
+                </div>
                 Photo
               </button>
-              <button onClick={function () { handleStoryFilePick("video"); }} style={{ flex: 1, padding: "32px 16px", borderRadius: 16, border: "1px dashed var(--dp-input-border)", background: "var(--dp-glass-bg)", color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 500, fontFamily: "inherit", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                <Video size={28} strokeWidth={1.5} />
+              <button onClick={function () { handleStoryFilePick("video"); }} style={{
+                flex: 1, padding: "36px 16px", borderRadius: 20,
+                border: "2px dashed var(--dp-input-border)", background: "var(--dp-glass-bg)",
+                color: "var(--dp-text-secondary)", fontSize: 14, fontWeight: 600,
+                fontFamily: "inherit", cursor: "pointer",
+                display: "flex", flexDirection: "column", alignItems: "center", gap: 10,
+                transition: "all 0.2s",
+              }}>
+                <div style={{
+                  width: 52, height: 52, borderRadius: 16,
+                  background: BRAND.pink + "15",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  <Video size={26} strokeWidth={1.8} color={BRAND.pink} />
+                </div>
                 Video
               </button>
             </div>
           )}
 
-          {/* Caption */}
+          {/* Caption input */}
           <GlassInput
             value={storyCaption}
             onChange={function (e) { setStoryCaption(e.target.value); }}
             placeholder="Add a caption..."
             style={{ borderRadius: 14, marginBottom: 16 }}
+            inputStyle={{ fontSize: 14 }}
           />
 
           {/* Post button */}
           <GradientButton
+            gradient="primary"
             onClick={handleCreateStory}
             disabled={!storyFile || createStoryMut.isPending}
-            style={{ width: "100%", borderRadius: 14 }}
+            loading={createStoryMut.isPending}
+            fullWidth
+            size="lg"
           >
             {createStoryMut.isPending ? "Posting..." : "Share Story"}
           </GradientButton>
@@ -824,60 +1001,148 @@ export default function SocialHubScreen() {
         var currentIdx = storyViewer.storyIndex;
 
         return (
-          <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "#000", display: "flex", flexDirection: "column" }}>
+          <div
+            style={{
+              position: "fixed", inset: 0, zIndex: 9999,
+              background: "#000", display: "flex", flexDirection: "column",
+              userSelect: "none", WebkitUserSelect: "none",
+            }}
+            onTouchStart={handleStoryTouchStart}
+            onTouchMove={handleStoryTouchMove}
+            onTouchEnd={handleStoryTouchEnd}
+          >
             {/* Progress bars */}
-            <div style={{ display: "flex", gap: 3, padding: "8px 12px 0", zIndex: 2 }}>
+            <div style={{ display: "flex", gap: 3, padding: "12px 12px 0", zIndex: 3, position: "relative" }}>
               {group.stories.map(function (_, i) {
                 var pct = i < currentIdx ? 1 : i === currentIdx ? storyProgress : 0;
                 return (
-                  <div key={i} style={{ flex: 1, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.25)", overflow: "hidden" }}>
-                    <div style={{ width: (pct * 100) + "%", height: "100%", background: "#fff", borderRadius: 2, transition: i === currentIdx ? "none" : "width 0.2s" }} />
+                  <div key={i} style={{ flex: 1, height: 2.5, borderRadius: 1.5, background: "rgba(255,255,255,0.3)", overflow: "hidden" }}>
+                    <div style={{
+                      width: (pct * 100) + "%", height: "100%",
+                      background: "rgba(255,255,255,0.92)", borderRadius: 1.5,
+                      transition: i === currentIdx ? "none" : "width 0.2s ease",
+                    }} />
                   </div>
                 );
               })}
             </div>
 
-            {/* Header: user info + close */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", zIndex: 2 }}>
+            {/* Header: avatar, name, time, close */}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              padding: "12px 16px 8px", zIndex: 3, position: "relative",
+            }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <Avatar name={storyUser.displayName || storyUser.username} src={storyUser.avatar} size={36} shape="circle" />
                 <div>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: "#fff" }}>{storyUser.displayName || storyUser.username}</div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.6)" }}>{timeAgo(story.createdAt)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", textShadow: "0 1px 4px rgba(0,0,0,0.5)" }}>{storyUser.displayName || storyUser.username}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.65)", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>{timeAgo(story.createdAt)}</div>
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 {isOwnStory && (
-                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", textShadow: "0 1px 3px rgba(0,0,0,0.5)" }}>
                     {story.viewCount || 0} view{(story.viewCount || 0) !== 1 ? "s" : ""}
                   </span>
                 )}
-                <button onClick={closeStoryViewer} style={{ width: 36, height: 36, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.15)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontFamily: "inherit" }}>
-                  <X size={18} />
+                {storyPaused && (
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,0.5)", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase" }}>Paused</span>
+                )}
+                <button onClick={function (e) { e.stopPropagation(); closeStoryViewer(); }} style={{
+                  width: 36, height: 36, borderRadius: "50%", border: "none",
+                  background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                  color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", fontFamily: "inherit", transition: "background 0.2s",
+                }}>
+                  <X size={20} strokeWidth={2} />
                 </button>
               </div>
             </div>
 
-            {/* Media */}
-            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", overflow: "hidden" }}>
+            {/* Story content area — media + caption + tap zones */}
+            <div
+              onPointerDown={handleStoryPointerDown}
+              onPointerUp={handleStoryPointerUp}
+              style={{
+                flex: 1, position: "relative", overflow: "hidden",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", touchAction: "none",
+              }}
+            >
+              {/* Image — full bleed */}
               {story.mediaType === "image" && story.imageUrl && (
-                <img src={story.imageUrl} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                <img
+                  src={story.imageUrl}
+                  alt=""
+                  draggable={false}
+                  style={{
+                    position: "absolute", inset: 0,
+                    width: "100%", height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
               )}
+              {/* Video */}
               {story.mediaType === "video" && story.videoUrl && (
-                <video src={story.videoUrl} autoPlay playsInline style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} onEnded={function () { advanceStory(1); }} />
+                <video
+                  src={story.videoUrl}
+                  autoPlay
+                  playsInline
+                  muted={false}
+                  style={{
+                    position: "absolute", inset: 0,
+                    width: "100%", height: "100%",
+                    objectFit: "cover",
+                  }}
+                  onEnded={function () { advanceStory(1); }}
+                  onPause={function (e) { if (storyPaused) e.target.pause(); }}
+                  onPlay={function (e) { if (storyPaused) e.target.pause(); }}
+                  ref={function (el) {
+                    if (el) {
+                      if (storyPaused) el.pause();
+                      else el.play().catch(function () {});
+                    }
+                  }}
+                />
               )}
 
-              {/* Tap zones */}
-              <div onClick={function () { advanceStory(-1); }} style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: "30%", cursor: "pointer" }} />
-              <div onClick={function () { advanceStory(1); }} style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: "70%", cursor: "pointer" }} />
-            </div>
+              {/* Gradient overlay at bottom for caption readability */}
+              <div style={{
+                position: "absolute", bottom: 0, left: 0, right: 0,
+                height: story.caption ? 200 : 0,
+                background: story.caption ? "linear-gradient(to top, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.3) 50%, transparent 100%)" : "none",
+                pointerEvents: "none", zIndex: 1,
+              }} />
 
-            {/* Caption */}
-            {story.caption && (
-              <div style={{ padding: "12px 20px 24px", zIndex: 2, background: "linear-gradient(transparent, rgba(0,0,0,0.6))" }}>
-                <div style={{ fontSize: 14, color: "#fff", lineHeight: 1.5 }}>{story.caption}</div>
-              </div>
-            )}
+              {/* Caption text at bottom */}
+              {story.caption && (
+                <div style={{
+                  position: "absolute", bottom: 0, left: 0, right: 0,
+                  padding: "60px 20px 32px", zIndex: 2,
+                  pointerEvents: "none",
+                }}>
+                  <div style={{
+                    fontSize: 15, color: "#fff", lineHeight: 1.5,
+                    textShadow: "0 1px 6px rgba(0,0,0,0.6)",
+                    fontWeight: 400, maxHeight: 120, overflow: "hidden",
+                  }}>{story.caption}</div>
+                </div>
+              )}
+
+              {/* Left/right visual hint arrows (subtle) */}
+              {currentIdx > 0 && (
+                <div style={{
+                  position: "absolute", left: 8, top: "50%", transform: "translateY(-50%)",
+                  width: 28, height: 28, borderRadius: "50%",
+                  background: "rgba(255,255,255,0.1)", display: "flex",
+                  alignItems: "center", justifyContent: "center",
+                  pointerEvents: "none", opacity: 0.5, zIndex: 2,
+                }}>
+                  <ArrowLeft size={14} color="#fff" strokeWidth={2.5} />
+                </div>
+              )}
+            </div>
           </div>
         );
       })()}
@@ -889,6 +1154,9 @@ export default function SocialHubScreen() {
         textarea::placeholder{color:var(--dp-text-muted);}
         .dp-a{opacity:0;transform:translateY(16px);transition:opacity 0.5s cubic-bezier(0.16,1,0.3,1),transform 0.5s cubic-bezier(0.16,1,0.3,1);}
         .dp-a.dp-s{opacity:1;transform:translateY(0);}
+        @keyframes dp-story-progress{from{width:0%}to{width:100%}}
+        .dp-story-btn:hover{background:rgba(255,255,255,0.25)!important;}
+        .dp-story-create-pick:hover{border-color:var(--dp-accent)!important;background:var(--dp-accent-soft)!important;}
       `}</style>
     </div>
   );
@@ -898,7 +1166,20 @@ export default function SocialHubScreen() {
 // ═══════════════════════════════════════════════════════════════════
 // Post Card (from SOCIAL.POSTS.FEED)
 // ═══════════════════════════════════════════════════════════════════
-function PostCard({ item, idx, mounted, isLight, user, navigate, expandedComments, setExpandedComments, commentInputs, setCommentInputs, savedPosts, handleLikePost, handleSavePost, handleShare, handleComment, handleRegisterEvent, t }) {
+var REACTION_EMOJI_MAP = {
+  like: "\uD83D\uDC4D", love: "\u2764\uFE0F", fire: "\uD83D\uDD25",
+  clap: "\uD83D\uDC4F", wow: "\uD83D\uDE2E", celebrate: "\uD83C\uDF89",
+};
+var REACTION_LIST = [
+  { type: "like", emoji: "\uD83D\uDC4D" },
+  { type: "love", emoji: "\u2764\uFE0F" },
+  { type: "fire", emoji: "\uD83D\uDD25" },
+  { type: "clap", emoji: "\uD83D\uDC4F" },
+  { type: "wow", emoji: "\uD83D\uDE2E" },
+  { type: "celebrate", emoji: "\uD83C\uDF89" },
+];
+
+function PostCard({ item, idx, mounted, isLight, user, navigate, expandedComments, setExpandedComments, commentInputs, setCommentInputs, savedPosts, handleLikePost, handleReactPost, handleSavePost, handleShare, handleComment, handleRegisterEvent, t }) {
   var a = item.author || item.user || {};
   var aName = a.username || a.displayName || "User";
   var aColor = avatarColor(aName);
@@ -915,6 +1196,78 @@ function PostCard({ item, idx, mounted, isLight, user, navigate, expandedComment
   var audioUrl = item.audioUrl || item.audio_url || "";
   var achievement = item.linkedAchievement || null;
   var eventDetail = item.eventDetail || null;
+  var userReaction = item.userReaction || item.user_reaction || null;
+  var reactionCounts = item.reactionCounts || item.reaction_counts || {};
+
+  // Reaction picker state
+  var [showPicker, setShowPicker] = useState(false);
+  var [pickerVisible, setPickerVisible] = useState(false);
+  var longPressTimer = useRef(null);
+  var btnRef = useRef(null);
+
+  // Compute total reaction count
+  var totalReactions = 0;
+  var reactionEntries = [];
+  Object.keys(reactionCounts).forEach(function (k) {
+    if (reactionCounts[k] > 0) {
+      totalReactions += reactionCounts[k];
+      reactionEntries.push({ type: k, count: reactionCounts[k], emoji: REACTION_EMOJI_MAP[k] || k });
+    }
+  });
+  reactionEntries.sort(function (a, b) { return b.count - a.count; });
+
+  // Also count old likes for backward compat
+  var displayReactionTotal = totalReactions || lc;
+
+  function onPointerDown() {
+    longPressTimer.current = setTimeout(function () {
+      setShowPicker(true);
+      requestAnimationFrame(function () { setPickerVisible(true); });
+    }, 500);
+  }
+  function onPointerUp() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+    // If picker is not showing, this was a short tap -> toggle like
+    if (!showPicker) {
+      if (handleReactPost) {
+        handleReactPost(item.id, userReaction === "like" ? "like" : "like");
+      } else {
+        handleLikePost(item.id);
+      }
+    }
+  }
+  function onPointerLeave() {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+  function selectReaction(type) {
+    setPickerVisible(false);
+    setTimeout(function () { setShowPicker(false); }, 200);
+    if (handleReactPost) {
+      handleReactPost(item.id, type);
+    }
+  }
+
+  // Close picker on outside click
+  useEffect(function () {
+    if (!showPicker) return;
+    function handleClick(e) {
+      if (btnRef.current && !btnRef.current.contains(e.target)) {
+        setPickerVisible(false);
+        setTimeout(function () { setShowPicker(false); }, 200);
+      }
+    }
+    document.addEventListener("pointerdown", handleClick);
+    return function () { document.removeEventListener("pointerdown", handleClick); };
+  }, [showPicker]);
+
+  var hasReacted = !!userReaction;
+  var activeEmoji = userReaction ? (REACTION_EMOJI_MAP[userReaction] || "\uD83D\uDC4D") : null;
 
   return (
     <div className={"dp-a " + (mounted ? "dp-s" : "")} style={{ animationDelay: (100 + idx * 60) + "ms", marginTop: 12 }}>
@@ -1005,9 +1358,71 @@ function PostCard({ item, idx, mounted, isLight, user, navigate, expandedComment
 
         {/* Action bar */}
         <div style={{ display: "flex", alignItems: "center", padding: "8px 16px 12px", borderTop: "1px solid var(--dp-divider)" }}>
-          <ActionBtn onClick={function () { handleLikePost(item.id); }} active={liked} activeColor="var(--dp-danger)">
-            <Heart size={22} strokeWidth={1.8} fill={liked ? BRAND.redSolid : "none"} color={liked ? BRAND.redSolid : undefined} />
-          </ActionBtn>
+          {/* Reaction button with long-press picker */}
+          <div ref={btnRef} style={{ position: "relative", userSelect: "none", WebkitUserSelect: "none" }}>
+            <button
+              onPointerDown={onPointerDown}
+              onPointerUp={onPointerUp}
+              onPointerLeave={onPointerLeave}
+              onContextMenu={function (e) { e.preventDefault(); }}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 40, height: 40, border: "none", background: "transparent",
+                color: hasReacted ? "var(--dp-danger)" : "var(--dp-text-tertiary)",
+                cursor: "pointer", borderRadius: 10, transition: "all 0.15s",
+                fontFamily: "inherit", padding: 0, fontSize: hasReacted ? 20 : 0,
+                touchAction: "none",
+              }}
+            >
+              {hasReacted ? (
+                <span style={{ fontSize: 20, lineHeight: 1 }}>{activeEmoji}</span>
+              ) : (
+                <Heart size={22} strokeWidth={1.8} />
+              )}
+            </button>
+
+            {/* Reaction picker popover */}
+            {showPicker && (
+              <div style={{
+                position: "absolute", bottom: "calc(100% + 8px)", left: "50%",
+                transform: "translateX(-50%)",
+                display: "flex", alignItems: "center", gap: 4,
+                padding: "6px 10px", borderRadius: 28,
+                background: isLight ? "rgba(255,255,255,0.92)" : "rgba(30,30,40,0.92)",
+                backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+                border: "1px solid " + (isLight ? "rgba(0,0,0,0.08)" : "rgba(255,255,255,0.1)"),
+                boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+                opacity: pickerVisible ? 1 : 0,
+                transition: "opacity 0.2s cubic-bezier(0.16,1,0.3,1), transform 0.2s cubic-bezier(0.16,1,0.3,1)",
+                transformOrigin: "bottom center",
+                zIndex: 100,
+                whiteSpace: "nowrap",
+              }}>
+                {REACTION_LIST.map(function (r, i) {
+                  var isActive = userReaction === r.type;
+                  return (
+                    <button
+                      key={r.type}
+                      onClick={function () { selectReaction(r.type); }}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: 40, height: 40, border: "none",
+                        background: isActive ? (isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.1)") : "transparent",
+                        borderRadius: 12, cursor: "pointer", padding: 0,
+                        fontSize: 24, lineHeight: 1,
+                        transition: "transform 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+                        transform: pickerVisible ? "scale(1)" : "scale(0)",
+                        transitionDelay: pickerVisible ? (i * 40) + "ms" : "0ms",
+                      }}
+                    >
+                      {r.emoji}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           <ActionBtn onClick={function () { setExpandedComments(function (p) { return p === item.id ? null : item.id; }); }}>
             <MessageCircle size={22} strokeWidth={1.8} />
           </ActionBtn>
@@ -1020,8 +1435,27 @@ function PostCard({ item, idx, mounted, isLight, user, navigate, expandedComment
           </ActionBtn>
         </div>
 
-        {/* Like count */}
-        {lc > 0 && (
+        {/* Reaction summary */}
+        {reactionEntries.length > 0 && (
+          <div style={{ padding: "0 16px 8px", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            {reactionEntries.map(function (r) {
+              return (
+                <span key={r.type} style={{
+                  display: "inline-flex", alignItems: "center", gap: 3,
+                  padding: "3px 8px", borderRadius: 10,
+                  background: "var(--dp-glass-bg)", border: "1px solid var(--dp-input-border)",
+                  fontSize: 13, fontWeight: 500, color: "var(--dp-text)",
+                }}>
+                  <span style={{ fontSize: 15 }}>{r.emoji}</span>
+                  <span>{r.count}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Legacy like count fallback */}
+        {reactionEntries.length === 0 && lc > 0 && (
           <div style={{ padding: "0 16px 8px", fontSize: 13, fontWeight: 600, color: "var(--dp-text)" }}>
             {lc} {lc === 1 ? "like" : "likes"}
           </div>

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { PhoneOff, Mic, MicOff, Camera, CameraOff } from "lucide-react";
+import { useNavigate, useParams, useSearchParams, useLocation } from "react-router-dom";
+import { PhoneOff, Mic, MicOff, Camera, CameraOff, Settings, Sparkles } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { apiGet, apiPost } from "../../services/api";
 import { CONVERSATIONS } from "../../services/endpoints";
 import { createAgoraCallSession } from "../../services/agora";
+import CallSettings from "../../components/shared/CallSettings";
 
 function formatTime(s) {
   var m = Math.floor(s / 60);
@@ -14,6 +15,7 @@ function formatTime(s) {
 
 export default function VideoCallScreen() {
   var navigate = useNavigate();
+  var location = useLocation();
   var { id: callId } = useParams();
   var [searchParams] = useSearchParams();
   var { resolved } = useTheme();
@@ -25,12 +27,17 @@ export default function VideoCallScreen() {
   var rawBuddyColor = searchParams.get("color") || "#8B5CF6";
   var buddyColor = /^#[0-9a-fA-F]{6}$/.test(rawBuddyColor) ? rawBuddyColor : "#8B5CF6";
 
+  // Pre-call settings passed via navigation state
+  var preCallSettings = (location.state && location.state.preCallSettings) || {};
+
   var [callStatus, setCallStatus] = useState(answering ? "connecting" : "ringing");
   var [seconds, setSeconds] = useState(0);
-  var [muted, setMuted] = useState(false);
-  var [cameraOff, setCameraOff] = useState(false);
+  var [muted, setMuted] = useState(!!preCallSettings.muted);
+  var [cameraOff, setCameraOff] = useState(!!preCallSettings.cameraOff);
   var [error, setError] = useState(null);
   var [hasRemoteStream, setHasRemoteStream] = useState(false);
+  var [settingsOpen, setSettingsOpen] = useState(false);
+  var [callSettings, setCallSettings] = useState((preCallSettings && preCallSettings.settings) || {});
   var timerRef = useRef(null);
   var sessionRef = useRef(null);
   var pollRef = useRef(null);
@@ -53,6 +60,7 @@ export default function VideoCallScreen() {
     if (sessionRef.current) return; // already joined
     var session = createAgoraCallSession(callId, {
       video: true,
+      preCallSettings: preCallSettings,
       onRemoteStream: function (remote) {
         setHasRemoteStream(true);
         if (remote.videoTrack && remoteVideoRef.current) {
@@ -78,7 +86,7 @@ export default function VideoCallScreen() {
     }).catch(function (err) {
       setError(err.userMessage || err.message || "Could not access camera and microphone");
     });
-  }, [callId, handleCallEnd]);
+  }, [callId, handleCallEnd, preCallSettings]);
 
   // ─── CALLER flow: listen for WS events + poll for acceptance ──
   // Rejection/missed: instant via notification WebSocket (dp-call-status event)
@@ -182,6 +190,13 @@ export default function VideoCallScreen() {
     }
   };
 
+  var handleSettingsChange = function (newSettings) {
+    setCallSettings(newSettings);
+    if (sessionRef.current && sessionRef.current.applySettings) {
+      sessionRef.current.applySettings(newSettings);
+    }
+  };
+
   var actionBtn = function (Icon, active, toggle) {
     return (
       <button
@@ -263,12 +278,26 @@ export default function VideoCallScreen() {
           }}>
             {buddyName}
           </h2>
-          <p style={{
-            fontSize: 14, color: error ? "#F69A9A" : "rgba(255,255,255,0.7)",
-            margin: 0, fontWeight: 500,
-          }}>
-            {statusText}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <p style={{
+              fontSize: 14, color: error ? "#F69A9A" : "rgba(255,255,255,0.7)",
+              margin: 0, fontWeight: 500,
+            }}>
+              {statusText}
+            </p>
+            {callSettings.noiseSuppression && callStatus === "connected" && (
+              <span style={{
+                display: "inline-flex", alignItems: "center", gap: 4,
+                padding: "2px 8px", borderRadius: 8,
+                background: "rgba(139,92,246,0.25)",
+                border: "1px solid rgba(139,92,246,0.3)",
+                backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+              }}>
+                <Sparkles size={10} color="#C4B5FD" />
+                <span style={{ fontSize: 10, fontWeight: 600, color: "#C4B5FD" }}>NS</span>
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
@@ -294,6 +323,7 @@ export default function VideoCallScreen() {
               ref={localVideoRef}
               style={{
                 width: "100%", height: "100%",
+                transform: callSettings.mirrorMode !== false ? "scaleX(-1)" : "none",
               }}
             />
           )}
@@ -311,6 +341,25 @@ export default function VideoCallScreen() {
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {callStatus === "connected" && actionBtn(muted ? MicOff : Mic, muted, handleToggleMute)}
           {callStatus === "connected" && actionBtn(cameraOff ? CameraOff : Camera, cameraOff, handleToggleCamera)}
+
+          {/* Settings gear */}
+          {callStatus === "connected" && (
+            <button
+              onClick={function () { setSettingsOpen(true); }}
+              aria-label="Call settings"
+              style={{
+                width: 50, height: 50, borderRadius: 16,
+                background: "rgba(255,255,255,0.1)",
+                border: "1px solid rgba(255,255,255,0.15)",
+                backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                cursor: "pointer", transition: "all 0.2s",
+                fontFamily: "inherit",
+              }}
+            >
+              <Settings size={22} color="#fff" />
+            </button>
+          )}
 
           {/* End/Cancel call */}
           <button
@@ -331,6 +380,16 @@ export default function VideoCallScreen() {
           </button>
         </div>
       </div>
+
+      {/* In-call settings panel */}
+      <CallSettings
+        open={settingsOpen}
+        onClose={function () { setSettingsOpen(false); }}
+        isVideo={true}
+        settings={callSettings}
+        onSettingsChange={handleSettingsChange}
+        session={sessionRef.current}
+      />
     </div>
   );
 }

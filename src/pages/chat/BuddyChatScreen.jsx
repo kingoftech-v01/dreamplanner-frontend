@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "../../services/api";
+import { apiGet, apiPost, apiUpload } from "../../services/api";
 import { joinRTMChannel } from "../../services/agora";
 import useAgoraPresence from "../../hooks/useAgoraPresence";
 import { CONVERSATIONS, BUDDIES, USERS } from "../../services/endpoints";
+import VoiceRecorder from "../../components/shared/VoiceRecorder";
+import VoicePlayer from "../../components/shared/VoicePlayer";
+import EmojiGifPicker, { isGifUrl, GifMessage } from "../../components/shared/EmojiGifPicker";
 import { useAuth } from "../../context/AuthContext";
 import { useTheme } from "../../context/ThemeContext";
 import { useToast } from "../../context/ToastContext";
 import { useT } from "../../context/I18nContext";
 import { clipboardWrite } from "../../services/native";
+import { playSound } from "../../services/sounds";
 import { sanitizeText } from "../../utils/sanitize";
 import { GRADIENTS } from "../../styles/colors";
 import ErrorState from "../../components/shared/ErrorState";
@@ -18,10 +22,11 @@ import GlassCard from "../../components/shared/GlassCard";
 import IconButton from "../../components/shared/IconButton";
 import Avatar from "../../components/shared/Avatar";
 import GlassInput from "../../components/shared/GlassInput";
+import PreCallScreen from "../../components/shared/PreCallScreen";
 import {
   ArrowLeft, Users, Send, ChevronDown, MoreVertical, Pin,
   Heart, Copy, Check, CheckCheck, Search, X, Phone, Video,
-  Smile, Target, Loader
+  Smile, Target, Loader, Mic, ChevronRight, FileText, ListTodo
 } from "lucide-react";
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -55,6 +60,9 @@ export default function BuddyChatScreen(){
   var{t}=useT();
   var queryClient=useQueryClient();
   var userInitial=(user?.displayName||user?.username||"?")[0].toUpperCase();
+
+  // ─── Pre-call screen state ───────────────────────────────────
+  var [preCall, setPreCall] = useState(null); // null | { type: "voice"|"video" }
 
   // ─── Resolve buddy info + conversation ID ─────────────────────
   var [convId, setConvId] = useState(null);
@@ -156,6 +164,10 @@ export default function BuddyChatScreen(){
       liked:!!(m.liked||m.isLiked),
       read:m.read!==false,
       reactions:m.reactions||[],
+      audioUrl:m.audioUrl||m.audio_url||"",
+      audioDuration:m.audioDuration||m.audio_duration||null,
+      transcription:m.transcription||"",
+      metadata:m.metadata||{},
     };
   }
 
@@ -227,7 +239,7 @@ export default function BuddyChatScreen(){
             // Deduplicate by checking if content+timestamp already exists
             var isDupe=prev.some(function(m){return !m.isUser && m.content===parsed.content && Math.abs((m.time?m.time.getTime():0)-(parsed.ts||0))<2000;});
             if(isDupe)return prev;
-            return[...prev,{id:Date.now()+"r",content:parsed.content,isUser:false,time:new Date(parsed.ts||Date.now()),pinned:false,liked:false,read:true,reactions:[]}];
+            return[...prev,{id:Date.now()+"r",content:parsed.content,isUser:false,time:new Date(parsed.ts||Date.now()),pinned:false,liked:false,read:true,reactions:[],audioUrl:parsed.audioUrl||"",audioDuration:parsed.audioDuration||null}];
           });
           // Also refresh from DB to get server IDs
           queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
@@ -297,13 +309,18 @@ export default function BuddyChatScreen(){
     return()=>{if(autoDismissRef.current)clearTimeout(autoDismissRef.current);};
   },[activeMsg]);
 
-  const insertEmoji=(emoji)=>{setInput(prev=>prev+emoji);setEmojiOpen(false);inputRef.current?.focus();};
-  useEffect(()=>{
-    if(!emojiOpen)return;
-    const handler=()=>setEmojiOpen(false);
-    const t=setTimeout(()=>document.addEventListener("click",handler),0);
-    return()=>{clearTimeout(t);document.removeEventListener("click",handler);};
-  },[emojiOpen]);
+  const insertEmoji=(emoji)=>{setInput(prev=>prev+emoji);inputRef.current?.focus();};
+  var handleGifSend=function(gifUrl){
+    if(!gifUrl||!convId)return;
+    playSound("send");
+    setMessages(function(prev){return[...prev,{id:Date.now()+"u",content:gifUrl,isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[]}];});
+    setEmojiOpen(false);
+    if(rtmChannelRef.current){
+      rtmChannelRef.current.sendMessage(gifUrl).catch(function(){});
+    }
+    apiPost(BUDDIES.SEND_MESSAGE,{conversationId:convId,content:gifUrl})
+      .catch(function(err){showToast(err.userMessage||err.message||t("chat.failedSend"),"error");});
+  };
 
   useEffect(()=>{setTimeout(()=>setMounted(true),100);},[]);
   useEffect(()=>{
@@ -317,6 +334,7 @@ export default function BuddyChatScreen(){
 
   var handleSend=function(){
     var text=sanitizeText(input,2000);if(!text||!convId)return;
+    playSound("send");
     setMessages(function(prev){return[...prev,{id:Date.now()+"u",content:text,isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[]}];});
     setInput("");if(inputRef.current)inputRef.current.style.height="auto";
     // Dual-write: send via Agora RTM for real-time delivery + REST for DB persistence
@@ -325,6 +343,30 @@ export default function BuddyChatScreen(){
     }
     apiPost(BUDDIES.SEND_MESSAGE,{conversationId:convId,content:text})
       .catch(function(err){showToast(err.userMessage || err.message ||t("chat.failedSend"),"error");});
+  };
+
+  var handleVoiceSend=function(blob,durationSec){
+    if(!blob||!convId)return;
+    // Optimistic local message
+    var tempId=Date.now()+"vu";
+    var localUrl=URL.createObjectURL(blob);
+    setMessages(function(prev){return[...prev,{id:tempId,content:"[Voice message]",isUser:true,time:new Date(),pinned:false,liked:false,read:false,reactions:[],audioUrl:localUrl,audioDuration:durationSec}];});
+    // Upload via multipart form data
+    var ext=blob.type.includes("mp4")?"m4a":blob.type.includes("ogg")?"ogg":"webm";
+    var fd=new FormData();
+    fd.append("audio",blob,"voice_message."+ext);
+    fd.append("conversationId",convId);
+    if(durationSec)fd.append("duration",String(durationSec));
+    apiUpload(BUDDIES.SEND_VOICE,fd)
+      .then(function(data){
+        // Replace temp message with server data
+        setMessages(function(prev){return prev.map(function(m){
+          if(m.id===tempId)return Object.assign({},m,{id:String(data.id),audioUrl:data.audioUrl||localUrl,read:false});
+          return m;
+        });});
+        queryClient.invalidateQueries({queryKey:["buddy-messages",convId]});
+      })
+      .catch(function(err){showToast(err.userMessage||err.message||t("chat.failedSend"),"error");});
   };
 
   // ─── Pin / Like mutations ─────────────────────────────────────
@@ -351,6 +393,35 @@ export default function BuddyChatScreen(){
       return{...m,reactions};
     }));
     setReactionPicker(null);
+  };
+
+  // ─── Voice summarization ──────────────────────────────────────
+  var [summarizingVoiceId, setSummarizingVoiceId] = useState(null);
+
+  var handleSummarizeVoice = function (msgId) {
+    if (!convId || !msgId || summarizingVoiceId) return;
+    setSummarizingVoiceId(msgId);
+    apiPost(CONVERSATIONS.SUMMARIZE_VOICE(convId, msgId))
+      .then(function (res) {
+        var summary = res.summary;
+        if (summary) {
+          setMessages(function (prev) {
+            return prev.map(function (m) {
+              if (m.id === msgId) {
+                var newMeta = Object.assign({}, m.metadata || {}, { voice_summary: summary });
+                return Object.assign({}, m, { metadata: newMeta });
+              }
+              return m;
+            });
+          });
+        }
+        setSummarizingVoiceId(null);
+        queryClient.invalidateQueries({ queryKey: ["buddy-messages", convId] });
+      })
+      .catch(function (err) {
+        setSummarizingVoiceId(null);
+        showToast(err.userMessage || err.message || "Failed to summarize voice note", "error");
+      });
   };
 
   var pinnedMsgs=messages.filter(function(m){return m.pinned;});
@@ -381,11 +452,12 @@ export default function BuddyChatScreen(){
   }
 
   return(
-    <div style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
+    <div className="dp-desktop-main" style={{position:"fixed",inset:0,overflow:"hidden",display:"flex",flexDirection:"column"}}>
 
       {/* ═══ APP BAR ═══ */}
       <div style={{flexShrink:0}}>
         <GlassAppBar
+          className="dp-desktop-header"
           left={
             <>
               <IconButton icon={ArrowLeft} onClick={()=>navigate("/conversations")} label="Go back" />
@@ -401,14 +473,10 @@ export default function BuddyChatScreen(){
           right={
             <div style={{display:"flex",gap:6}}>
               <IconButton icon={Phone} label="Call" onClick={function(){
-                apiPost(CONVERSATIONS.CALLS.INITIATE,{callee_id:buddyInfo&&buddyInfo.id||id,call_type:"voice"}).then(function(data){
-                  navigate("/voice-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-                }).catch(function(err){showToast(err.userMessage || err.message ||t("chat.failedCall"),"error");});
+                setPreCall({ type: "voice" });
               }} />
               <IconButton icon={Video} label="Video call" onClick={function(){
-                apiPost(CONVERSATIONS.CALLS.INITIATE,{callee_id:buddyInfo&&buddyInfo.id||id,call_type:"video"}).then(function(data){
-                  navigate("/video-call/"+(data.callId||data.id)+"?buddyName="+encodeURIComponent(buddyName));
-                }).catch(function(err){showToast(err.userMessage || err.message ||t("chat.failedCall"),"error");});
+                setPreCall({ type: "video" });
               }} />
               <div style={{position:"relative"}}>
                 <IconButton icon={MoreVertical} onClick={()=>setMenuOpen(!menuOpen)} label="More options" />
@@ -471,6 +539,7 @@ export default function BuddyChatScreen(){
                   <BuddyBubble msg={msg} showActions={activeMsg===msg.id} copiedId={copiedId}
                     onPointerDown={()=>handlePointerDown(msg.id)} onPointerUp={handlePointerUp}
                     onCopy={()=>{handleCopy(msg.id,msg.content);setActiveMsg(null);}} onPin={()=>{togglePin(msg.id);setActiveMsg(null);}} onLike={()=>{toggleLike(msg.id);setActiveMsg(null);}}
+                    onSummarizeVoice={handleSummarizeVoice} summarizingVoiceId={summarizingVoiceId}
                     reactionPicker={reactionPicker} setReactionPicker={setReactionPicker} handleReaction={handleReaction}
                     meInitial={ME.initial} buddyInitial={BUDDY.initial}/>
                 </div>
@@ -498,31 +567,30 @@ export default function BuddyChatScreen(){
       {/* ═══ INPUT ═══ */}
       <div style={{position:"relative",zIndex:100,flexShrink:0,padding:"8px 12px 14px",background:"var(--dp-header-bg)",backdropFilter:"blur(40px) saturate(1.4)",WebkitBackdropFilter:"blur(40px) saturate(1.4)",borderTop:"1px solid var(--dp-header-border)"}}>
         <div style={{maxWidth:560,margin:"0 auto",display:"flex",alignItems:"flex-end",gap:8}}>
-          <div style={{position:"relative"}}>
-            <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-accent-soft)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji"><Smile size={18} strokeWidth={2}/></button>
-            {emojiOpen&&(
-              <div onClick={e=>e.stopPropagation()} style={{position:"absolute",bottom:"100%",left:0,marginBottom:8,padding:10,background:"var(--dp-modal-bg)",backdropFilter:"blur(30px)",WebkitBackdropFilter:"blur(30px)",borderRadius:16,border:"1px solid var(--dp-accent-border)",boxShadow:"0 8px 32px rgba(0,0,0,0.2)",display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,width:280,animation:"dpFadeScale 0.2s ease-out",zIndex:200}}>
-                {['😀','😂','🥹','😍','🤩','😎','🥳','🤔','😅','😢','😤','🔥','💪','👏','❤️','💜','⭐','✨','🎯','🏆','🚀','💡','📝','🌟','👍','👎','🙏','🎉','💯','🌈','🍀','☕','🧠','💭','🎵','✅','🤝','💫','🌙','☀️','🦋','🌻'].map(emoji=>(
-                  <button key={emoji} onClick={()=>insertEmoji(emoji)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,padding:6,borderRadius:8,transition:"all 0.15s",display:"flex",alignItems:"center",justifyContent:"center"}}
-                    onMouseEnter={e=>{e.currentTarget.style.background="var(--dp-surface-hover)";e.currentTarget.style.transform="scale(1.2)";}}
-                    onMouseLeave={e=>{e.currentTarget.style.background="none";e.currentTarget.style.transform="scale(1)";}}
-                  >{emoji}</button>
-                ))}
-              </div>
-            )}
-          </div>
+          <button className="dp-ib" style={{width:38,height:38,borderRadius:12,flexShrink:0,background:emojiOpen?"var(--dp-accent-soft)":undefined}} onClick={e=>{e.stopPropagation();setEmojiOpen(!emojiOpen);}} aria-label="Emoji & GIF"><Smile size={18} strokeWidth={2}/></button>
           <div style={{flex:1,display:"flex",alignItems:"flex-end",padding:"8px 14px",borderRadius:22,background:"var(--dp-surface)",border:"1px solid var(--dp-glass-border)"}}>
             <textarea ref={inputRef} value={input} onChange={handleInput}
               onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();}}}
               placeholder={t("chat.typeMessage")} rows={1}
               style={{flex:1,background:"none",border:"none",outline:"none",resize:"none",color:"var(--dp-text)",fontSize:14,fontFamily:"inherit",lineHeight:1.5,maxHeight:120,minHeight:20}}/>
           </div>
-          <button aria-label="Send message" onClick={handleSend} disabled={!input.trim()} style={{width:42,height:42,borderRadius:14,border:"none",cursor:input.trim()?"pointer":"default",background:input.trim()?GRADIENTS.teal:"var(--dp-surface)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:input.trim()?"0 4px 16px rgba(20,184,166,0.35)":"none",transform:input.trim()?"scale(1)":"scale(0.9)",opacity:input.trim()?1:0.4}}>
-            <Send size={18} strokeWidth={2} style={{transform:"translateX(1px)"}}/>
-          </button>
+          {input.trim()?(
+            <button aria-label="Send message" onClick={handleSend} style={{width:42,height:42,borderRadius:14,border:"none",cursor:"pointer",background:GRADIENTS.teal,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.25s cubic-bezier(0.16,1,0.3,1)",flexShrink:0,boxShadow:"0 4px 16px rgba(20,184,166,0.35)",transform:"scale(1)",opacity:1}}>
+              <Send size={18} strokeWidth={2} style={{transform:"translateX(1px)"}}/>
+            </button>
+          ):(
+            <VoiceRecorder onSend={handleVoiceSend} accentGradient={GRADIENTS.teal} />
+          )}
         </div>
       </div>
 
+      {/* ═══ EMOJI & GIF PICKER ═══ */}
+      <EmojiGifPicker
+        open={emojiOpen}
+        onClose={function(){setEmojiOpen(false);}}
+        onEmojiSelect={insertEmoji}
+        onGifSelect={handleGifSend}
+      />
 
       {/* ═══ PANELS ═══ */}
       {panel&&(
@@ -575,14 +643,145 @@ export default function BuddyChatScreen(){
         [data-theme="light"] input::placeholder,
         [data-theme="light"] textarea::placeholder{color:rgba(26,21,53,0.4) !important;}
       `}</style>
+
+      {/* Pre-call lobby screen */}
+      {preCall && (
+        <PreCallScreen
+          isVideo={preCall.type === "video"}
+          buddyName={buddyName}
+          buddyColor="var(--dp-teal)"
+          onJoin={function (preCallSettings) {
+            var callType = preCall.type;
+            setPreCall(null);
+            apiPost(CONVERSATIONS.CALLS.INITIATE, {
+              callee_id: buddyInfo && buddyInfo.id || id,
+              call_type: callType,
+            }).then(function (data) {
+              var route = callType === "video"
+                ? "/video-call/" + (data.callId || data.id) + "?buddyName=" + encodeURIComponent(buddyName)
+                : "/voice-call/" + (data.callId || data.id) + "?buddyName=" + encodeURIComponent(buddyName);
+              navigate(route, { state: { preCallSettings: preCallSettings } });
+            }).catch(function (err) {
+              showToast(err.userMessage || err.message || t("chat.failedCall"), "error");
+            });
+          }}
+          onCancel={function () { setPreCall(null); }}
+        />
+      )}
     </div>
   );
 }
 
 // ─── BUDDY BUBBLE ────────────────────────────────────────────────
-function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,onPin,onLike,reactionPicker,setReactionPicker,handleReaction,meInitial,buddyInitial}){
+function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,onPin,onLike,onSummarizeVoice,summarizingVoiceId,reactionPicker,setReactionPicker,handleReaction,meInitial,buddyInitial}){
   const{resolved}=useTheme();const isLight=resolved==="light";
   const isCopied=copiedId===msg.id;
+  var [summaryOpen, setSummaryOpen] = useState(false);
+
+  var voiceSummary = (msg.metadata && msg.metadata.voice_summary) || (msg.metadata && msg.metadata.voiceSummary) || null;
+  var isVoice = !!(msg.audioUrl);
+  var isSummarizing = summarizingVoiceId === msg.id;
+
+  /* ─── Voice Summary for Buddy Chat ─── */
+  var voiceSummarySection = null;
+  if (isVoice) {
+    voiceSummarySection = (
+      <div style={{ marginTop: 8 }}>
+        {voiceSummary ? (
+          <>
+            <button
+              onClick={function (e) { e.stopPropagation(); setSummaryOpen(function (p) { return !p; }); }}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, width: "100%",
+                padding: "6px 0", background: "none", border: "none", cursor: "pointer",
+                fontFamily: "inherit", color: "var(--dp-teal, var(--dp-accent))", fontSize: 12, fontWeight: 600,
+              }}
+            >
+              <FileText size={13} strokeWidth={2.2} />
+              <span>Summary</span>
+              {voiceSummary.mood && (
+                <span style={{
+                  fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 8,
+                  background: "rgba(20,184,166,0.12)", color: "var(--dp-teal, var(--dp-accent))",
+                  textTransform: "capitalize", marginLeft: 2,
+                }}>{voiceSummary.mood}</span>
+              )}
+              <ChevronRight size={13} strokeWidth={2.5} style={{
+                marginLeft: "auto", transition: "transform 0.2s",
+                transform: summaryOpen ? "rotate(90deg)" : "rotate(0deg)",
+              }} />
+            </button>
+            <div style={{
+              maxHeight: summaryOpen ? 600 : 0,
+              opacity: summaryOpen ? 1 : 0,
+              overflow: "hidden",
+              transition: "max-height 0.3s cubic-bezier(0.16,1,0.3,1), opacity 0.25s ease",
+            }}>
+              <div style={{
+                padding: "10px 12px", borderRadius: 12, marginTop: 4,
+                background: "var(--dp-glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+                border: "1px solid var(--dp-glass-border)",
+              }}>
+                <div style={{ fontSize: 13, color: "var(--dp-text-primary)", lineHeight: 1.5, marginBottom: 8 }}>
+                  {voiceSummary.summary}
+                </div>
+                {voiceSummary.key_points && voiceSummary.key_points.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dp-text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Key Points</div>
+                    {voiceSummary.key_points.map(function (pt, idx) {
+                      return (
+                        <div key={idx} style={{ display: "flex", gap: 6, alignItems: "flex-start", marginBottom: 3 }}>
+                          <div style={{ width: 4, height: 4, borderRadius: "50%", background: "var(--dp-teal, var(--dp-accent))", marginTop: 6, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: "var(--dp-text-primary)", lineHeight: 1.45 }}>{pt}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {voiceSummary.action_items && voiceSummary.action_items.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--dp-text-muted)", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>Action Items</div>
+                    {voiceSummary.action_items.map(function (ai, idx) {
+                      var priorityColors = { high: { bg: "rgba(239,68,68,0.15)", text: "#ef4444" }, medium: { bg: "rgba(251,191,36,0.15)", text: "#fbbf24" }, low: { bg: "rgba(93,229,168,0.15)", text: "var(--dp-success)" } };
+                      var pc = priorityColors[ai.priority] || priorityColors.medium;
+                      return (
+                        <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 4 }}>
+                          <div style={{ width: 4, height: 4, borderRadius: "50%", background: pc.text, flexShrink: 0 }} />
+                          <span style={{ fontSize: 12, color: "var(--dp-text-primary)", lineHeight: 1.45, flex: 1 }}>{ai.item}</span>
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 6, background: pc.bg, color: pc.text, textTransform: "uppercase", flexShrink: 0 }}>{ai.priority}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={function (e) { e.stopPropagation(); if (onSummarizeVoice) onSummarizeVoice(msg.id); }}
+            disabled={isSummarizing || !onSummarizeVoice}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              padding: "6px 12px", borderRadius: 10, marginTop: 4,
+              background: "var(--dp-glass-bg)", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+              border: "1px solid var(--dp-glass-border)",
+              color: "var(--dp-teal, var(--dp-accent))", fontSize: 12, fontWeight: 600,
+              cursor: isSummarizing ? "default" : "pointer", fontFamily: "inherit",
+              opacity: isSummarizing ? 0.6 : 1, transition: "all 0.2s",
+            }}
+          >
+            {isSummarizing ? (
+              <><Loader size={12} strokeWidth={2.5} style={{ animation: "spin 0.8s linear infinite" }} /><span>Summarizing...</span></>
+            ) : (
+              <><FileText size={12} strokeWidth={2.2} /><span>Summarize</span></>
+            )}
+          </button>
+        )}
+      </div>
+    );
+  }
+
   const actionBar=(
     <div className="dp-acts" style={{
       display:"flex",gap:4,padding:"4px 6px",
@@ -653,8 +852,16 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
                 ))}
               </div>
             )}
-            <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+            {msg.audioUrl?(
+              <VoicePlayer audioUrl={msg.audioUrl} duration={msg.audioDuration} isUser={true}/>
+            ):isGifUrl(msg.content)?(
+              <GifMessage url={msg.content}/>
+            ):(
+              <div style={{fontSize:14,color:"var(--dp-text)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+            )}
+            {voiceSummarySection}
             <div style={{display:"flex",alignItems:"center",justifyContent:"flex-end",gap:5,marginTop:6}}>
+              {isVoice && <Mic size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5} />}
               {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
               {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}
               <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{formatTime(msg.time)}</span>
@@ -711,8 +918,16 @@ function BuddyBubble({msg,showActions,copiedId,onPointerDown,onPointerUp,onCopy,
               ))}
             </div>
           )}
-          <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+          {msg.audioUrl?(
+            <VoicePlayer audioUrl={msg.audioUrl} duration={msg.audioDuration} isUser={false}/>
+          ):isGifUrl(msg.content)?(
+            <GifMessage url={msg.content}/>
+          ):(
+            <div style={{fontSize:14,color:"var(--dp-text-primary)",lineHeight:1.55,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{msg.content}</div>
+          )}
+          {voiceSummarySection}
           <div style={{display:"flex",alignItems:"center",gap:5,marginTop:6}}>
+            {isVoice && <Mic size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5} />}
             {msg.pinned&&<Pin size={10} color="var(--dp-text-tertiary)" strokeWidth={2.5}/>}
             {msg.liked&&<Heart size={10} color="var(--dp-danger)" strokeWidth={2.5} fill="var(--dp-danger)"/>}
             <span style={{fontSize:12,color:"var(--dp-text-primary)"}}>{formatTime(msg.time)}</span>

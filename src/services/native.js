@@ -55,6 +55,64 @@ export function hapticStop() {
   return Promise.resolve();
 }
 
+// ── Haptic Patterns ──────────────────────────────────────────
+
+var HAPTICS_LS_KEY = "dp-haptics-enabled";
+
+var HAPTIC_PATTERNS = {
+  success: ["Light", 50, "Medium"],
+  error: ["Heavy", 100, "Heavy"],
+  notification: ["Medium"],
+  achievement: ["Light", 30, "Medium", 30, "Heavy"],
+  streak: ["Light", 20, "Light", 20, "Medium"],
+};
+
+function isHapticsEnabled() {
+  try {
+    var stored = localStorage.getItem(HAPTICS_LS_KEY);
+    if (stored === null) return true; // default on
+    return stored === "true";
+  } catch (e) {
+    return true;
+  }
+}
+
+function setHapticsEnabled(enabled) {
+  try {
+    localStorage.setItem(HAPTICS_LS_KEY, enabled ? "true" : "false");
+  } catch (e) {
+    // storage unavailable — ignore
+  }
+}
+
+/**
+ * Play a named haptic pattern.
+ * Pattern entries are either a style string ("Light"/"Medium"/"Heavy")
+ * or a number (pause in milliseconds).
+ */
+function playHapticPattern(name) {
+  if (!isHapticsEnabled()) return;
+
+  var pattern = HAPTIC_PATTERNS[name];
+  if (!pattern) return;
+
+  var delay = 0;
+  for (var i = 0; i < pattern.length; i++) {
+    (function (entry) {
+      if (typeof entry === "number") {
+        delay += entry;
+      } else {
+        setTimeout(function () {
+          hapticImpact(entry);
+        }, delay);
+        delay += (VIBRATE_MAP[entry] || 10) + 10; // duration + tiny gap
+      }
+    })(pattern[i]);
+  }
+}
+
+export { HAPTIC_PATTERNS, playHapticPattern, isHapticsEnabled, setHapticsEnabled };
+
 // ── Share ─────────────────────────────────────────────────────
 
 export function nativeShare(options) {

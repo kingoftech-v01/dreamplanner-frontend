@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import {
   X, ArrowLeft, ArrowRight, Sparkles, Briefcase, Heart, DollarSign,
   Palette, TrendingUp, Users, Calendar, Clock, Check, ChevronLeft, ChevronRight,
+  Wand2, Loader2, Tag,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import PageLayout from "../../components/shared/PageLayout";
@@ -55,6 +56,12 @@ export default function DreamCreateScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState("");
 
+  // ─── AUTO-CATEGORIZE AI ────────────────────────────────────────
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSuggestion, setAiSuggestion] = useState(null); // { category, confidence, tags: [{name, relevance}], reasoning }
+  const [selectedTags, setSelectedTags] = useState({}); // { tagName: true/false }
+  const [aiError, setAiError] = useState("");
+
   // ─── DRAFT AUTO-SAVE ─────────────────────────────────────────
   // Load draft from localStorage on mount
   useEffect(function () {
@@ -90,6 +97,52 @@ export default function DreamCreateScreen() {
     return () => clearTimeout(timer);
   }, []);
 
+  // Auto-categorize with AI
+  function handleAutoCategorize() {
+    if (aiLoading) return;
+    if (!title.trim() || description.trim().length < 10) {
+      showToast("Enter a title and description (10+ chars) first", "error");
+      return;
+    }
+
+    setAiLoading(true);
+    setAiError("");
+    setAiSuggestion(null);
+
+    apiPost(DREAMS.AUTO_CATEGORIZE, {
+      title: title.trim(),
+      description: description.trim(),
+    }).then(function (result) {
+      setAiLoading(false);
+      setAiSuggestion(result);
+      // Pre-select all suggested tags
+      var tagMap = {};
+      (result.tags || []).forEach(function (t) { tagMap[t.name] = true; });
+      setSelectedTags(tagMap);
+    }).catch(function (err) {
+      setAiLoading(false);
+      var msg = err.userMessage || err.message || "AI categorization failed";
+      setAiError(msg);
+      showToast(msg, "error");
+    });
+  }
+
+  // Apply AI suggestion (category)
+  function handleApplyAiCategory() {
+    if (!aiSuggestion) return;
+    setCategory(aiSuggestion.category);
+    showToast("Category applied: " + (CATEGORIES.find(function (c) { return c.id === aiSuggestion.category; }) || {}).label, "success");
+  }
+
+  // Toggle a suggested tag
+  function handleToggleTag(tagName) {
+    setSelectedTags(function (prev) {
+      var next = Object.assign({}, prev);
+      next[tagName] = !next[tagName];
+      return next;
+    });
+  }
+
   // Create dream and navigate to calibration
   function handleCreateDream() {
     if (submitting) return;
@@ -122,6 +175,14 @@ export default function DreamCreateScreen() {
       targetDate = now.toISOString().split("T")[0];
     }
 
+    // Collect selected AI tags
+    var tagsToAdd = [];
+    if (aiSuggestion && aiSuggestion.tags) {
+      aiSuggestion.tags.forEach(function (t) {
+        if (selectedTags[t.name]) tagsToAdd.push(t.name);
+      });
+    }
+
     apiPost(DREAMS.LIST, {
       title: cleanTitle,
       description: cleanDescription,
@@ -129,6 +190,16 @@ export default function DreamCreateScreen() {
       target_date: targetDate,
     }).then(function (dream) {
       clearDraft();
+
+      // Add AI-suggested tags if any were selected
+      if (tagsToAdd.length > 0) {
+        var tagPromises = tagsToAdd.map(function (tagName) {
+          return apiPost(DREAMS.TAGS(dream.id), { tag_name: tagName }).catch(function () {});
+        });
+        return Promise.all(tagPromises).then(function () { return dream; });
+      }
+      return dream;
+    }).then(function (dream) {
       setSubmitting(false);
       queryClient.invalidateQueries({ queryKey: ["dreams"] });
       navigate("/dream/" + dream.id + "/calibration");
@@ -266,6 +337,208 @@ export default function DreamCreateScreen() {
                 multiline
                 inputStyle={{ lineHeight: 1.6, minHeight: 100, resize: "none" }}
               />
+
+              {/* Auto-categorize button */}
+              <button
+                onClick={handleAutoCategorize}
+                disabled={aiLoading || !title.trim() || description.trim().length < 10}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  width: "100%", marginTop: 16, padding: "12px 20px",
+                  borderRadius: 14,
+                  background: "var(--dp-glass-bg)",
+                  backdropFilter: "blur(40px)",
+                  WebkitBackdropFilter: "blur(40px)",
+                  border: "1px solid rgba(139,92,246,0.25)",
+                  cursor: aiLoading || !title.trim() || description.trim().length < 10 ? "not-allowed" : "pointer",
+                  color: "var(--dp-accent-text)",
+                  fontSize: 14, fontWeight: 600,
+                  transition: "all 0.3s ease",
+                  opacity: aiLoading || !title.trim() || description.trim().length < 10 ? 0.5 : 1,
+                  boxShadow: "0 0 20px rgba(139,92,246,0.08)",
+                  fontFamily: "inherit",
+                }}
+              >
+                {aiLoading ? (
+                  <Loader2 size={16} style={{ animation: "dpSpinAnim 1s linear infinite" }} />
+                ) : (
+                  <Wand2 size={16} />
+                )}
+                {aiLoading ? "Analyzing..." : "Auto-categorize with AI"}
+              </button>
+
+              {/* AI Error */}
+              {aiError && (
+                <div style={{
+                  marginTop: 10, padding: "10px 14px", borderRadius: 12,
+                  background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.18)",
+                  fontSize: 13, color: "#F87171",
+                }}>
+                  {aiError}
+                </div>
+              )}
+
+              {/* AI Suggestion Preview */}
+              {aiSuggestion && !aiLoading && (
+                <div style={{
+                  marginTop: 14, padding: 16, borderRadius: 16,
+                  background: "var(--dp-glass-bg)",
+                  backdropFilter: "blur(40px)",
+                  WebkitBackdropFilter: "blur(40px)",
+                  border: "1px solid rgba(139,92,246,0.2)",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.2)",
+                }}>
+                  {/* Header */}
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                    marginBottom: 12,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Sparkles size={14} color="var(--dp-accent-text)" />
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "var(--dp-text)" }}>
+                        AI Suggestion
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 600,
+                      padding: "3px 10px", borderRadius: 20,
+                      background: aiSuggestion.confidence >= 0.8
+                        ? "rgba(16,185,129,0.15)"
+                        : aiSuggestion.confidence >= 0.5
+                          ? "rgba(252,211,77,0.15)"
+                          : "rgba(239,68,68,0.15)",
+                      color: aiSuggestion.confidence >= 0.8
+                        ? "#10B981"
+                        : aiSuggestion.confidence >= 0.5
+                          ? "#FCD34D"
+                          : "#F87171",
+                      border: "1px solid " + (aiSuggestion.confidence >= 0.8
+                        ? "rgba(16,185,129,0.25)"
+                        : aiSuggestion.confidence >= 0.5
+                          ? "rgba(252,211,77,0.25)"
+                          : "rgba(239,68,68,0.25)"),
+                    }}>
+                      {Math.round(aiSuggestion.confidence * 100)}% confident
+                    </span>
+                  </div>
+
+                  {/* Suggested Category */}
+                  {(function () {
+                    var sugCat = CATEGORIES.find(function (c) { return c.id === aiSuggestion.category; });
+                    if (!sugCat) return null;
+                    var SugIcon = sugCat.icon;
+                    return (
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        marginBottom: 12, padding: "10px 14px", borderRadius: 12,
+                        background: sugCat.color + "12",
+                        border: "1px solid " + sugCat.color + "25",
+                      }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 10,
+                          background: sugCat.color + "18",
+                          border: "1px solid " + sugCat.color + "30",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                        }}>
+                          <SugIcon size={16} color={sugCat.color} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dp-text)" }}>
+                            {sugCat.label}
+                          </div>
+                          <div style={{ fontSize: 11, color: "var(--dp-text-tertiary)" }}>
+                            Suggested category
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Suggested Tags */}
+                  {aiSuggestion.tags && aiSuggestion.tags.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        marginBottom: 8,
+                      }}>
+                        <Tag size={12} color="var(--dp-text-tertiary)" />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: "var(--dp-text-secondary)" }}>
+                          Suggested Tags
+                        </span>
+                      </div>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {aiSuggestion.tags.map(function (tag) {
+                          var isOn = selectedTags[tag.name];
+                          return (
+                            <button
+                              key={tag.name}
+                              onClick={function () { handleToggleTag(tag.name); }}
+                              style={{
+                                display: "inline-flex", alignItems: "center", gap: 5,
+                                padding: "5px 12px", borderRadius: 20,
+                                fontSize: 12, fontWeight: 600,
+                                cursor: "pointer",
+                                transition: "all 0.2s ease",
+                                fontFamily: "inherit",
+                                background: isOn
+                                  ? "rgba(139,92,246,0.15)"
+                                  : "var(--dp-surface)",
+                                border: isOn
+                                  ? "1px solid rgba(139,92,246,0.35)"
+                                  : "1px solid var(--dp-input-border)",
+                                color: isOn
+                                  ? "var(--dp-accent-text)"
+                                  : "var(--dp-text-secondary)",
+                              }}
+                            >
+                              {isOn && <Check size={10} strokeWidth={3} />}
+                              {tag.name}
+                              <span style={{
+                                fontSize: 10, opacity: 0.6,
+                                marginLeft: 2,
+                              }}>
+                                {Math.round(tag.relevance * 100)}%
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reasoning */}
+                  {aiSuggestion.reasoning && (
+                    <p style={{
+                      fontSize: 12, color: "var(--dp-text-tertiary)",
+                      lineHeight: 1.5, margin: 0, marginBottom: 12,
+                      fontStyle: "italic",
+                    }}>
+                      {aiSuggestion.reasoning}
+                    </p>
+                  )}
+
+                  {/* Apply Button */}
+                  <button
+                    onClick={handleApplyAiCategory}
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      width: "100%", padding: "10px 16px",
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, #8B5CF6, #7C3AED)",
+                      border: "none",
+                      cursor: "pointer",
+                      color: "#fff",
+                      fontSize: 13, fontWeight: 700,
+                      transition: "all 0.25s ease",
+                      boxShadow: "0 4px 16px rgba(139,92,246,0.3)",
+                      fontFamily: "inherit",
+                    }}
+                  >
+                    <Check size={14} strokeWidth={3} />
+                    Apply Category
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -279,6 +552,7 @@ export default function DreamCreateScreen() {
               {CATEGORIES.map((cat, idx) => {
                 const Icon = cat.icon;
                 const isSelected = category === cat.id;
+                var isAiRecommended = aiSuggestion && aiSuggestion.category === cat.id;
                 return (
                   <button
                     key={cat.id}
@@ -288,7 +562,7 @@ export default function DreamCreateScreen() {
                       background: "var(--dp-glass-bg)",
                       backdropFilter: "blur(40px)",
                       WebkitBackdropFilter: "blur(40px)",
-                      border: isSelected ? `1px solid ${cat.color}55` : "1px solid var(--dp-input-border)",
+                      border: isSelected ? `1px solid ${cat.color}55` : isAiRecommended ? `1px solid rgba(139,92,246,0.3)` : "1px solid var(--dp-input-border)",
                       borderRadius: 20,
                       padding: "20px 16px",
                       cursor: "pointer",
@@ -296,7 +570,9 @@ export default function DreamCreateScreen() {
                       alignItems: "center", gap: 12,
                       boxShadow: isSelected
                         ? `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 20px ${cat.color}20, 0 0 0 1px ${cat.color}33`
-                        : "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
+                        : isAiRecommended
+                          ? "inset 0 1px 0 rgba(255,255,255,0.06), 0 0 16px rgba(139,92,246,0.12)"
+                          : "inset 0 1px 0 rgba(255,255,255,0.06), 0 4px 24px rgba(0,0,0,0.3)",
                       transition: "all 0.3s ease",
                       position: "relative",
                       overflow: "hidden",
@@ -310,6 +586,18 @@ export default function DreamCreateScreen() {
                         display: "flex", alignItems: "center", justifyContent: "center",
                       }}>
                         <Check size={12} color="#fff" strokeWidth={3} />
+                      </div>
+                    )}
+                    {isAiRecommended && !isSelected && (
+                      <div style={{
+                        position: "absolute", top: 6, right: 6,
+                        display: "flex", alignItems: "center", gap: 3,
+                        padding: "2px 7px", borderRadius: 8,
+                        background: "rgba(139,92,246,0.15)",
+                        border: "1px solid rgba(139,92,246,0.25)",
+                      }}>
+                        <Sparkles size={9} color="var(--dp-accent-text)" />
+                        <span style={{ fontSize: 9, fontWeight: 700, color: "var(--dp-accent-text)" }}>AI</span>
                       </div>
                     )}
                     <div style={{
@@ -562,6 +850,10 @@ export default function DreamCreateScreen() {
           @keyframes dpValidationFadeIn {
             from { opacity: 0; transform: translateY(-4px); }
             to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes dpSpinAnim {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
           }
         `}</style>
 

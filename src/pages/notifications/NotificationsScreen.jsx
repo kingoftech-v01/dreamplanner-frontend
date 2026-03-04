@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiPost } from "../../services/api";
 import { NOTIFICATIONS } from "../../services/endpoints";
 import useInfiniteList from "../../hooks/useInfiniteList";
-import { ArrowLeft, Bell, CheckCheck, Star, Users, Target, Clock, Zap, MessageCircle, Shield } from "lucide-react";
+import usePullToRefresh from "../../hooks/usePullToRefresh";
+import { ArrowLeft, Bell, CheckCheck, Star, Users, Target, Clock, Zap, MessageCircle, Shield, BarChart2 } from "lucide-react";
 import { useTheme } from "../../context/ThemeContext";
 import { BRAND } from "../../styles/colors";
 import { useToast } from "../../context/ToastContext";
@@ -24,6 +25,7 @@ const TYPE_COLORS = {
   reminder: "#3B82F6",
   social: "#EC4899",
   system: "#6366F1",
+  weekly_report: "#A855F7",
 };
 
 var TYPE_ICONS = {
@@ -34,13 +36,14 @@ var TYPE_ICONS = {
   reminder: Clock,
   social: Users,
   system: Zap,
+  weekly_report: BarChart2,
 };
 
 const FILTER_TABS = [
   { id: "all", labelKey: "notifications.all", types: undefined },
   { id: "dreams", labelKey: "notifications.dreams", types: ["dream_progress", "reminder"] },
   { id: "social", labelKey: "notifications.social", types: ["friend_request", "buddy", "social"] },
-  { id: "system", labelKey: "notifications.system", types: ["system", "achievement"] },
+  { id: "system", labelKey: "notifications.system", types: ["system", "achievement", "weekly_report"] },
 ];
 
 function relativeTime(dateStr, t) {
@@ -84,12 +87,51 @@ const DATE_SECTIONS = [
   { labelKey: "notifications.earlier", category: "earlier" },
 ];
 
+var EMPTY_STATES = {
+  all: {
+    icon: Bell,
+    titleKey: "notifications.allCaughtUp",
+    messageKey: "notifications.noNew",
+    color: "#8B5CF6",
+  },
+  dreams: {
+    icon: Target,
+    titleKey: "notifications.emptyDreamsTitle",
+    messageKey: "notifications.emptyDreamsMessage",
+    color: "#8B5CF6",
+    fallbackTitle: "No dream updates",
+    fallbackMessage: "When your dreams have progress or reminders, they'll appear here.",
+  },
+  social: {
+    icon: Users,
+    titleKey: "notifications.emptySocialTitle",
+    messageKey: "notifications.emptySocialMessage",
+    color: "#14B8A6",
+    fallbackTitle: "No social activity",
+    fallbackMessage: "Friend requests, buddy updates, and social notifications will show here.",
+  },
+  system: {
+    icon: Zap,
+    titleKey: "notifications.emptySystemTitle",
+    messageKey: "notifications.emptySystemMessage",
+    color: "#6366F1",
+    fallbackTitle: "No system notifications",
+    fallbackMessage: "Achievements and system updates will appear here.",
+  },
+};
+
 export default function NotificationsScreen() {
   const navigate = useNavigate();
   useTheme();
   var { showToast } = useToast();
   var { t } = useT();
   var queryClient = useQueryClient();
+  var scrollRef = useRef(null);
+  var ptr = usePullToRefresh({
+    onRefresh: function() { return Promise.all([notifsInf.refetch()]); },
+    scrollRef: scrollRef,
+  });
+
   const [mounted, setMounted] = useState(false);
   const [activeFilter, setActiveFilter] = useState("all");
   const [dismissed, setDismissed] = useState(new Set());
@@ -185,6 +227,16 @@ export default function NotificationsScreen() {
   var sections = getSections();
   var globalIndex = 0;
 
+  var tabCounts = {};
+  FILTER_TABS.forEach(function (tab) {
+    tabCounts[tab.id] = notifications.filter(function (n) {
+      if (dismissed.has(n.id)) return false;
+      if (n.read) return false;
+      if (tab.id === "all") return true;
+      return tab.types && tab.types.includes(n.type);
+    }).length;
+  });
+
   if (notifsInf.isError) {
     return (
       <PageLayout>
@@ -197,7 +249,7 @@ export default function NotificationsScreen() {
   }
 
   return (
-    <PageLayout header={
+    <PageLayout contentRef={scrollRef} contentProps={{...ptr.handlers, style: ptr.style}} header={
       <GlassAppBar
         left={<IconButton icon={ArrowLeft} onClick={function () { navigate("/"); }} />}
         title={
@@ -240,14 +292,20 @@ export default function NotificationsScreen() {
         }
       />
     }>
+      {ptr.indicator}
       <style>{`
         @keyframes slideDismiss {
-          from { transform: translateX(0); opacity: 1; }
-          to { transform: translateX(100%); opacity: 0; }
+          0% { transform: translateX(0) scale(1); opacity: 1; max-height: 120px; margin-bottom: 8px; }
+          50% { transform: translateX(60%) scale(0.95); opacity: 0.3; max-height: 120px; margin-bottom: 8px; }
+          100% { transform: translateX(100%) scale(0.9); opacity: 0; max-height: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0; }
         }
         @keyframes fadeSlideIn {
           from { opacity: 0; transform: translateY(12px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes pulseUnread {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+          50% { box-shadow: 0 0 0 4px rgba(59, 130, 246, 0); }
         }
       `}</style>
 
@@ -258,7 +316,10 @@ export default function NotificationsScreen() {
         transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.1s",
       }}>
         <PillTabs
-          tabs={FILTER_TABS.map(function (tab) { return { key: tab.id, label: t(tab.labelKey) }; })}
+          tabs={FILTER_TABS.map(function (tab) {
+            var c = tabCounts[tab.id] || 0;
+            return { key: tab.id, label: t(tab.labelKey), count: c > 0 ? c : undefined };
+          })}
           active={activeFilter}
           onChange={setActiveFilter}
         />
@@ -280,11 +341,26 @@ export default function NotificationsScreen() {
             <div key={section.label} style={{ marginBottom: 24 }}>
               {/* Section header */}
               <div style={{
-                fontSize: 13, fontWeight: 600, color: "var(--dp-text-muted)",
-                marginBottom: 10,
-                textTransform: "uppercase", letterSpacing: "0.5px",
+                display: "flex", alignItems: "center", gap: 12,
+                marginBottom: 12,
               }}>
-                {section.label}
+                <span style={{
+                  fontSize: 12, fontWeight: 700, color: "var(--dp-text-muted)",
+                  textTransform: "uppercase", letterSpacing: "0.8px",
+                  whiteSpace: "nowrap",
+                }}>
+                  {section.label}
+                </span>
+                <div style={{
+                  flex: 1, height: 1,
+                  background: "linear-gradient(90deg, var(--dp-border, rgba(255,255,255,0.08)), transparent)",
+                }} />
+                <span style={{
+                  fontSize: 11, fontWeight: 500, color: "var(--dp-text-muted)",
+                  opacity: 0.6,
+                }}>
+                  {section.items.length}
+                </span>
               </div>
 
               {/* Notification cards */}
@@ -294,6 +370,7 @@ export default function NotificationsScreen() {
                   var isDismissing = swipeState[notification.id] === "dismissing";
                   var typeColor = TYPE_COLORS[notification.type] || "#8B5CF6";
                   var IconComponent = TYPE_ICONS[notification.type] || Bell;
+                  var isUnread = !notification.read;
 
                   return (
                     <div
@@ -302,53 +379,68 @@ export default function NotificationsScreen() {
                       style={{
                         backdropFilter: "blur(40px)",
                         WebkitBackdropFilter: "blur(40px)",
-                        boxShadow: "inset 0 1px 0 rgba(255,255,255,0.06)",
+                        boxShadow: isUnread
+                          ? "inset 0 1px 0 rgba(255,255,255,0.08), 0 2px 12px rgba(0,0,0,0.12)"
+                          : "inset 0 1px 0 rgba(255,255,255,0.04)",
                         borderRadius: 16,
                         padding: "14px 16px",
                         display: "flex", alignItems: "flex-start", gap: 12,
                         cursor: "pointer",
                         position: "relative",
                         overflow: "hidden",
-                        background: notification.read ? "transparent" : "var(--dp-glass-bg)",
-                        border: notification.read
-                          ? "1px solid transparent"
-                          : "1px solid var(--dp-surface-hover)",
-                        transition: "all 0.3s ease",
-                        opacity: isDismissing ? 0 : !mounted ? 0 : notification.read ? 0.45 : 1,
+                        background: isUnread
+                          ? "var(--dp-glass-bg, rgba(255,255,255,0.06))"
+                          : "var(--dp-surface-dim, rgba(255,255,255,0.02))",
+                        border: isUnread
+                          ? "1px solid " + typeColor + "30"
+                          : "1px solid var(--dp-border, rgba(255,255,255,0.04))",
+                        transition: isDismissing
+                          ? "transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), max-height 0.25s ease 0.2s, margin-bottom 0.25s ease 0.2s, padding 0.25s ease 0.2s"
+                          : "all 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+                        opacity: isDismissing ? 0 : !mounted ? 0 : notification.read ? 0.55 : 1,
                         transform: isDismissing
-                          ? "translateX(100%)"
+                          ? "translateX(80%) scale(0.92)"
                           : mounted
-                          ? "translateX(0)"
-                          : "translateY(15px)",
+                          ? "translateX(0) scale(1)"
+                          : "translateY(15px) scale(0.97)",
+                        maxHeight: isDismissing ? 0 : 200,
+                        marginBottom: isDismissing ? 0 : undefined,
                         transitionDelay: isDismissing ? "0s" : (0.15 + itemIndex * 0.05) + "s",
                       }}
                     >
-                      {/* Unread dot */}
-                      {!notification.read && (
+                      {/* Unread accent bar */}
+                      {isUnread && (
                         <div style={{
-                          position: "absolute", left: 0, top: "50%",
-                          transform: "translateY(-50%)",
-                          width: 3, height: 24, borderRadius: "0 3px 3px 0",
-                          background: "#3B82F6",
-                          boxShadow: "0 0 8px rgba(59,130,246,0.5)",
+                          position: "absolute", left: 0, top: 0,
+                          bottom: 0, width: 3,
+                          borderRadius: "0 3px 3px 0",
+                          background: "linear-gradient(180deg, " + typeColor + ", " + typeColor + "80)",
+                          boxShadow: "0 0 10px " + typeColor + "40",
                         }} />
                       )}
 
                       {/* Icon circle */}
                       <div style={{
                         width: 42, height: 42, borderRadius: 13, flexShrink: 0,
-                        background: typeColor + "15",
-                        border: "1px solid " + typeColor + "25",
+                        background: isUnread
+                          ? typeColor + "20"
+                          : typeColor + "10",
+                        border: "1px solid " + typeColor + (isUnread ? "35" : "18"),
                         display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.3s ease",
                       }}>
-                        <IconComponent size={20} color={typeColor} strokeWidth={2} />
+                        <IconComponent
+                          size={20}
+                          color={typeColor}
+                          strokeWidth={isUnread ? 2.2 : 1.8}
+                        />
                       </div>
 
                       {/* Content */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{
-                          fontSize: 14, fontWeight: 600,
-                          color: notification.read ? "var(--dp-text-secondary)" : "var(--dp-text)",
+                          fontSize: 14, fontWeight: isUnread ? 650 : 500,
+                          color: isUnread ? "var(--dp-text)" : "var(--dp-text-secondary)",
                           marginBottom: 3,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                         }}>
@@ -356,7 +448,7 @@ export default function NotificationsScreen() {
                         </div>
                         <div style={{
                           fontSize: 13,
-                          color: notification.read ? "var(--dp-text-muted)" : "var(--dp-text-secondary)",
+                          color: isUnread ? "var(--dp-text-secondary)" : "var(--dp-text-muted)",
                           lineHeight: 1.4,
                           wordBreak: "break-word",
                           display: "-webkit-box",
@@ -369,8 +461,17 @@ export default function NotificationsScreen() {
                         <div style={{
                           fontSize: 11, color: "var(--dp-text-muted)",
                           marginTop: 6,
+                          display: "flex", alignItems: "center", gap: 6,
                         }}>
-                          {notification.time}
+                          <span>{notification.time}</span>
+                          {isUnread && (
+                            <span style={{
+                              width: 6, height: 6, borderRadius: "50%",
+                              background: typeColor,
+                              boxShadow: "0 0 6px " + typeColor + "60",
+                              display: "inline-block", flexShrink: 0,
+                            }} />
+                          )}
                         </div>
                       </div>
                     </div>
@@ -384,34 +485,45 @@ export default function NotificationsScreen() {
       <div ref={notifsInf.sentinelRef} style={{height:1}} />
       {notifsInf.loadingMore && <div style={{textAlign:"center",padding:16,color:"var(--dp-text-muted)",fontSize:13}}>{t("notifications.loadingMore")}</div>}
 
-      {/* Empty state */}
-      {!notifsInf.isLoading && sections.length === 0 && (
-        <div style={{
-          textAlign: "center", padding: "80px 20px",
-          opacity: mounted ? 1 : 0,
-          transition: "opacity 0.5s ease 0.3s",
-        }}>
+      {/* Empty state — contextual per active tab */}
+      {!notifsInf.isLoading && sections.length === 0 && (function () {
+        var emptyConfig = EMPTY_STATES[activeFilter] || EMPTY_STATES.all;
+        var EmptyIcon = emptyConfig.icon;
+        var emptyColor = emptyConfig.color;
+        var emptyTitle = t(emptyConfig.titleKey) || emptyConfig.fallbackTitle || t("notifications.allCaughtUp");
+        var emptyMessage = t(emptyConfig.messageKey) || emptyConfig.fallbackMessage || t("notifications.noNew");
+
+        return (
           <div style={{
-            width: 80, height: 80, borderRadius: 24,
-            background: "var(--dp-glass-bg)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            margin: "0 auto 20px",
+            textAlign: "center", padding: "60px 24px",
+            opacity: mounted ? 1 : 0,
+            transform: mounted ? "translateY(0)" : "translateY(10px)",
+            transition: "all 0.5s cubic-bezier(0.4, 0, 0.2, 1) 0.3s",
           }}>
-            <Bell size={36} color="var(--dp-text-muted)" />
-          </div>
-          <div style={{
-            fontSize: 18, fontWeight: 700, color: "var(--dp-text-secondary)",
-            marginBottom: 8,
-          }}>
-            {t("notifications.allCaughtUp")}
-          </div>
-          <div style={{
-            fontSize: 14, color: "var(--dp-text-muted)",
+            <div style={{
+              width: 88, height: 88, borderRadius: 26,
+              background: emptyColor + "12",
+              border: "1px solid " + emptyColor + "20",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              margin: "0 auto 24px",
             }}>
-            {t("notifications.noNew")}
+              <EmptyIcon size={38} color={emptyColor} strokeWidth={1.5} />
+            </div>
+            <div style={{
+              fontSize: 18, fontWeight: 700, color: "var(--dp-text-secondary)",
+              marginBottom: 8, lineHeight: 1.3,
+            }}>
+              {emptyTitle}
+            </div>
+            <div style={{
+              fontSize: 14, color: "var(--dp-text-muted)",
+              lineHeight: 1.5, maxWidth: 280, margin: "0 auto",
+            }}>
+              {emptyMessage}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Bottom spacer */}
       <div style={{ height: 32 }} />

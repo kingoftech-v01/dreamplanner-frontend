@@ -468,6 +468,27 @@ All security headers are set by the Docker-internal nginx (`nginx.docker.conf`),
 
 ---
 
+## Documentation
+
+### Architecture & Core
+
+- **[src/services/README.md](src/services/README.md)** — API client, endpoints, WebSocket, Agora RTM/RTC, native plugins, push notifications
+- **[src/context/README.md](src/context/README.md)** — Auth, theme, i18n, toast, network, task call providers
+- **[src/hooks/README.md](src/hooks/README.md)** — Notification socket, infinite list, Agora presence, keyboard shortcuts
+- **[src/utils/README.md](src/utils/README.md)** — Sanitization, error messages, logging, haptics, exports
+- **[src/components/shared/README.md](src/components/shared/README.md)** — 30 reusable components (glass design system, layout, guards, overlays)
+
+### Per-Page Documentation
+
+Each page folder has a detailed README:
+[auth](src/pages/auth/README.md) | [home](src/pages/home/README.md) | [dreams](src/pages/dreams/README.md) | [chat](src/pages/chat/README.md) | [social](src/pages/social/README.md) | [calendar](src/pages/calendar/README.md) | [profile](src/pages/profile/README.md) | [store](src/pages/store/README.md) | [notifications](src/pages/notifications/README.md) | [onboarding](src/pages/onboarding/README.md)
+
+### Other
+
+- **[src/i18n/README.md](src/i18n/README.md)** — 16 language packs, RTL support, translation guide
+
+---
+
 ## Known Limitations
 
 - **No test suite** — no Jest, Vitest, or Cypress
